@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "spice21",
+    "spice21r",
+    "spice21s",
+]
