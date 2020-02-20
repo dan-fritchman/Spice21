@@ -7,3 +7,4 @@ license = "BSD-3-Clause"
 description = "Coming Soon"
 
 [dependencies]
+sparse21 = { path = "../../sparse21" }
