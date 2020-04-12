@@ -1,5 +1,15 @@
 use sparse21::{Eindex, Matrix};
 
+enum CompParse {
+    R(f64, NodeRef, NodeRef),
+    I(f64, NodeRef, NodeRef),
+    V(f64, NodeRef, NodeRef),
+}
+struct CktParse {
+    nodes: usize,
+    comps: Vec<CompParse>,
+}
+
 type SpResult<T> = Result<T, &'static str>;
 
 struct Node {
@@ -8,49 +18,74 @@ struct Node {
 }
 
 trait Component {
-    // fn setup(&mut self, mat: &mut Matrix);
     fn load(&self) -> Stamps;
 
     fn terminals(&self) -> Vec<NodeRef>;
-    fn create_matrix_elems(&self, mat: &mut Matrix);
-    
-    fn get_matrix_elems(&mut self, mat: &Matrix);
 
-    fn on_add(&self, ckt: &Circuit) {}
+    fn create_matrix_elems(&self, mat: &mut Matrix);
+    fn get_matrix_elems(&mut self, mat: &Matrix);
+    fn add_vars(&mut self, vars: &mut Variables) {}
 }
 
-// struct Vsrc {
-//     v: f64,
-//     p: NodeRef,
-//     n: NodeRef,
-//     ivar: usize,
-//     iindex: usize,
-//     piv:Option<Eindex>,
-//     ivp:Option<Eindex>,
-//     niv:Option<Eindex>,
-//     ivn:Option<Eindex>,
-// }
+struct Vsrc {
+    v: f64,
+    p: NodeRef,
+    n: NodeRef,
+    ivar: usize,
+    pi: Option<Eindex>,
+    ip: Option<Eindex>,
+    ni: Option<Eindex>,
+    in_: Option<Eindex>,
+}
 
-// impl Vsrc {
-//     fn new (v:f64, p: NodeRef, n:NodeRef) -> Vsrc {
-//         Vsrc { v, p, n, ivar:0, iindex:0, piv: None, ivp: None, niv: None, ivn: None}
-//     }
-// }
+impl Vsrc {
+    fn new(v: f64, p: NodeRef, n: NodeRef) -> Vsrc {
+        Vsrc {
+            v,
+            p,
+            n,
+            ivar: 0,
+            pi: None,
+            ip: None,
+            ni: None,
+            in_: None,
+        }
+    }
+}
 
-// impl Component for Vsrc {
-//     fn on_add(&mut self, ckt: &mut Circuit) {
-//         self.ivar = ckt.add_var();
-//     }
-//     fn setup(&mut self, mat: &mut Matrix) {
-//         self.iindex = self.ivar + mat.nodes.len();
-
-//     }
-//     fn load (&self) -> Stamps {
-//         let mut s = Stamps::new();
-
-//         return s;
-//     }
-// }
+impl Component for Vsrc {
+    fn terminals(&self) -> Vec<NodeRef> {
+        return vec![self.p, self.n];
+    }
+    fn create_matrix_elems(&self, mat: &mut Matrix) {
+        if let NodeRef::Num(p) = self.p {
+            mat.add_element(p, self.ivar, 0.0);
+            mat.add_element(self.ivar, p, 0.0);
+        }
+        if let NodeRef::Num(n) = self.n {
+            mat.add_element(n, self.ivar, 0.0);
+            mat.add_element(self.ivar, n, 0.0);
+        }
+    }
+    fn get_matrix_elems(&mut self, mat: &Matrix) {
+        if let NodeRef::Num(p) = self.p {
+            self.pi = mat.get_elem(p, self.ivar);
+            self.ip = mat.get_elem(self.ivar, p);
+        }
+        if let NodeRef::Num(n) = self.n {
+            self.ni = mat.get_elem(n, self.ivar);
+            self.in_ = mat.get_elem(self.ivar, n);
+        }
+    }
+    fn load(&self) -> Stamps {
+        // FIXME!
+        return Stamps {
+            G: vec![],
+            J: vec![],
+            b: vec![],
+        };
+    }
+}
 
 struct Resistor {
     g: f64,
@@ -73,14 +108,14 @@ impl Component for Resistor {
         return vec![self.p, self.n];
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) { 
+        if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) {
             mat.add_element(l, r, 0.0);
             mat.add_element(r, l, 0.0);
         }
-        if let NodeRef::Num(p) = self.p { 
+        if let NodeRef::Num(p) = self.p {
             mat.add_element(p, p, 0.0);
         }
-        if let NodeRef::Num(n) = self.n { 
+        if let NodeRef::Num(n) = self.n {
             mat.add_element(n, n, 0.0);
         }
     }
@@ -128,14 +163,14 @@ impl Component for Isrc {
         return vec![self.p, self.n];
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) { 
+        if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) {
             mat.add_element(l, r, 0.0);
             mat.add_element(r, l, 0.0);
         }
-        if let NodeRef::Num(p) = self.p { 
+        if let NodeRef::Num(p) = self.p {
             mat.add_element(p, p, 0.0);
         }
-        if let NodeRef::Num(n) = self.n { 
+        if let NodeRef::Num(n) = self.n {
             mat.add_element(n, n, 0.0);
         }
     }
@@ -163,52 +198,13 @@ impl Component for Isrc {
     }
 }
 
-
-struct Circuit {
-    comps: Vec<Box<dyn Component>>,
-    nodes: Vec<Node>,
-    vars: usize, // FIXME: more elaborate non-node variable handling
-    node0: Node,
-}
-
-impl Circuit {
-    fn new() -> Circuit {
-        Circuit {
-            comps: vec![],
-            nodes: vec![],
-            vars: 0,
-            node0: Node {
-                rf: NodeRef::Gnd,
-                solve: false,
-            },
-        }
-    }
-    fn add_node(&mut self) -> NodeRef {
-        let rf = NodeRef::Num(self.nodes.len());
-        let node = Node {
-            rf: rf.clone(),
-            solve: true,
-        };
-        self.nodes.push(node);
-        return rf;
-    }
-    fn add_var(&mut self) -> usize {
-        let nv = self.vars;
-        self.vars += 1;
-        return nv;
-    }
-    fn add_comp<C: Component + 'static>(&mut self, comp: C) {
-        comp.on_add(&self);
-        self.comps.push(Box::new(comp));
-    }
-}
-
 #[derive(Copy, Clone)]
 enum NodeRef {
     Gnd,
     Num(usize),
 }
 
+#[derive(Debug)]
 struct Stamps {
     G: Vec<(Eindex, f64)>,
     J: Vec<(Eindex, f64)>,
@@ -225,34 +221,105 @@ impl Stamps {
     }
 }
 
+#[derive(Debug, Clone)]
+enum Var {
+    V,
+    I,
+}
+
+struct Variables(Vec<Var>);
+
+impl Variables {
+    fn new() -> Variables {
+        Variables(vec![])
+    }
+    fn all_v(len: usize) -> Variables {
+        Variables(vec![Var::V; len])
+    }
+    fn add_ivar(&mut self) -> usize {
+        self.0.push(Var::I);
+        return self.0.len() - 1;
+    }
+}
+
 struct DcOp {
-    ckt: Circuit,
+    comps: Vec<Box<dyn Component>>,
+    vars: Variables,
     mat: Matrix,
     rhs: Vec<f64>,
     x: Vec<f64>,
 }
 
 impl DcOp {
-    fn new(mut ckt: Circuit) -> DcOp {
-        let size = ckt.nodes.len() + ckt.vars;
-        let mut mat = Matrix::new();
-        
-        // Sadly our borrow-check fighting requires two loop through the comp-list,
-        // First to create matrix elements, and a second to append their references to Components. 
-        // I expect there's a way around this, although don't know one yet. 
-        for mut comp in ckt.comps.iter() {
-            comp.create_matrix_elems(&mut mat);
+    fn add_comp(&mut self, comp: &CompParse) {
+        match *comp {
+            CompParse::R(g, p, n) => {
+                let r = Resistor {
+                    g,
+                    p,
+                    n,
+                    pp: None,
+                    pn: None,
+                    np: None,
+                    nn: None,
+                };
+                self.comps.push(Box::new(r));
+            }
+            CompParse::I(i, p, n) => {
+                let i = Isrc {
+                    i,
+                    p,
+                    n,
+                    pp: None,
+                    pn: None,
+                    np: None,
+                    nn: None,
+                };
+                self.comps.push(Box::new(i));
+            }
+            CompParse::V(v, p, n) => {
+                let ivar = self.vars.add_ivar();
+                let v = Vsrc {
+                    v,
+                    p,
+                    n,
+                    ivar,
+                    pi: None,
+                    ip: None,
+                    ni: None,
+                    in_: None,
+                };
+                self.comps.push(Box::new(v));
+            }
         }
-        for mut comp in ckt.comps.iter_mut() {
-            comp.get_matrix_elems(&mat);
+    }
+    fn new(ckt: CktParse) -> DcOp {
+        let mut op = DcOp {
+            // ckt: Circuit::new(),
+            comps: vec![],
+            vars: Variables::all_v(ckt.nodes),
+            mat: Matrix::new(),
+            x: vec![],
+            rhs: vec![],
+        };
+
+        for comp in ckt.comps.iter() {
+            op.add_comp(comp);
+        }
+        // Set up matrix elements per variable, and append them to Components
+        // Sadly our borrow-check fighting requires two loop through the comp-list,
+        // First to create matrix elements, and a second to append their references to Components.
+        // I expect there's a way around this, although don't know one yet.
+        for comp in op.comps.iter() {
+            comp.create_matrix_elems(&mut op.mat);
+        }
+        for mut comp in op.comps.iter_mut() {
+            comp.get_matrix_elems(&op.mat);
         }
 
-        return DcOp {
-            ckt,
-            mat,
-            x: vec![0.0; size],
-            rhs: vec![0.0; size],
-        };
+        op.x = vec![0.0; op.vars.0.len()];
+        op.rhs = vec![0.0; op.vars.0.len()];
+        return op;
     }
     fn solve(&mut self) -> SpResult<Vec<f64>> {
         self.x = vec![0.0; self.rhs.len()];
@@ -266,8 +333,10 @@ impl DcOp {
 
             // Load up component updates
             let mut jupdates: Vec<(Eindex, f64)> = vec![];
-            for comp in self.ckt.comps.iter() {
+            for comp in self.comps.iter() {
                 let updates = comp.load();
+                println!("{:?}", updates);
+
                 // Make updates for G and b
                 for upd in updates.G.iter() {
                     self.mat.update(upd.0, upd.1);
@@ -323,67 +392,36 @@ impl DcOp {
     }
 }
 
-fn op(ckt: Circuit, x0: Option<Vec<f64>>) -> SpResult<Vec<f64>> {
-    // Create the circuit - components, nodes, variables
-    // Walk it to get matrix elements
-    // Create a matrix of elements
-    // Pointers to the matrix elements associate with the components, somehow
-    //
-    let mut dcop = DcOp::new(ckt);
-    return dcop.solve();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     type TestResult = Result<(), &'static str>;
 
-    #[test]
-    fn test_add_node() -> TestResult {
-        let mut c = Circuit::new();
-        let rf = c.add_node();
-        match rf {
-            NodeRef::Gnd => return Err("gnd?"),
-            NodeRef::Num(n) => assert_eq!(n, 0),
-        };
-        assert_eq!(c.nodes.len(), 1);
-        assert_eq!(c.comps.len(), 0);
-        Ok(())
+    /// Create a very basic Circuit
+    fn parse_ckt() -> CktParse {
+        CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                // CompParse::V(1.00, NodeRef::Num(0), NodeRef::Gnd),
+            ],
+        }
     }
 
     #[test]
-    fn test_add_res() -> TestResult {
-        let mut c = Circuit::new();
-        let rf = c.add_node();
-        let r = Resistor {
-            g: 1e-3,
-            p: rf,
-            n: NodeRef::Gnd,
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
-        };
-        c.add_comp(r);
+    fn test_ckt_parse() -> TestResult {
+        let ckt = parse_ckt();
         Ok(())
     }
 
     #[test]
     fn test_dcop1() -> TestResult {
-        let mut c = Circuit::new();
-        let rf = c.add_node();
-        let r = Resistor {
-            g: 1e-3,
-            p: rf,
-            n: NodeRef::Gnd,
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)],
         };
-        c.add_comp(r);
-
-        let mut dcop = DcOp::new(c);
+        let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
         assert_eq!(soln, vec![0.0]);
         Ok(())
@@ -391,75 +429,25 @@ mod tests {
 
     #[test]
     fn test_dcop2() -> TestResult {
-        // Current source + resistor(!)
-        let mut c = Circuit::new();
-        let rf = c.add_node();
-        let r = Resistor {
-            g: 1e-3,
-            p: rf,
-            n: NodeRef::Gnd,
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
-        };
-        c.add_comp(r);
-        let i = Isrc {
-            i: 1e-3,
-            p: rf,
-            n: NodeRef::Gnd,
-
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
-        };
-        c.add_comp(i);
-
-        let mut dcop = DcOp::new(c);
+        let ckt = parse_ckt();
+        let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
-        assert_eq!(soln, vec![1.0]);
+        assert_eq!(soln, vec![1.0,]);
         Ok(())
     }
 
     #[test]
     fn test_dcop3() -> TestResult {
-        let mut c = Circuit::new();
-        let n1 = c.add_node();
-        let n2 = c.add_node();
-        let r1 = Resistor {
-            g: 1e-3,
-            p: n1,
-            n: NodeRef::Gnd,
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
+        // Getting crazy: I - R - R divider
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::R(1e-3, NodeRef::Num(1), NodeRef::Num(0)),
+                CompParse::I(1e-3, NodeRef::Num(1), NodeRef::Gnd),
+            ],
         };
-        c.add_comp(r1);
-        let r2 = Resistor {
-            g: 1e-3,
-            p: n2,
-            n: n1,
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
-        };
-        c.add_comp(r2);
-        let i = Isrc {
-            i: 1e-3,
-            p: n2,
-            n: NodeRef::Gnd,
-
-            pp: None,
-            nn: None,
-            np: None,
-            pn: None,
-        };
-        c.add_comp(i);
-
-        let mut dcop = DcOp::new(c);
+        let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
         assert_eq!(soln, vec![1.0, 2.0]);
         Ok(())
