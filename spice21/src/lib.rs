@@ -19,9 +19,7 @@ struct Node {
 
 trait Component {
     fn load(&self) -> Stamps;
-
     fn terminals(&self) -> Vec<NodeRef>;
-
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
     fn add_vars(&mut self, vars: &mut Variables) {}
@@ -59,12 +57,12 @@ impl Component for Vsrc {
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         if let NodeRef::Num(p) = self.p {
-            mat.add_element(p, self.ivar, 0.0);
-            mat.add_element(self.ivar, p, 0.0);
+            mat.make(p, self.ivar);
+            mat.make(self.ivar, p);
         }
         if let NodeRef::Num(n) = self.n {
-            mat.add_element(n, self.ivar, 0.0);
-            mat.add_element(self.ivar, n, 0.0);
+            mat.make(n, self.ivar);
+            mat.make(self.ivar, n);
         }
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
@@ -78,11 +76,23 @@ impl Component for Vsrc {
         }
     }
     fn load(&self) -> Stamps {
-        // FIXME!
+        let mut v: Vec<(Eindex, f64)> = vec![];
+        if let Some(pi) = self.pi {
+            v.push((pi, 1.0));
+        }
+        if let Some(ip) = self.ip {
+            v.push((ip, 1.0));
+        }
+        if let Some(ni) = self.ni {
+            v.push((ni, -1.0));
+        }
+        if let Some(in_) = self.in_ {
+            v.push((in_, -1.0));
+        }
         return Stamps {
-            G: vec![],
+            G: v,
             J: vec![],
-            b: vec![],
+            b: vec![(self.ivar, self.v)],
         };
     }
 }
@@ -109,14 +119,14 @@ impl Component for Resistor {
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) {
-            mat.add_element(l, r, 0.0);
-            mat.add_element(r, l, 0.0);
+            mat.make(l, r);
+            mat.make(r, l);
         }
         if let NodeRef::Num(p) = self.p {
-            mat.add_element(p, p, 0.0);
+            mat.make(p, p);
         }
         if let NodeRef::Num(n) = self.n {
-            mat.add_element(n, n, 0.0);
+            mat.make(n, n);
         }
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
@@ -164,14 +174,14 @@ impl Component for Isrc {
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) {
-            mat.add_element(l, r, 0.0);
-            mat.add_element(r, l, 0.0);
+            mat.make(l, r);
+            mat.make(r, l);
         }
         if let NodeRef::Num(p) = self.p {
-            mat.add_element(p, p, 0.0);
+            mat.make(p, p);
         }
         if let NodeRef::Num(n) = self.n {
-            mat.add_element(n, n, 0.0);
+            mat.make(n, n);
         }
     }
 
@@ -325,8 +335,7 @@ impl DcOp {
         self.x = vec![0.0; self.rhs.len()];
         let dx = vec![0.0; self.rhs.len()];
 
-        for k in 0..100 {
-            // FIXME: number of iterations
+        for k in 0..100 { // FIXME: number of iterations
             // Reset our matrix and RHS vector
             self.mat.reset();
             self.rhs = vec![0.0; self.rhs.len()];
@@ -335,7 +344,6 @@ impl DcOp {
             let mut jupdates: Vec<(Eindex, f64)> = vec![];
             for comp in self.comps.iter() {
                 let updates = comp.load();
-                println!("{:?}", updates);
 
                 // Make updates for G and b
                 for upd in updates.G.iter() {
@@ -349,16 +357,12 @@ impl DcOp {
             }
 
             // Calculate the residual error
-            let mut res: Vec<f64> = self.mat.vecmul(&self.x)?;
-            for k in 0..self.x.len() {
-                res[k] = -1.0 * res[k];
-                res[k] += self.rhs[k];
-            }
+            let res: Vec<f64> = self.mat.res(&self.x, &self.rhs)?;
             // Check convergence
             if self.converged(&dx, &res) {
                 return Ok(self.x.clone());
             }
-            // Didn't converge, add Jacobian terms
+            // Didn't converge, add in the Jacobian terms
             for upd in jupdates.iter() {
                 self.mat.update(upd.0, upd.1);
             }
@@ -374,16 +378,12 @@ impl DcOp {
     fn converged(&self, dx: &Vec<f64>, res: &Vec<f64>) -> bool {
         // Inter-step Newton convergence
         for e in dx.iter() {
-            println!("DX ENTRY:");
-            println!("{}", *e);
             if *e > 1e-3 {
                 return false;
             }
         }
         // KCL convergence
         for e in res.iter() {
-            println!("RES ENTRY:");
-            println!("{}", *e);
             if *e > 1e-9 {
                 return false;
             }
@@ -450,6 +450,23 @@ mod tests {
         let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
         assert_eq!(soln, vec![1.0, 2.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop4() -> TestResult {
+        // Getting crazy: I - R - R divider
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
+                CompParse::R(2e-3, NodeRef::Num(1), NodeRef::Num(0)),
+                CompParse::R(2e-3, NodeRef::Num(0), NodeRef::Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln, vec![0.5, 1.0, -1e-3]);
         Ok(())
     }
 }

@@ -1,4 +1,3 @@
-
 // struct Circuit {
 //     comps: Vec<Box<dyn Component>>,
 //     nodes: Vec<Node>,
@@ -37,7 +36,6 @@
 //         self.comps.push(Box::new(comp));
 //     }
 // }
-
 
 #[cfg(test)]
 mod tests {
