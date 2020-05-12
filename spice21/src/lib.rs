@@ -1,3 +1,4 @@
+mod sparse21;
 use sparse21::{Eindex, Matrix};
 
 enum CompParse {
@@ -17,8 +18,23 @@ struct Node {
     solve: bool,
 }
 
+/// Helper function to create matrix element at (row,col) if both are non-ground
+fn make_matrix_elem(mat: &mut Matrix, row: NodeRef, col: NodeRef) {
+    if let (NodeRef::Num(r), NodeRef::Num(c)) = (row, col) {
+        mat.make(r, c);
+    }
+}
+
+/// Helper function to get matrix element-pointer at (row, col) if present. or None if not 
+fn get_matrix_elem(mat: &Matrix, row: NodeRef, col: NodeRef) -> Option<Eindex> {
+    match (row, col) {
+        (NodeRef::Num(r), NodeRef::Num(c)) => mat.get_elem(r, c),
+        _ => None,
+    }
+}
+
 trait Component {
-    fn load(&self) -> Stamps;
+    fn load(&self, an: &DcOp) -> Stamps;
     fn terminals(&self) -> Vec<NodeRef>;
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
@@ -75,7 +91,7 @@ impl Component for Vsrc {
             self.in_ = mat.get_elem(self.ivar, n);
         }
     }
-    fn load(&self) -> Stamps {
+    fn load(&self, an: &DcOp) -> Stamps {
         let mut v: Vec<(Eindex, f64)> = vec![];
         if let Some(pi) = self.pi {
             v.push((pi, 1.0));
@@ -107,27 +123,15 @@ struct Resistor {
     np: Option<Eindex>,
 }
 
-fn get_matrix_elem(mat: &Matrix, row: NodeRef, col: NodeRef) -> Option<Eindex> {
-    match (row, col) {
-        (NodeRef::Num(r), NodeRef::Num(c)) => mat.get_elem(r, c),
-        _ => None,
-    }
-}
 impl Component for Resistor {
     fn terminals(&self) -> Vec<NodeRef> {
         return vec![self.p, self.n];
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) {
-            mat.make(l, r);
-            mat.make(r, l);
-        }
-        if let NodeRef::Num(p) = self.p {
-            mat.make(p, p);
-        }
-        if let NodeRef::Num(n) = self.n {
-            mat.make(n, n);
-        }
+        make_matrix_elem(mat, self.p, self.p);
+        make_matrix_elem(mat, self.p, self.n);
+        make_matrix_elem(mat, self.n, self.p);
+        make_matrix_elem(mat, self.n, self.n);
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
         self.pp = get_matrix_elem(mat, self.p, self.p);
@@ -135,7 +139,7 @@ impl Component for Resistor {
         self.np = get_matrix_elem(mat, self.n, self.p);
         self.nn = get_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&self) -> Stamps {
+    fn load(&self, an: &DcOp) -> Stamps {
         let mut v: Vec<(Eindex, f64)> = vec![];
         if let Some(pp) = self.pp {
             v.push((pp, self.g));
@@ -151,6 +155,64 @@ impl Component for Resistor {
         }
         return Stamps {
             G: v,
+            J: vec![],
+            b: vec![],
+        };
+    }
+}
+
+
+struct Diode {
+    isat: f64,
+    vt: f64,
+    p: NodeRef,
+    n: NodeRef,
+    pp: Option<Eindex>,
+    nn: Option<Eindex>,
+    pn: Option<Eindex>,
+    np: Option<Eindex>,
+}
+
+impl Component for Diode {
+    fn terminals(&self) -> Vec<NodeRef> {
+        return vec![self.p, self.n];
+    }
+    fn create_matrix_elems(&self, mat: &mut Matrix) {
+        make_matrix_elem(mat, self.p, self.p);
+        make_matrix_elem(mat, self.p, self.n);
+        make_matrix_elem(mat, self.n, self.p);
+        make_matrix_elem(mat, self.n, self.n);
+    }
+    fn get_matrix_elems(&mut self, mat: &Matrix) {
+        self.pp = get_matrix_elem(mat, self.p, self.p);
+        self.pn = get_matrix_elem(mat, self.p, self.n);
+        self.np = get_matrix_elem(mat, self.n, self.p);
+        self.nn = get_matrix_elem(mat, self.n, self.n);
+    }
+    fn load(&self, an: &DcOp) -> Stamps {
+        let vp = an.get_v(self.p);
+        let vn = an.get_v(self.n);
+        let vd = (vp - vn).max(-1.5).min(1.5);
+        let i = self.isat * ((vd / self.vt).exp() - 1.0);
+        let di_div = (self.isat / self.vt) * (vd / self.vt).exp();
+
+        // FIXME: load up J & b 
+
+        // let mut b: Vec<(Eindex, f64)> = vec![];
+        // if let Some(pp) = self.pp {
+        //     b.push((pp, -i));
+        // }
+        // if let Some(nn) = self.nn {
+        //     v.push((nn, self.g));
+        // }
+        // if let Some(pn) = self.pn {
+        //     v.push((pn, -1.0 * self.g));
+        // }
+        // if let Some(np) = self.np {
+        //     v.push((np, -1.0 * self.g));
+        // }
+        return Stamps {
+            G: vec![],
             J: vec![],
             b: vec![],
         };
@@ -173,26 +235,18 @@ impl Component for Isrc {
         return vec![self.p, self.n];
     }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        if let (NodeRef::Num(l), NodeRef::Num(r)) = (self.p, self.n) {
-            mat.make(l, r);
-            mat.make(r, l);
-        }
-        if let NodeRef::Num(p) = self.p {
-            mat.make(p, p);
-        }
-        if let NodeRef::Num(n) = self.n {
-            mat.make(n, n);
-        }
+        make_matrix_elem(mat, self.p, self.p);
+        make_matrix_elem(mat, self.p, self.n);
+        make_matrix_elem(mat, self.n, self.p);
+        make_matrix_elem(mat, self.n, self.n);
     }
-
     fn get_matrix_elems(&mut self, mat: &Matrix) {
         self.pp = get_matrix_elem(mat, self.p, self.p);
         self.pn = get_matrix_elem(mat, self.p, self.n);
         self.np = get_matrix_elem(mat, self.n, self.p);
         self.nn = get_matrix_elem(mat, self.n, self.n);
     }
-    // fn setup(&mut self, mat: &mut Matrix) {}
-    fn load(&self) -> Stamps {
+    fn load(&self, an: &DcOp) -> Stamps {
         let mut b: Vec<(usize, f64)> = vec![];
         if let NodeRef::Num(pp) = self.p {
             b.push((pp, self.i))
@@ -303,9 +357,14 @@ impl DcOp {
             }
         }
     }
+    fn get_v(&self, node:NodeRef) -> f64 {
+        match node {
+            NodeRef::Num(k) => self.x[k],
+            NodeRef::Gnd => 0.0
+        }
+    }
     fn new(ckt: CktParse) -> DcOp {
         let mut op = DcOp {
-            // ckt: Circuit::new(),
             comps: vec![],
             vars: Variables::all_v(ckt.nodes),
             mat: Matrix::new(),
@@ -335,7 +394,8 @@ impl DcOp {
         self.x = vec![0.0; self.rhs.len()];
         let dx = vec![0.0; self.rhs.len()];
 
-        for k in 0..100 { // FIXME: number of iterations
+        for k in 0..100 {
+            // FIXME: number of iterations
             // Reset our matrix and RHS vector
             self.mat.reset();
             self.rhs = vec![0.0; self.rhs.len()];
@@ -343,7 +403,7 @@ impl DcOp {
             // Load up component updates
             let mut jupdates: Vec<(Eindex, f64)> = vec![];
             for comp in self.comps.iter() {
-                let updates = comp.load();
+                let updates = comp.load(&self);
 
                 // Make updates for G and b
                 for upd in updates.G.iter() {
