@@ -5,7 +5,9 @@ enum CompParse {
     R(f64, NodeRef, NodeRef),
     I(f64, NodeRef, NodeRef),
     V(f64, NodeRef, NodeRef),
+    D(f64, f64, NodeRef, NodeRef),
 }
+
 struct CktParse {
     nodes: usize,
     comps: Vec<CompParse>,
@@ -92,23 +94,15 @@ impl Component for Vsrc {
         }
     }
     fn load(&self, an: &DcOp) -> Stamps {
-        let mut v: Vec<(Eindex, f64)> = vec![];
-        if let Some(pi) = self.pi {
-            v.push((pi, 1.0));
-        }
-        if let Some(ip) = self.ip {
-            v.push((ip, 1.0));
-        }
-        if let Some(ni) = self.ni {
-            v.push((ni, -1.0));
-        }
-        if let Some(in_) = self.in_ {
-            v.push((in_, -1.0));
-        }
         return Stamps {
-            G: v,
+            G: vec![
+                (self.pi, 1.0),
+                (self.ip, 1.0),
+                (self.ni, -1.0),
+                (self.in_, -1.0),
+            ],
             J: vec![],
-            b: vec![(self.ivar, self.v)],
+            b: vec![(NodeRef::Num(self.ivar), self.v)], // FIXME: NodeRef here is pretty hacky
         };
     }
 }
@@ -140,21 +134,13 @@ impl Component for Resistor {
         self.nn = get_matrix_elem(mat, self.n, self.n);
     }
     fn load(&self, an: &DcOp) -> Stamps {
-        let mut v: Vec<(Eindex, f64)> = vec![];
-        if let Some(pp) = self.pp {
-            v.push((pp, self.g));
-        }
-        if let Some(nn) = self.nn {
-            v.push((nn, self.g));
-        }
-        if let Some(pn) = self.pn {
-            v.push((pn, -1.0 * self.g));
-        }
-        if let Some(np) = self.np {
-            v.push((np, -1.0 * self.g));
-        }
         return Stamps {
-            G: v,
+            G: vec![
+                (self.pp, self.g),
+                (self.nn, self.g),
+                (self.pn, -self.g),
+                (self.np, -self.g)
+            ],
             J: vec![],
             b: vec![],
         };
@@ -194,27 +180,23 @@ impl Component for Diode {
         let vn = an.get_v(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);
         let i = self.isat * ((vd / self.vt).exp() - 1.0);
-        let di_div = (self.isat / self.vt) * (vd / self.vt).exp();
+        let di_dv = (self.isat / self.vt) * (vd / self.vt).exp();
+        println!("DIODE OP: i={}, di_dv={}\n", i, di_dv);
 
-        // FIXME: load up J & b 
+        // FIXME: make a real index-attribute for b-vector 
+        let mut b: Vec<(NodeRef, f64)> = vec![];
+        if let NodeRef::Num(p) = self.p { b.push((self.p, -i)) };
+        if let NodeRef::Num(n) = self.n { b.push((self.n, -i)) };
 
-        // let mut b: Vec<(Eindex, f64)> = vec![];
-        // if let Some(pp) = self.pp {
-        //     b.push((pp, -i));
-        // }
-        // if let Some(nn) = self.nn {
-        //     v.push((nn, self.g));
-        // }
-        // if let Some(pn) = self.pn {
-        //     v.push((pn, -1.0 * self.g));
-        // }
-        // if let Some(np) = self.np {
-        //     v.push((np, -1.0 * self.g));
-        // }
         return Stamps {
             G: vec![],
-            J: vec![],
-            b: vec![],
+            J: vec![
+                (self.pp, di_dv),
+                (self.nn, di_dv),
+                (self.pn, -di_dv),
+                (self.np, -di_dv)
+            ],
+            b: b
         };
     }
 }
@@ -257,12 +239,15 @@ impl Component for Isrc {
         return Stamps {
             G: vec![],
             J: vec![],
-            b: b,
+            b: vec![
+                (self.p, self.i),
+                (self.n, -self.i)
+            ],
         };
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum NodeRef {
     Gnd,
     Num(usize),
@@ -270,9 +255,9 @@ enum NodeRef {
 
 #[derive(Debug)]
 struct Stamps {
-    G: Vec<(Eindex, f64)>,
-    J: Vec<(Eindex, f64)>,
-    b: Vec<(usize, f64)>,
+    G: Vec<(Option<Eindex>, f64)>,
+    J: Vec<(Option<Eindex>, f64)>,
+    b: Vec<(NodeRef, f64)>,
 }
 
 impl Stamps {
@@ -341,6 +326,18 @@ impl DcOp {
                 };
                 self.comps.push(Box::new(i));
             }
+            CompParse::D(isat, vt, p, n) => {
+                let c = Diode {
+                    isat, vt, 
+                    p,
+                    n,
+                    pp: None,
+                    pn: None,
+                    np: None,
+                    nn: None,
+                };
+                self.comps.push(Box::new(c));
+            }
             CompParse::V(v, p, n) => {
                 let ivar = self.vars.add_ivar();
                 let v = Vsrc {
@@ -401,16 +398,20 @@ impl DcOp {
             self.rhs = vec![0.0; self.rhs.len()];
 
             // Load up component updates
-            let mut jupdates: Vec<(Eindex, f64)> = vec![];
+            let mut jupdates: Vec<(Option<Eindex>, f64)> = vec![];
             for comp in self.comps.iter() {
                 let updates = comp.load(&self);
 
                 // Make updates for G and b
                 for upd in updates.G.iter() {
-                    self.mat.update(upd.0, upd.1);
+                    if let (Some(ei), val) = *upd {
+                        self.mat.update(ei, val);
+                    }
                 }
                 for upd in updates.b.iter() {
-                    self.rhs[upd.0] += upd.1;
+                    if let (NodeRef::Num(ei), val) = *upd {
+                        self.rhs[ei] += val;
+                    }
                 }
                 // And save J-updates for later
                 jupdates.extend(updates.J);
@@ -424,7 +425,7 @@ impl DcOp {
             }
             // Didn't converge, add in the Jacobian terms
             for upd in jupdates.iter() {
-                self.mat.update(upd.0, upd.1);
+                if let (Some(ei), val) = *upd { self.mat.update(ei, val); }
             }
             // Solve for our update
             let dx = self.mat.solve(res)?;
@@ -438,13 +439,13 @@ impl DcOp {
     fn converged(&self, dx: &Vec<f64>, res: &Vec<f64>) -> bool {
         // Inter-step Newton convergence
         for e in dx.iter() {
-            if *e > 1e-3 {
+            if e.abs() > 1e-3 {
                 return false;
             }
         }
         // KCL convergence
         for e in res.iter() {
-            if *e > 1e-9 {
+            if e.abs() > 1e-9 {
                 return false;
             }
         }
@@ -464,7 +465,6 @@ mod tests {
             comps: vec![
                 CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
                 CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                // CompParse::V(1.00, NodeRef::Num(0), NodeRef::Gnd),
             ],
         }
     }
@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn test_dcop3() -> TestResult {
-        // Getting crazy: I - R - R divider
+        // I - R - R divider
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
@@ -515,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_dcop4() -> TestResult {
-        // Getting crazy: I - R - R divider
+        // V - R - R divider
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
@@ -527,6 +527,23 @@ mod tests {
         let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
         assert_eq!(soln, vec![0.5, 1.0, -1e-3]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop5() -> TestResult {
+        // I - R - Diode
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::D(2e-16, 25e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert!((soln[0] - 0.7).abs() < 1e-3);
         Ok(())
     }
 }
