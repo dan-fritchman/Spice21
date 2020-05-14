@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 mod sparse21;
 use sparse21::{Eindex, Matrix};
 
@@ -40,7 +42,6 @@ trait Component {
     fn terminals(&self) -> Vec<NodeRef>;
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
-    fn add_vars(&mut self, vars: &mut Variables) {}
 }
 
 struct Vsrc {
@@ -148,6 +149,107 @@ impl Component for Resistor {
 }
 
 
+#[derive(Clone, Copy)]
+enum MosTerm { g=0, d=1, s=2, b=3 }
+impl MosTerm {
+    pub fn iterator() -> impl Iterator<Item = MosTerm> { 
+        use MosTerm::{g, d, s, b};
+        [g, d, s, b].iter().copied() 
+    }
+}
+
+struct MosTerminals([NodeRef; 4]);
+impl Index<MosTerm> for MosTerminals {
+    type Output = NodeRef;
+    fn index(&self, t: MosTerm) -> &NodeRef { &self.0[t as usize] }
+}
+
+struct MosMatrixPointers([[Option<Eindex>; 4]; 4]);
+impl Index<(MosTerm, MosTerm)> for MosMatrixPointers {
+    type Output = Option<Eindex>;
+    fn index(&self, ts: (MosTerm, MosTerm)) -> &Option<Eindex> { &self.0[ts.0 as usize][ts.1 as usize] } 
+}
+
+struct Mos {
+    vth: f64, beta: f64, lam: f64, polarity: bool, 
+    ports: Vec<NodeRef>, // SPICE order: g, d, s, b
+    ei: Vec<Vec<Option<Eindex>>>,
+}
+
+impl Mos {
+    fn new(ports:&Vec<NodeRef>, vth:f64, beta:f64, lam:f64, polarity:bool) -> Mos {
+        Mos { vth, beta, lam, polarity, ports: ports.clone(), ei: vec![vec![None; 4]; 4] }
+    }
+}
+
+impl Component for Mos {
+    fn terminals(&self) -> Vec<NodeRef> {
+        return self.ports.clone();
+    }
+    fn create_matrix_elems(&self, mat: &mut Matrix) {
+        for t in MosTerm::iterator() { // FIXME: make this the real thing 
+            println!("{}", t as usize);
+        }
+        for li in 0..self.ports.len() {
+            for ri in 0..self.ports.len() {
+                make_matrix_elem(mat, self.ports[li], self.ports[ri]);
+            }
+        }
+    }
+    fn get_matrix_elems(&mut self, mat: &Matrix) {
+        for li in 0..self.ports.len() {
+            for ri in 0..self.ports.len() {
+                self.ei[li][ri] = get_matrix_elem(mat, self.ports[li], self.ports[ri]);
+            }
+        }
+    }
+    fn load(&self, an: &DcOp) -> Stamps {
+        let vg = an.get_v(self.ports[0]);
+        let vd = an.get_v(self.ports[1]);
+        let vs = an.get_v(self.ports[2]);
+        let vb = an.get_v(self.ports[3]);
+        let p = if self.polarity { 1.0 } else { -1.0 };
+        let vds1 = p * (vd - vs);
+        let reversed = vds1 < 0.0;
+        let vgs = if reversed { vg - vd } else { vg - vs };
+        let vds = if reversed { -vds1 } else { vds1 };
+        let vov = vgs - self.vth;
+
+        let mut ids = 0.0;
+        let mut gm = 0.0;
+        let mut gds = 0.0;
+        if vov <= 0.0 { // Cutoff
+            // Already set
+        } else if vds >= vov { // Sat
+            ids = self.beta / 2.0 * vov.powi(2) * (1.0 + self.lam * vds);
+            gm = self.beta * vov * (1.0 + self.lam * vds);
+            gds = self.lam * self.beta / 2.0 * vov.powi(2);
+        } else { //Triode 
+            ids = self.beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + self.lam * vds);
+            gm = self.beta * vds * (1.0 + self.lam * vds);
+            gds = self.beta * ((vov - vds) * (1.0 + self.lam * vds) + self.lam * ((vov * vds) - vds.powi(2) / 2.0));
+        }
+
+        let sgn = if reversed ^ self.polarity { -1.0 } else { 1.0 };
+        return Stamps {
+            G: vec![],
+            J: vec![
+                (self.ei[1][1],  gds), // FIXME: sign?
+                (self.ei[2][2], -sgn * (gm + gds)),
+                (self.ei[1][2],  sgn * (gm + gds)),
+                (self.ei[2][1],  sgn * gds),
+                (self.ei[1][0], -sgn * gm),
+                (self.ei[2][0],  sgn * gm),
+            ],
+            b: vec![
+                (self.ports[1], -sgn * ids),
+                (self.ports[2],  sgn * ids),
+            ],
+        };
+    }
+}
+
+
 struct Diode {
     isat: f64,
     vt: f64,
@@ -181,7 +283,6 @@ impl Component for Diode {
         let vd = (vp - vn).max(-1.5).min(1.5);
         let i = self.isat * ((vd / self.vt).exp() - 1.0);
         let di_dv = (self.isat / self.vt) * (vd / self.vt).exp();
-        println!("DIODE OP: i={}, di_dv={}\n", i, di_dv);
 
         // FIXME: make a real index-attribute for b-vector 
         let mut b: Vec<(NodeRef, f64)> = vec![];
@@ -205,37 +306,15 @@ struct Isrc {
     i: f64,
     p: NodeRef,
     n: NodeRef,
-
-    pp: Option<Eindex>,
-    nn: Option<Eindex>,
-    pn: Option<Eindex>,
-    np: Option<Eindex>,
 }
 
 impl Component for Isrc {
     fn terminals(&self) -> Vec<NodeRef> {
         return vec![self.p, self.n];
     }
-    fn create_matrix_elems(&self, mat: &mut Matrix) {
-        make_matrix_elem(mat, self.p, self.p);
-        make_matrix_elem(mat, self.p, self.n);
-        make_matrix_elem(mat, self.n, self.p);
-        make_matrix_elem(mat, self.n, self.n);
-    }
-    fn get_matrix_elems(&mut self, mat: &Matrix) {
-        self.pp = get_matrix_elem(mat, self.p, self.p);
-        self.pn = get_matrix_elem(mat, self.p, self.n);
-        self.np = get_matrix_elem(mat, self.n, self.p);
-        self.nn = get_matrix_elem(mat, self.n, self.n);
-    }
+    fn create_matrix_elems(&self, mat: &mut Matrix) { }
+    fn get_matrix_elems(&mut self, mat: &Matrix) { }
     fn load(&self, an: &DcOp) -> Stamps {
-        let mut b: Vec<(usize, f64)> = vec![];
-        if let NodeRef::Num(pp) = self.p {
-            b.push((pp, self.i))
-        }
-        if let NodeRef::Num(nn) = self.n {
-            b.push((nn, -1.0 * self.i))
-        }
         return Stamps {
             G: vec![],
             J: vec![],
@@ -315,15 +394,7 @@ impl DcOp {
                 self.comps.push(Box::new(r));
             }
             CompParse::I(i, p, n) => {
-                let i = Isrc {
-                    i,
-                    p,
-                    n,
-                    pp: None,
-                    pn: None,
-                    np: None,
-                    nn: None,
-                };
+                let i = Isrc { i, p, n };
                 self.comps.push(Box::new(i));
             }
             CompParse::D(isat, vt, p, n) => {
