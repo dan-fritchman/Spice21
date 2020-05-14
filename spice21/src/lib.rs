@@ -39,7 +39,6 @@ fn get_matrix_elem(mat: &Matrix, row: NodeRef, col: NodeRef) -> Option<Eindex> {
 
 trait Component {
     fn load(&self, an: &DcOp) -> Stamps;
-    fn terminals(&self) -> Vec<NodeRef>;
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
 }
@@ -55,25 +54,7 @@ struct Vsrc {
     in_: Option<Eindex>,
 }
 
-impl Vsrc {
-    fn new(v: f64, p: NodeRef, n: NodeRef) -> Vsrc {
-        Vsrc {
-            v,
-            p,
-            n,
-            ivar: 0,
-            pi: None,
-            ip: None,
-            ni: None,
-            in_: None,
-        }
-    }
-}
-
 impl Component for Vsrc {
-    fn terminals(&self) -> Vec<NodeRef> {
-        return vec![self.p, self.n];
-    }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         if let NodeRef::Num(p) = self.p {
             mat.make(p, self.ivar);
@@ -97,9 +78,9 @@ impl Component for Vsrc {
     fn load(&self, an: &DcOp) -> Stamps {
         return Stamps {
             G: vec![
-                (self.pi, 1.0),
-                (self.ip, 1.0),
-                (self.ni, -1.0),
+                (self.pi,   1.0),
+                (self.ip,   1.0),
+                (self.ni,  -1.0),
                 (self.in_, -1.0),
             ],
             J: vec![],
@@ -119,9 +100,6 @@ struct Resistor {
 }
 
 impl Component for Resistor {
-    fn terminals(&self) -> Vec<NodeRef> {
-        return vec![self.p, self.n];
-    }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         make_matrix_elem(mat, self.p, self.p);
         make_matrix_elem(mat, self.p, self.n);
@@ -137,8 +115,8 @@ impl Component for Resistor {
     fn load(&self, an: &DcOp) -> Stamps {
         return Stamps {
             G: vec![
-                (self.pp, self.g),
-                (self.nn, self.g),
+                (self.pp,  self.g),
+                (self.nn,  self.g),
                 (self.pn, -self.g),
                 (self.np, -self.g)
             ],
@@ -150,7 +128,7 @@ impl Component for Resistor {
 
 
 #[derive(Clone, Copy)]
-enum MosTerm { g=0, d=1, s=2, b=3 }
+enum MosTerm { g=0, d=1, s=2, b=3 } // SPICE order: g, d, s, b
 impl MosTerm {
     pub fn iterator() -> impl Iterator<Item = MosTerm> { 
         use MosTerm::{g, d, s, b};
@@ -169,45 +147,48 @@ impl Index<(MosTerm, MosTerm)> for MosMatrixPointers {
     type Output = Option<Eindex>;
     fn index(&self, ts: (MosTerm, MosTerm)) -> &Option<Eindex> { &self.0[ts.0 as usize][ts.1 as usize] } 
 }
+impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
+    fn index_mut(&mut self, ts: (MosTerm, MosTerm)) -> &mut Self::Output { 
+        &mut self.0[ts.0 as usize][ts.1 as usize] 
+    }
+}
 
 struct Mos {
     vth: f64, beta: f64, lam: f64, polarity: bool, 
-    ports: Vec<NodeRef>, // SPICE order: g, d, s, b
-    ei: Vec<Vec<Option<Eindex>>>,
+    ports: MosTerminals,
+    matps: MosMatrixPointers,
 }
-
 impl Mos {
-    fn new(ports:&Vec<NodeRef>, vth:f64, beta:f64, lam:f64, polarity:bool) -> Mos {
-        Mos { vth, beta, lam, polarity, ports: ports.clone(), ei: vec![vec![None; 4]; 4] }
+    fn new(ports:&[NodeRef; 4], vth:f64, beta:f64, lam:f64, polarity:bool) -> Mos {
+        Mos { vth, beta, lam, polarity, 
+            ports: MosTerminals(ports.clone()), 
+            matps: MosMatrixPointers([[None; 4]; 4]),
+        }
     }
 }
-
 impl Component for Mos {
-    fn terminals(&self) -> Vec<NodeRef> {
-        return self.ports.clone();
-    }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        for t in MosTerm::iterator() { // FIXME: make this the real thing 
-            println!("{}", t as usize);
-        }
-        for li in 0..self.ports.len() {
-            for ri in 0..self.ports.len() {
-                make_matrix_elem(mat, self.ports[li], self.ports[ri]);
+        for t1 in MosTerm::iterator() { 
+            for t2 in MosTerm::iterator() { 
+                make_matrix_elem(mat, self.ports[t1], self.ports[t2]);
             }
         }
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
-        for li in 0..self.ports.len() {
-            for ri in 0..self.ports.len() {
-                self.ei[li][ri] = get_matrix_elem(mat, self.ports[li], self.ports[ri]);
+        for t1 in MosTerm::iterator() { 
+            for t2 in MosTerm::iterator() { 
+                self.matps[(t1, t2)] = get_matrix_elem(mat, self.ports[t1], self.ports[t2]);
             }
         }
     }
     fn load(&self, an: &DcOp) -> Stamps {
-        let vg = an.get_v(self.ports[0]);
-        let vd = an.get_v(self.ports[1]);
-        let vs = an.get_v(self.ports[2]);
-        let vb = an.get_v(self.ports[3]);
+        use MosTerm::{g, d, s, b};
+
+        let vg = an.get_v(self.ports[g]);
+        let vd = an.get_v(self.ports[d]);
+        let vs = an.get_v(self.ports[s]);
+        let vb = an.get_v(self.ports[b]);
+
         let p = if self.polarity { 1.0 } else { -1.0 };
         let vds1 = p * (vd - vs);
         let reversed = vds1 < 0.0;
@@ -234,16 +215,16 @@ impl Component for Mos {
         return Stamps {
             G: vec![],
             J: vec![
-                (self.ei[1][1],  gds), // FIXME: sign?
-                (self.ei[2][2], -sgn * (gm + gds)),
-                (self.ei[1][2],  sgn * (gm + gds)),
-                (self.ei[2][1],  sgn * gds),
-                (self.ei[1][0], -sgn * gm),
-                (self.ei[2][0],  sgn * gm),
+                (self.matps[(d,d)],  gds), // FIXME: sign?
+                (self.matps[(s,s)], -sgn * (gm + gds)),
+                (self.matps[(d,s)],  sgn * (gm + gds)),
+                (self.matps[(s,d)],  sgn * gds),
+                (self.matps[(d,g)], -sgn * gm),
+                (self.matps[(s,g)],  sgn * gm),
             ],
             b: vec![
-                (self.ports[1], -sgn * ids),
-                (self.ports[2],  sgn * ids),
+                (self.ports[d], -sgn * ids),
+                (self.ports[s],  sgn * ids),
             ],
         };
     }
@@ -262,9 +243,6 @@ struct Diode {
 }
 
 impl Component for Diode {
-    fn terminals(&self) -> Vec<NodeRef> {
-        return vec![self.p, self.n];
-    }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         make_matrix_elem(mat, self.p, self.p);
         make_matrix_elem(mat, self.p, self.n);
@@ -309,9 +287,6 @@ struct Isrc {
 }
 
 impl Component for Isrc {
-    fn terminals(&self) -> Vec<NodeRef> {
-        return vec![self.p, self.n];
-    }
     fn create_matrix_elems(&self, mat: &mut Matrix) { }
     fn get_matrix_elems(&mut self, mat: &Matrix) { }
     fn load(&self, an: &DcOp) -> Stamps {
@@ -319,7 +294,7 @@ impl Component for Isrc {
             G: vec![],
             J: vec![],
             b: vec![
-                (self.p, self.i),
+                (self.p,  self.i),
                 (self.n, -self.i)
             ],
         };
