@@ -274,18 +274,10 @@ impl Matrix {
         return Ok(y);
     }
     pub fn res(&self, x: &Vec<f64>, rhs: &Vec<f64>) -> SpResult<Vec<f64>> {
-        println!("X:");
-        println!("{:?}", x);
-
         let mut xi: Vec<f64> = vec![0.0; self.num_cols()];
         if self.state == MatrixState::FACTORED {
             // If we have factored, unwind any column-swaps
             let col_mapping = self.axes[COLS].mapping.as_ref().unwrap();
-            let row_mapping = self.axes[ROWS].mapping.as_ref().unwrap();
-            println!("COL_MAP:");
-            println!("{:?}", col_mapping.e2i);
-            println!("ROW_MAP:");
-            println!("{:?}", row_mapping.e2i);
             for k in 0..xi.len() {
                 xi[k] = x[col_mapping.e2i[k]];
             }
@@ -295,36 +287,19 @@ impl Matrix {
             }
         }
 
-        println!("XI:");
-        println!("{:?}", xi);
-
         let m: Vec<f64> = self.vecmul(&xi)?;
         let mut res = vec![0.0; m.len()];
 
         if self.state == MatrixState::FACTORED {
             let row_mapping = self.axes[ROWS].mapping.as_ref().unwrap();
             for k in 0..xi.len() {
-                res[k] = rhs[row_mapping.e2i[k]] - m[k];
+                res[k] = rhs[k] - m[row_mapping.e2i[k]];
             }
         } else {
             for k in 0..xi.len() {
                 res[k] = rhs[k] - m[k];
             }
         }
-        // for k in 0..self.x.len() {
-        //     res[k] = -1.0 * res[k];
-        //     // res[k] += self.rhs[k];
-        // }
-        // println!("RES_BEFORE_RHS:");
-        // println!("{:?}", res);
-        // for k in 0..self.x.len() {
-        //     res[k] += self.rhs[k];
-        // }
-        // println!("RES_WITH_RHS:");
-        // println!("{:?}", res);
-        // // res[0] += self.rhs[0];
-        // // res[1] += self.rhs[2];
-        // // res[2] += self.rhs[1];
         return Ok(res);
     }
     fn insert(&mut self, e: &mut Element) {
