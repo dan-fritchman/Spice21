@@ -176,17 +176,17 @@ impl Mos {
 
 impl Component for Mos {
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        for t1 in MosTerm::iterator() {
-            for t2 in MosTerm::iterator() {
-                make_matrix_elem(mat, self.ports[t1], self.ports[t2]);
-            }
+        use MosTerm::{g, d, s, b};
+        let matps = [(d, d), (s, s), (d, s), (s, d), (d, g), (s, g)];
+        for (t1, t2) in matps.iter() {
+            make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
-        for t1 in MosTerm::iterator() {
-            for t2 in MosTerm::iterator() {
-                self.matps[(t1, t2)] = get_matrix_elem(mat, self.ports[t1], self.ports[t2]);
-            }
+        use MosTerm::{g, d, s, b};
+        let matps = [(d, d), (s, s), (d, s), (s, d), (d, g), (s, g)];
+        for (t1, t2) in matps.iter() {
+            self.matps[(*t1, *t2)] = get_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
     fn load(&self, an: &DcOp) -> Stamps {
@@ -215,28 +215,28 @@ impl Component for Mos {
             ids = self.beta / 2.0 * vov.powi(2) * (1.0 + self.lam * vds);
             gm = self.beta * vov * (1.0 + self.lam * vds);
             gds = self.lam * self.beta / 2.0 * vov.powi(2);
-            println!("SAT: vgs={} vds={}", vgs, vds);
+            println!("SAT: vgs={} vds={}, ids={}, gm={}, gds={}", vgs, vds, ids, gm, gds);
         } else { //Triode 
             ids = self.beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + self.lam * vds);
             gm = self.beta * vds * (1.0 + self.lam * vds);
             gds = self.beta * ((vov - vds) * (1.0 + self.lam * vds) + self.lam * ((vov * vds) - vds.powi(2) / 2.0));
-            println!("LIN: vgs={} vds={}", vgs, vds);
+            println!("LIN: vgs={} vds={}, ids={}, gm={}, gds={}", vgs, vds, ids, gm, gds);
         }
-
-        let sgn = if reversed ^ !self.polarity { -1.0 } else { 1.0 };
+        // Sort out which are the "reported" drain and source terminals (sr, dr)
+        let (sr, dr) = if !reversed { (s, d) } else { (d, s) };
         return Stamps {
             G: vec![],
             J: vec![
-                (self.matps[(d, d)], -sgn * gds), // FIXME: sign?
-                (self.matps[(s, s)], -sgn * (gm + gds)),
-                (self.matps[(d, s)], sgn * (gm + gds)),
-                (self.matps[(s, d)], sgn * gds),
-                (self.matps[(d, g)], -sgn * gm),
-                (self.matps[(s, g)], sgn * gm),
+                (self.matps[(dr, dr)], gds),
+                (self.matps[(sr, sr)], (gm + gds)),
+                (self.matps[(dr, sr)], -(gm + gds)),
+                (self.matps[(sr, dr)], -gds),
+                (self.matps[(dr, g)], gm),
+                (self.matps[(sr, g)], -gm),
             ],
             b: vec![
-                (self.ports[d], -sgn * ids),
-                (self.ports[s], sgn * ids),
+                (self.ports[dr], -p * ids),
+                (self.ports[sr], p * ids),
             ],
         };
     }
@@ -363,6 +363,7 @@ struct DcOp {
     mat: Matrix,
     rhs: Vec<f64>,
     x: Vec<f64>,
+    history: Vec<Vec<f64>>,
 }
 
 impl DcOp {
@@ -433,6 +434,7 @@ impl DcOp {
             mat: Matrix::new(),
             x: vec![],
             rhs: vec![],
+            history:vec![],
         };
 
         for comp in ckt.comps.iter() {
@@ -459,6 +461,8 @@ impl DcOp {
 
         for k in 0..100 {
             // FIXME: number of iterations
+            // Make a copy of state for tracking
+            self.history.push(self.x.clone());
             // Reset our matrix and RHS vector
             self.mat.reset();
             self.rhs = vec![0.0; self.rhs.len()];
@@ -494,8 +498,19 @@ impl DcOp {
             println!("MAT: {:?}", self.mat);
             println!("RES: {:?}", res);
             // Solve for our update
-            let dx = self.mat.solve(res)?;
+            let mut dx = self.mat.solve(res)?;
             println!("DX: {:?}", dx);
+            let max_step = 1000e-3;
+            let mut max_stepped = false;
+            let max_abs = dx.iter().fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
+
+            if max_abs > max_step {
+                println!("MAX_STEPPED");
+                for r in 0..dx.len() {
+                    dx[r] = dx[r] * max_step / max_abs;
+                }
+                println!("DX: {:?}", dx);
+            }
             // And update our guess
             for r in 0..self.x.len() {
                 self.x[r] += dx[r];
@@ -577,7 +592,8 @@ mod tests {
         };
         let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
-        assert_eq!(soln, vec![1.0, 2.0]);
+        assert!((soln[0] - 1.0).abs() < 1e-4);
+        assert!((soln[1] - 2.0).abs() < 1e-4);
         Ok(())
     }
 
@@ -657,4 +673,183 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_dcop8() -> TestResult {
+        // Diode NMOS
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(5e-3, Num(0), Gnd),
+                CompParse::Mos(true, Num(0), Num(0), Gnd, Gnd),
+                CompParse::R(1e-12, Num(0), Gnd), // "gmin"
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert!((soln[0] - 0.697).abs() < 1e-3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop8b() -> TestResult {
+        // Diode NMOS, S/D Swapped
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(5e-3, Num(0), Gnd),
+                CompParse::Mos(true, Num(0), Gnd, Num(0), Gnd),
+                CompParse::R(1e-12, Num(0), Gnd), // "gmin"
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert!((soln[0] - 0.697).abs() < 1e-3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop8c() -> TestResult {
+        // Diode PMOS
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(-5e-3, Num(0), Gnd),
+                CompParse::Mos(false, Num(0), Num(0), Gnd, Gnd),
+                CompParse::R(1e-12, Num(0), Gnd), // "gmin"
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert!((soln[0] + 0.697).abs() < 1e-3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop8d() -> TestResult {
+        // Diode PMOS, S/D Swapped
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(-5e-3, Num(0), Gnd),
+                CompParse::Mos(false, Num(0), Gnd, Num(0), Gnd),
+                CompParse::R(1e-12, Num(0), Gnd), // "gmin"
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert!((soln[0] + 0.697).abs() < 1e-3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop9() -> TestResult {
+        // NMOS-R, "Grounded"
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::R(1e-3, Num(0), Gnd),
+                CompParse::Mos(true, Num(0), Num(0), Gnd, Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln[0], 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop9b() -> TestResult {
+        // NMOS-R, "Grounded", S/D Swapped
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::R(1e-3, Num(0), Gnd),
+                CompParse::Mos(true, Num(0), Gnd, Num(0), Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln[0], 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop9c() -> TestResult {
+        // PMOS-R, "Grounded"
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::R(1e-3, Num(0), Gnd),
+                CompParse::Mos(false, Num(0), Num(0), Gnd, Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln[0], 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop9d() -> TestResult {
+        // PMOS-R, "Grounded", S/D Swapped
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::R(1e-3, Num(0), Gnd),
+                CompParse::Mos(false, Num(0), Gnd, Num(0), Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln[0], 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop10() -> TestResult {
+        // NMOS-R Inverter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::R(1e-3, Num(1), Num(0)),
+                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln[0], 1.0);
+        assert!(soln[1] < 50e-3);
+        assert!((soln[2] + 1e-3).abs() < 0.1e-3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop10b() -> TestResult {
+        // PMOS-R Inverter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(-1.0, Num(0), Gnd),
+                CompParse::R(1e-3, Num(1), Num(0)),
+                CompParse::Mos(false, Num(0), Num(1), Gnd, Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln[0], -1.0);
+        assert!(soln[1].abs() < 50e-3);
+        assert!((soln[2] - 1e-3).abs() < 0.1e-3);
+        Ok(())
+    }
 }

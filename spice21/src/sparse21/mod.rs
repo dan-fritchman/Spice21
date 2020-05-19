@@ -287,7 +287,13 @@ impl Matrix {
             }
         }
 
+        println!("MAT_BEFORE_DOT: {:?}", self);
+
         let m: Vec<f64> = self.vecmul(&xi)?;
+        println!("X: {:?}", x);
+        println!("XI: {:?}", xi);
+        println!("DOT_PROD: {:?}", m);
+        println!("RHS: {:?}", rhs);
         let mut res = vec![0.0; m.len()];
 
         if self.state == MatrixState::FACTORED {
@@ -300,6 +306,7 @@ impl Matrix {
                 res[k] = rhs[k] - m[k];
             }
         }
+        println!("RES: {:?}", res);
         return Ok(res);
     }
     fn insert(&mut self, e: &mut Element) {
@@ -972,6 +979,15 @@ impl Matrix {
         }
         return Ok(soln);
     }
+    /// Create a row-majory dense matrix representation
+    pub fn to_dense(&self) -> Vec<Vec<f64>> {
+        let mut res = vec![vec![0.0; self.num_cols()]; self.num_rows()];
+        for ei in self.elements.iter() {
+            res[self[ei.index].row][self[ei.index].col] = self[ei.index].val;
+        }
+        return res;
+
+    }
     fn hdr(&self, ax: Axis, loc: usize) -> Option<Eindex> {
         self.axes[ax].hdrs[loc]
     }
@@ -1030,6 +1046,10 @@ impl fmt::Debug for Matrix {
             self.num_cols(),
             self.elements.len()
         )?;
+        let d = self.to_dense();
+        for row in d.iter() {
+            write!(f, "{:?}\n", *row)?;
+        }
         for e in self.elements.iter() {
             write!(f, "({}, {}, {}) \n", e.row, e.col, e.val)?;
         }
