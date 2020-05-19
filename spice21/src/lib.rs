@@ -630,7 +630,22 @@ mod tests {
         assert!((soln[0] - 0.7).abs() < 1e-3);
         Ok(())
     }
-
+    #[test]
+    fn test_dcop5b() -> TestResult {
+        // V - R - Diode
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::D(2e-16, 25e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Num(1)),
+                CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert!((soln[0] - 0.7).abs() < 1e-3);
+        Ok(())
+    }
     #[test]
     fn test_dcop6() -> TestResult {
         // NMOS Char
@@ -852,4 +867,68 @@ mod tests {
         assert!((soln[2] - 1e-3).abs() < 0.1e-3);
         Ok(())
     }
+    #[test]
+    fn test_dcop11() -> TestResult {
+        // CMOS Inverter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::Mos(false, Num(0), Num(1), Num(0), Num(0)),
+                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+                CompParse::R(1e-9, Num(1), Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln, vec![1.0, 0.0, 0.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dcop11b() -> TestResult {
+        // CMOS Inverter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::Mos(false, Gnd, Num(1), Num(0), Num(0)),
+                CompParse::Mos(true, Gnd, Num(1), Gnd, Gnd),
+                CompParse::R(1e-9, Num(1), Num(0)),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln, vec![1.0, 1.0, 0.0]);
+        Ok(())
+    }
+//    #[test]
+//    fn test_dcop12() -> TestResult {
+//        // Several CMOS Inverters
+//        use NodeRef::{Gnd, Num};
+//        let ckt = CktParse {
+//            nodes: 3,
+//            comps: vec![
+//                CompParse::V(1.0, Num(0), Gnd),
+//                CompParse::Mos(false, Num(0), Num(1), Num(0), Num(0)),
+//                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+//                CompParse::R(1e-9, Num(1), Gnd),
+//                CompParse::Mos(false, Num(1), Num(2), Num(0), Num(0)),
+//                CompParse::Mos(true, Num(1), Num(2), Gnd, Gnd),
+//                CompParse::R(1e-9, Num(2), Gnd),
+//                // CompParse::Mos(false, Num(2), Num(3), Num(0), Num(0)),
+//                // CompParse::Mos(true, Num(2), Num(3), Gnd, Gnd),
+//                // CompParse::R(1e-9, Num(3), Gnd),
+//                // CompParse::Mos(false, Num(3), Num(4), Num(0), Num(0)),
+//                // CompParse::Mos(true, Num(3), Num(4), Gnd, Gnd),
+//                // CompParse::R(1e-9, Num(4), Gnd),
+//            ],
+//        };
+//        let mut dcop = DcOp::new(ckt);
+//        let soln = dcop.solve()?;
+////        assert_eq!(soln, vec![1.0, 0.0, 1.0, 0.0, 1.0, 0.0]);
+//        Ok(())
+//}
 }
