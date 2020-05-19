@@ -71,15 +71,15 @@ impl Component for Vsrc {
         self.ni = get_matrix_elem(mat, self.n, self.ivar);
         self.in_ = get_matrix_elem(mat, self.ivar, self.n);
     }
-    fn load(&self, an: &DcOp) -> Stamps {
+    fn load(&self, _an: &DcOp) -> Stamps {
         return Stamps {
-            G: vec![
+            g: vec![
                 (self.pi, 1.0),
                 (self.ip, 1.0),
                 (self.ni, -1.0),
                 (self.in_, -1.0),
             ],
-            J: vec![],
+            j: vec![],
             b: vec![(self.ivar, self.v)],
         };
     }
@@ -108,15 +108,15 @@ impl Component for Resistor {
         self.np = get_matrix_elem(mat, self.n, self.p);
         self.nn = get_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&self, an: &DcOp) -> Stamps {
+    fn load(&self, _an: &DcOp) -> Stamps {
         return Stamps {
-            G: vec![
+            g: vec![
                 (self.pp, self.g),
                 (self.nn, self.g),
                 (self.pn, -self.g),
                 (self.np, -self.g)
             ],
-            J: vec![],
+            j: vec![],
             b: vec![],
         };
     }
@@ -124,13 +124,13 @@ impl Component for Resistor {
 
 
 #[derive(Clone, Copy)]
-enum MosTerm { g = 0, d = 1, s = 2, b = 3 }
+enum MosTerm { G = 0, D = 1, S = 2, B = 3 }
 
 // SPICE order: g, d, s, b
 impl MosTerm {
     pub fn iterator() -> impl Iterator<Item=MosTerm> {
-        use MosTerm::{g, d, s, b};
-        [g, d, s, b].iter().copied()
+        use MosTerm::{G, D, S, B};
+        [G, D, S, B].iter().copied()
     }
 }
 
@@ -178,26 +178,26 @@ impl Mos {
 
 impl Component for Mos {
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        use MosTerm::{g, d, s, b};
-        let matps = [(d, d), (s, s), (d, s), (s, d), (d, g), (s, g)];
+        use MosTerm::{G, D, S};
+        let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
             make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
-        use MosTerm::{g, d, s, b};
-        let matps = [(d, d), (s, s), (d, s), (s, d), (d, g), (s, g)];
+        use MosTerm::{G, D, S};
+        let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
             self.matps[(*t1, *t2)] = get_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
     fn load(&self, an: &DcOp) -> Stamps {
-        use MosTerm::{g, d, s, b};
+        use MosTerm::{G, D, S, B};
 
-        let vg = an.get_v(self.ports[g]);
-        let vd = an.get_v(self.ports[d]);
-        let vs = an.get_v(self.ports[s]);
-        let vb = an.get_v(self.ports[b]);
+        let vg = an.get_v(self.ports[G]);
+        let vd = an.get_v(self.ports[D]);
+        let vs = an.get_v(self.ports[S]);
+        let vb = an.get_v(self.ports[B]);
         println!("vg={} vd={} vs={} vb={}", vg, vd, vs, vb);
 
         let p = if self.polarity { 1.0 } else { -1.0 };
@@ -225,16 +225,16 @@ impl Component for Mos {
             println!("LIN: vgs={} vds={}, ids={}, gm={}, gds={}", vgs, vds, ids, gm, gds);
         }
         // Sort out which are the "reported" drain and source terminals (sr, dr)
-        let (sr, dr) = if !reversed { (s, d) } else { (d, s) };
+        let (sr, dr) = if !reversed { (S, D) } else { (D, S) };
         return Stamps {
-            G: vec![],
-            J: vec![
+            g: vec![],
+            j: vec![
                 (self.matps[(dr, dr)], gds),
                 (self.matps[(sr, sr)], (gm + gds)),
                 (self.matps[(dr, sr)], -(gm + gds)),
                 (self.matps[(sr, dr)], -gds),
-                (self.matps[(dr, g)], gm),
-                (self.matps[(sr, g)], -gm),
+                (self.matps[(dr, G)], gm),
+                (self.matps[(sr, G)], -gm),
             ],
             b: vec![
                 (self.ports[dr], -p * ids),
@@ -278,12 +278,12 @@ impl Component for Diode {
 
         // FIXME: make a real index-attribute for this b-vector 
         let mut b: Vec<(NodeRef, f64)> = vec![];
-        if let NodeRef::Num(p) = self.p { b.push((self.p, -i)) };
-        if let NodeRef::Num(n) = self.n { b.push((self.n, -i)) };
+        if let NodeRef::Num(_p) = self.p { b.push((self.p, -i)) };
+        if let NodeRef::Num(_n) = self.n { b.push((self.n, -i)) };
 
         return Stamps {
-            G: vec![],
-            J: vec![
+            g: vec![],
+            j: vec![
                 (self.pp, di_dv),
                 (self.nn, di_dv),
                 (self.pn, -di_dv),
@@ -301,12 +301,12 @@ struct Isrc {
 }
 
 impl Component for Isrc {
-    fn create_matrix_elems(&self, mat: &mut Matrix) {}
-    fn get_matrix_elems(&mut self, mat: &Matrix) {}
-    fn load(&self, an: &DcOp) -> Stamps {
+    fn create_matrix_elems(&self, _mat: &mut Matrix) {}
+    fn get_matrix_elems(&mut self, _mat: &Matrix) {}
+    fn load(&self, _an: &DcOp) -> Stamps {
         return Stamps {
-            G: vec![],
-            J: vec![],
+            g: vec![],
+            j: vec![],
             b: vec![
                 (self.p, self.i),
                 (self.n, -self.i)
@@ -323,16 +323,16 @@ enum NodeRef {
 
 #[derive(Debug)]
 struct Stamps {
-    G: Vec<(Option<Eindex>, f64)>,
-    J: Vec<(Option<Eindex>, f64)>,
+    g: Vec<(Option<Eindex>, f64)>,
+    j: Vec<(Option<Eindex>, f64)>,
     b: Vec<(NodeRef, f64)>,
 }
 
 impl Stamps {
     fn new() -> Stamps {
         Stamps {
-            G: vec![],
-            J: vec![],
+            g: vec![],
+            j: vec![],
             b: vec![],
         }
     }
@@ -449,7 +449,7 @@ impl DcOp {
         for comp in op.comps.iter() {
             comp.create_matrix_elems(&mut op.mat);
         }
-        for mut comp in op.comps.iter_mut() {
+        for comp in op.comps.iter_mut() {
             comp.get_matrix_elems(&op.mat);
         }
 
@@ -461,7 +461,7 @@ impl DcOp {
         self.x = vec![0.0; self.rhs.len()];
         let dx = vec![0.0; self.rhs.len()];
 
-        for k in 0..100 {
+        for _k in 0..100 {
             // FIXME: number of iterations
             // Make a copy of state for tracking
             self.history.push(self.x.clone());
@@ -474,7 +474,7 @@ impl DcOp {
             for comp in self.comps.iter() {
                 let updates = comp.load(&self);
                 // Make updates for G and b
-                for upd in updates.G.iter() {
+                for upd in updates.g.iter() {
                     if let (Some(ei), val) = *upd {
                         self.mat.update(ei, val);
                     }
@@ -485,7 +485,7 @@ impl DcOp {
                     }
                 }
                 // And save J-updates for later
-                jupdates.extend(updates.J);
+                jupdates.extend(updates.j);
             }
             // Calculate the residual error
             let res: Vec<f64> = self.mat.res(&self.x, &self.rhs)?;
@@ -503,9 +503,7 @@ impl DcOp {
             let mut dx = self.mat.solve(res)?;
             println!("DX: {:?}", dx);
             let max_step = 1000e-3;
-            let mut max_stepped = false;
             let max_abs = dx.iter().fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
-
             if max_abs > max_step {
                 println!("MAX_STEPPED");
                 for r in 0..dx.len() {
@@ -535,6 +533,11 @@ impl DcOp {
         }
         return true;
     }
+}
+
+fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
+    let mut op = DcOp::new(ckt);
+    return op.solve();
 }
 
 #[cfg(test)]

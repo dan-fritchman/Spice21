@@ -763,7 +763,7 @@ impl Matrix {
         let mut best_ratio = 0.0;
         let mut num_ties = 0;
 
-        for k in n..self.axes[COLS].hdrs.len() {
+        for _k in n..self.axes[COLS].hdrs.len() {
             let mut e = self.hdr(COLS, n);
             // Advance to a row ≥ n
             while let Some(ei) = e {
@@ -781,7 +781,7 @@ impl Matrix {
 
             // Check whether this element meets our threshold criteria
             let max_in_col = self.max_after(COLS, ei);
-            let threshold = REL_THRESHOLD * self[max_in_col].val.abs() + ABS_THRESHOLD;
+//            let threshold = REL_THRESHOLD * self[max_in_col].val.abs() + ABS_THRESHOLD;
 
             while let Some(ei) = e {
                 // If so, compute and compare its Markowitz product to our best
