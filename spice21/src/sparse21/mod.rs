@@ -53,11 +53,7 @@ impl<T> IndexMut<Axis> for AxisPair<T> {
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
-enum MatrixState {
-    CREATED = 0,
-    FACTORING,
-    FACTORED,
-}
+enum MatrixState { CREATED = 0, FACTORING, FACTORED, RESET }
 
 #[derive(Debug)]
 pub struct Element {
@@ -172,7 +168,9 @@ impl AxisData {
     }
     fn setup_factoring(&mut self) {
         self.markowitz.copy_from_slice(&self.qtys);
-        self.mapping = Some(AxisMapping::new(self.hdrs.len()));
+        if self.mapping.is_none() {
+            self.mapping = Some(AxisMapping::new(self.hdrs.len()));
+        }
     }
     fn swap(&mut self, x: usize, y: usize) {
         self.hdrs.swap(x, y);
@@ -252,7 +250,7 @@ impl Matrix {
         for e in self.elements.iter_mut() {
             e.val = 0.0;
         }
-        self.set_state(MatrixState::CREATED).unwrap();
+        self.state = MatrixState::RESET;
     }
     /// Update `Element` `ei` by `val`
     pub fn update(&mut self, ei: Eindex, val: f64) {
@@ -275,9 +273,8 @@ impl Matrix {
     }
     pub fn res(&self, x: &Vec<f64>, rhs: &Vec<f64>) -> SpResult<Vec<f64>> {
         let mut xi: Vec<f64> = vec![0.0; self.num_cols()];
-        if self.state == MatrixState::FACTORED {
+        if let Some(col_mapping) = self.axes[COLS].mapping.as_ref() {
             // If we have factored, unwind any column-swaps
-            let col_mapping = self.axes[COLS].mapping.as_ref().unwrap();
             for k in 0..xi.len() {
                 xi[k] = x[col_mapping.e2i[k]];
             }
@@ -296,8 +293,7 @@ impl Matrix {
         println!("RHS: {:?}", rhs);
         let mut res = vec![0.0; m.len()];
 
-        if self.state == MatrixState::FACTORED {
-            let row_mapping = self.axes[ROWS].mapping.as_ref().unwrap();
+        if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
             for k in 0..xi.len() {
                 res[k] = rhs[k] - m[row_mapping.e2i[k]];
             }
@@ -419,31 +415,9 @@ impl Matrix {
     }
     /// Make major state transitions
     fn set_state(&mut self, state: MatrixState) -> Result<(), &'static str> {
-        match state {
-            MatrixState::CREATED => return Ok(()), //Err("Matrix State Error"),
-            MatrixState::FACTORING => {
-                if self.state == MatrixState::FACTORING {
-                    return Ok(());
-                }
-                if self.state == MatrixState::FACTORED {
-                    return Err("Already Factored");
-                }
-
-                self.axes[Axis::ROWS].setup_factoring();
-                self.axes[Axis::COLS].setup_factoring();
-
-                self.state = state;
-                return Ok(());
-            }
-            MatrixState::FACTORED => {
-                if self.state == MatrixState::FACTORING {
-                    self.state = state;
-                    return Ok(());
-                } else {
-                    return Err("Matrix State Error");
-                }
-            }
-        }
+        // FIXME: remove this, state logic distributed elsewhere
+        self.state = state;
+        return Ok(());
     }
     fn move_element(&mut self, ax: Axis, idx: Eindex, to: usize) {
         let loc = self[idx].loc(ax);
@@ -674,7 +648,9 @@ impl Matrix {
                 return Err("Singular Matrix");
             }
         }
-        self.set_state(MatrixState::FACTORING)?;
+        self.state = MatrixState::FACTORING;
+        self.axes[ROWS].setup_factoring();
+        self.axes[COLS].setup_factoring();
 
         for n in 0..self.diag.len() - 1 {
             let pivot = match self.search_for_pivot(n) {
@@ -685,7 +661,7 @@ impl Matrix {
             self.swap(COLS, self[pivot].col, n);
             self.row_col_elim(pivot, n)?;
         }
-        self.set_state(MatrixState::FACTORED)?;
+        self.state = MatrixState::FACTORED;
         return Ok(());
     }
 
@@ -924,9 +900,7 @@ impl Matrix {
     ///
     /// Performs LU factorization, forward and backward substitution.
     pub fn solve(&mut self, rhs: Vec<f64>) -> SpResult<Vec<f64>> {
-        if self.state == MatrixState::CREATED {
-            self.lu_factorize()?;
-        }
+        if self.state != MatrixState::FACTORED { self.lu_factorize()?; }
         assert(self.state).eq(MatrixState::FACTORED);
 
         // Unwind any row-swaps
@@ -986,7 +960,6 @@ impl Matrix {
             res[self[ei.index].row][self[ei.index].col] = self[ei.index].val;
         }
         return res;
-
     }
     fn hdr(&self, ax: Axis, loc: usize) -> Option<Eindex> {
         self.axes[ax].hdrs[loc]
@@ -1503,6 +1476,7 @@ mod tests {
         checkups(&m);
 
         m.set_state(MatrixState::FACTORING).unwrap();
+        m.axes[ROWS].setup_factoring();
         m.swap_rows(0, 3);
 
         checkups(&m);
