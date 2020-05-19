@@ -637,7 +637,7 @@ impl Matrix {
     /// Diagonal entries are those of U;
     /// L has diagonal entries equal to one.
     fn lu_factorize(&mut self) -> SpResult<()> {
-        assert(self.diag.len()).gt(0);
+        assert(self.diag.len()).gt(0)?;
         for k in 0..self.axes[ROWS].hdrs.len() {
             if self.hdr(ROWS, k).is_none() {
                 return Err("Singular Matrix");
@@ -697,8 +697,8 @@ impl Matrix {
         let e = &self[ei];
         let mr = self[Axis::ROWS].markowitz[e.row];
         let mc = self[Axis::COLS].markowitz[e.col];
-        assert(mr).gt(0);
-        assert(mc).gt(0);
+        assert!(mr > 0); // FIXME: figure out how to pipe these around
+        assert!(mc > 0);
         return (mr - 1) * (mc - 1);
     }
 
@@ -839,9 +839,9 @@ impl Matrix {
             Some(de) => de,
             None => return Err("Singular Matrix"),
         };
-        assert(de).eq(pivot);
+        assert(de).eq(pivot)?;
         let pivot_val = self[pivot].val;
-        assert(pivot_val).ne(0.0);
+        assert(pivot_val).ne(0.0)?;
 
         // Divide elements in the pivot column by the pivot-value
         let mut plower = self[pivot].next_in_col;
@@ -901,7 +901,7 @@ impl Matrix {
     /// Performs LU factorization, forward and backward substitution.
     pub fn solve(&mut self, rhs: Vec<f64>) -> SpResult<Vec<f64>> {
         if self.state != MatrixState::FACTORED { self.lu_factorize()?; }
-        assert(self.state).eq(MatrixState::FACTORED);
+        assert(self.state).eq(MatrixState::FACTORED)?;
 
         // Unwind any row-swaps
         let mut c: Vec<f64> = vec![0.0; rhs.len()];
@@ -1163,54 +1163,38 @@ impl System {
     }
 }
 
-struct Assert<T> {
-    val: T,
-}
+struct Assert<T> { val: T }
 
-fn assert<T>(val: T) -> Assert<T> {
-    Assert { val: val }
-}
+fn assert<T>(val: T) -> Assert<T> { Assert { val } }
 
 impl<T> Assert<T> {
-    fn raise(&self) {
+    fn raise(&self) -> Result<(), &'static str> {
         // Breakpoint here
-        panic!("Assertion Failed");
+        return Err("Assertion Failed");
     }
 }
 
 impl<T: PartialEq> Assert<T> {
-    fn eq(&self, other: T) {
-        if self.val != other {
-            self.raise();
-        }
+    fn eq(&self, other: T) -> Result<(), &'static str> {
+        if self.val != other { self.raise() } else { Ok(()) }
     }
-    fn ne(&self, other: T) {
-        if self.val == other {
-            self.raise();
-        }
+    fn ne(&self, other: T) -> Result<(), &'static str> {
+        if self.val == other { self.raise() } else { Ok(()) }
     }
 }
 
 impl<T: PartialOrd> Assert<T> {
-    fn gt(&self, other: T) {
-        if self.val <= other {
-            self.raise();
-        }
+    fn gt(&self, other: T) -> Result<(), &'static str> {
+        if self.val <= other { self.raise() } else { Ok(()) }
     }
-    fn lt(&self, other: T) {
-        if self.val >= other {
-            self.raise();
-        }
+    fn lt(&self, other: T) -> Result<(), &'static str> {
+        if self.val >= other { self.raise() } else { Ok(()) }
     }
-    fn ge(&self, other: T) {
-        if self.val < other {
-            self.raise();
-        }
+    fn ge(&self, other: T) -> Result<(), &'static str> {
+        if self.val < other { self.raise() } else { Ok(()) }
     }
-    fn le(&self, other: T) {
-        if self.val > other {
-            self.raise();
-        }
+    fn le(&self, other: T) -> Result<(), &'static str> {
+        if self.val > other { self.raise() } else { Ok(()) }
     }
 }
 
@@ -1220,7 +1204,7 @@ mod tests {
 
     type TestResult = Result<(), &'static str>;
 
-    fn checkups(m: &Matrix) {
+    fn checkups(m: &Matrix) -> TestResult {
         // Internal consistency tests.  Probably pretty slow.
 
         check_diagonal(&m);
@@ -1231,15 +1215,15 @@ mod tests {
         for n in 0..m.axes[COLS].hdrs.len() {
             let mut ep = m.hdr(COLS, n);
             while let Some(ei) = ep {
-                assert(m[ei].col).eq(n);
+                assert(m[ei].col).eq(n)?;
 
                 if let Some(nxt) = m[ei].next_in_col {
-                    assert(m[nxt].row).gt(m[ei].row);
+                    assert(m[nxt].row).gt(m[ei].row)?;
                     assert!(!next_in_cols.contains(&nxt));
                     next_in_cols.push(nxt);
                 }
                 if let Some(nxt) = m[ei].next_in_row {
-                    assert(m[nxt].col).gt(m[ei].col);
+                    assert(m[nxt].col).gt(m[ei].col)?;
                     assert!(!next_in_rows.contains(&nxt));
                     next_in_rows.push(nxt);
                 }
@@ -1266,31 +1250,32 @@ mod tests {
             assert!(next_in_cols.contains(&Eindex(n)));
             assert!(next_in_rows.contains(&Eindex(n)));
         }
+        Ok(())
     }
 
-    fn check_diagonal(m: &Matrix) {
+    fn check_diagonal(m: &Matrix) -> TestResult {
         for r in 0..m.diag.len() {
             let eo = m.get(r, r);
-            match eo {
-                Some(e) => {
-                    if let Some(d) = m.diag[r] {
-                        assert(m[d].val).eq(e);
-                    } else {
-                        panic!("FAIL!");
-                    }
-                    // FIXME: would prefer something like the previous "same element ID" testing
-                    // assert_eq!(e, m[m.diag[r]].val);
-                    //                    assert_eq!(e.index, m.diag[r]);
-                    //                    assert_eq!(e.row, r);
-                    //                    assert_eq!(e.col, r);
+            if let Some(e) = eo {
+                if let Some(d) = m.diag[r] {
+                    assert(m[d].val).eq(e)?;
+                } else {
+                    return Err("FAIL!");
                 }
-                None => assert_eq!(m.diag[r], None),
+                // FIXME: would prefer something like the previous "same element ID" testing
+                // assert_eq!(e, m[m.diag[r]].val);
+                //                    assert_eq!(e.index, m.diag[r]);
+                //                    assert_eq!(e.row, r);
+                //                    assert_eq!(e.col, r);
+            } else {
+                assert(m.diag[r]).eq(None)?;
             }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_create_element() {
+    fn test_create_element() -> TestResult {
         let e = Element::new(Eindex(0), 0, 0, 1.0, false);
         assert_eq!(e.index.0, 0);
         assert_eq!(e.row, 0);
@@ -1299,18 +1284,20 @@ mod tests {
         assert_eq!(e.fillin, false);
         assert_eq!(e.next_in_row, None);
         assert_eq!(e.next_in_col, None);
+        Ok(())
     }
 
     #[test]
-    fn test_create_matrix() {
+    fn test_create_matrix() -> TestResult {
         let m = Matrix::new();
         assert_eq!(m.state, MatrixState::CREATED);
         assert_eq!(m.diag, vec![]);
         assert_eq!(m.axes[Axis::ROWS].hdrs, vec![]);
+        Ok(())
     }
 
     #[test]
-    fn test_add_element() {
+    fn test_add_element() -> TestResult {
         let mut m = Matrix::new();
 
         m.add_element(0, 0, 1.0);
@@ -1324,17 +1311,19 @@ mod tests {
         assert_eq!(m.num_cols(), 101);
         assert_eq!(m.size(), (101, 101));
         assert_eq!(m.diag.len(), 101);
+        Ok(())
     }
 
     #[test]
-    fn test_get() {
+    fn test_get() -> TestResult {
         let mut m = Matrix::new();
         m.add_element(0, 0, 1.0);
-        assert(m.get(0, 0).unwrap()).eq(1.0);
+        assert(m.get(0, 0).unwrap()).eq(1.0)?;
+        Ok(())
     }
 
     #[test]
-    fn test_identity() {
+    fn test_identity() -> TestResult {
         // Check identity matrices of each (small) size
         for k in 1..10 {
             let ik = Matrix::identity(k);
@@ -1356,10 +1345,11 @@ mod tests {
                 assert_eq!(ik[co].val, d0);
             }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_swap_rows0() {
+    fn test_swap_rows0() -> TestResult {
         let mut m = Matrix::new();
 
         m.add_element(0, 0, 11.0);
@@ -1381,10 +1371,11 @@ mod tests {
         assert_eq!(m.get(0, 0).unwrap(), 22.0);
         assert_eq!(m.get(7, 7).unwrap(), 33.0);
         assert_eq!(m.get(0, 7).unwrap(), 44.0);
+        Ok(())
     }
 
     #[test]
-    fn test_swap_rows1() {
+    fn test_swap_rows1() -> TestResult {
         let mut m = Matrix::new();
 
         m.add_element(0, 0, 11.1);
@@ -1402,10 +1393,11 @@ mod tests {
         assert_eq!(m.get(2, 0).unwrap(), 11.1);
         assert_eq!(m.get(0, 2).unwrap(), 22.2);
         assert_eq!(m.get(1, 1), None);
+        Ok(())
     }
 
     #[test]
-    fn test_swap_rows2() {
+    fn test_swap_rows2() -> TestResult {
         let mut m = Matrix::new();
 
         m.add_element(0, 0, 1.0);
@@ -1426,10 +1418,11 @@ mod tests {
         assert_eq!(m.get(0, 0).unwrap(), 7.0);
         assert_eq!(m.get(2, 0).unwrap(), 1.0);
         // FIXME: check more
+        Ok(())
     }
 
     #[test]
-    fn test_swap_rows3() {
+    fn test_swap_rows3() -> TestResult {
         let mut m = Matrix::new();
         m.add_element(1, 0, 71.0);
         m.add_element(2, 0, -11.0);
@@ -1447,10 +1440,11 @@ mod tests {
         assert_eq!(m.get(1, 0).unwrap(), 71.0);
         assert_eq!(m.get(0, 0).unwrap(), -11.0);
         assert_eq!(m.get(0, 2).unwrap(), 99.0);
+        Ok(())
     }
 
     #[test]
-    fn test_swap_rows4() {
+    fn test_swap_rows4() -> TestResult {
         let mut m = Matrix::new();
 
         for r in 0..3 {
@@ -1468,10 +1462,11 @@ mod tests {
         checkups(&m);
 
         // FIXME: add some real checks on this
+        Ok(())
     }
 
     #[test]
-    fn test_row_mappings() {
+    fn test_row_mappings() -> TestResult {
         let mut m = Matrix::identity(4);
         checkups(&m);
 
@@ -1500,6 +1495,7 @@ mod tests {
             m.axes[Axis::ROWS].mapping.as_ref().unwrap().i2e,
             vec![2, 1, 3, 0]
         );
+        Ok(())
     }
 
     #[test]
@@ -1547,7 +1543,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lu() {
+    fn test_lu() -> TestResult {
         let mut m = Matrix::from_entries(vec![
             (2, 2, -1.0),
             (2, 1, 5.0),
@@ -1558,8 +1554,7 @@ mod tests {
             (0, 1, 1.0),
             (0, 0, 1.0),
         ]);
-
-        checkups(&m);
+        checkups(&m)?;
         assert_entries(
             &m,
             vec![
@@ -1571,12 +1566,9 @@ mod tests {
                 (0, 2, 1.0),
                 (0, 1, 1.0),
                 (0, 0, 1.0),
-            ],
-        );
-
+            ])?;
         m.lu_factorize();
-
-        checkups(&m);
+        return checkups(&m);
     }
 
     #[test]
@@ -1627,10 +1619,11 @@ mod tests {
         return Ok(());
     }
 
-    fn assert_entries(m: &Matrix, entries: Vec<Entry>) {
+    fn assert_entries(m: &Matrix, entries: Vec<Entry>) -> TestResult {
         for e in entries.iter() {
-            assert(m.get(e.0, e.1).unwrap()).eq(e.2);
+            assert(m.get(e.0, e.1).unwrap()).eq(e.2)?;
         }
+        Ok(())
     }
 
     fn isclose(a: f64, b: f64) -> bool {
