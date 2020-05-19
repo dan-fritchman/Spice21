@@ -1,7 +1,9 @@
 use std::ops::{Index, IndexMut};
 
 mod sparse21;
-use sparse21::{Eindex, Matrix, assert::assert};
+use sparse21::{Eindex, Matrix};
+mod assert;
+use assert::{assert};
 
 
 enum CompParse {

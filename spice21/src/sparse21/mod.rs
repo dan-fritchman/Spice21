@@ -4,8 +4,7 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
-pub mod assert;
-use assert::{assert};
+use super::assert::{assert};
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
