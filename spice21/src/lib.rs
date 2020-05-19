@@ -1,8 +1,8 @@
 use std::ops::{Index, IndexMut};
 
 mod sparse21;
+use sparse21::{Eindex, Matrix, assert::assert};
 
-use sparse21::{Eindex, Matrix};
 
 enum CompParse {
     R(f64, NodeRef, NodeRef),
@@ -932,7 +932,7 @@ mod tests {
         };
         let mut dcop = DcOp::new(ckt);
         let soln = dcop.solve()?;
-        assert_eq!(soln[0], 1.0);
+        assert(soln[0]).eq(1.0)?;
         assert!(soln[1].abs() < 1e-3);
         assert!((soln[2] - 1.0).abs() < 1e-3);
         assert!(soln[3].abs() < 1e-3);

@@ -4,6 +4,10 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
+pub mod assert;
+use assert::{assert};
+
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eindex(usize);
 
@@ -905,10 +909,12 @@ impl Matrix {
 
         // Unwind any row-swaps
         let mut c: Vec<f64> = vec![0.0; rhs.len()];
-        let row_mapping = self.axes[ROWS].mapping.as_ref().unwrap();
-        for k in 0..c.len() {
-            c[row_mapping.e2i[k]] = rhs[k];
-        }
+
+        if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
+            for k in 0..c.len() {
+                c[row_mapping.e2i[k]] = rhs[k];
+            }
+        } else { return Err("Missing Row Mapping"); }
 
         // Forward substitution: Lc=b
         for k in 0..self.diag.len() {
@@ -947,10 +953,11 @@ impl Matrix {
 
         // Unwind any column-swaps
         let mut soln: Vec<f64> = vec![0.0; c.len()];
-        let col_mapping = self.axes[COLS].mapping.as_ref().unwrap();
-        for k in 0..c.len() {
-            soln[k] = c[col_mapping.e2i[k]];
-        }
+        if let Some(col_mapping) = self.axes[COLS].mapping.as_ref() {
+            for k in 0..c.len() {
+                soln[k] = c[col_mapping.e2i[k]];
+            }
+        } else { return Err("Missing Column Mapping"); }
         return Ok(soln);
     }
     /// Create a row-majory dense matrix representation
@@ -1163,41 +1170,6 @@ impl System {
     }
 }
 
-struct Assert<T> { val: T }
-
-fn assert<T>(val: T) -> Assert<T> { Assert { val } }
-
-impl<T> Assert<T> {
-    fn raise(&self) -> Result<(), &'static str> {
-        // Breakpoint here
-        return Err("Assertion Failed");
-    }
-}
-
-impl<T: PartialEq> Assert<T> {
-    fn eq(&self, other: T) -> Result<(), &'static str> {
-        if self.val != other { self.raise() } else { Ok(()) }
-    }
-    fn ne(&self, other: T) -> Result<(), &'static str> {
-        if self.val == other { self.raise() } else { Ok(()) }
-    }
-}
-
-impl<T: PartialOrd> Assert<T> {
-    fn gt(&self, other: T) -> Result<(), &'static str> {
-        if self.val <= other { self.raise() } else { Ok(()) }
-    }
-    fn lt(&self, other: T) -> Result<(), &'static str> {
-        if self.val >= other { self.raise() } else { Ok(()) }
-    }
-    fn ge(&self, other: T) -> Result<(), &'static str> {
-        if self.val < other { self.raise() } else { Ok(()) }
-    }
-    fn le(&self, other: T) -> Result<(), &'static str> {
-        if self.val > other { self.raise() } else { Ok(()) }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1318,7 +1290,7 @@ mod tests {
     fn test_get() -> TestResult {
         let mut m = Matrix::new();
         m.add_element(0, 0, 1.0);
-        assert(m.get(0, 0).unwrap()).eq(1.0)?;
+        assert(m.get(0, 0).ok_or("ElementMissing")?).eq(1.0)?;
         Ok(())
     }
 
@@ -1339,7 +1311,7 @@ mod tests {
                 // Check each row/ col head is the same element, and this element is on the diagonal
                 let ro = ik.hdr(Axis::ROWS, v).unwrap();
                 let co = ik.hdr(Axis::COLS, v).unwrap();
-                let d0 = ik.get(v, v).unwrap();
+                let d0 = ik.get(v, v).ok_or("ElementMissing")?;
                 assert_eq!(ro, co);
                 assert_eq!(ik[ro].val, d0);
                 assert_eq!(ik[co].val, d0);
@@ -1358,19 +1330,19 @@ mod tests {
         m.add_element(7, 7, 44.0);
 
         checkups(&m);
-        assert_eq!(m.get(0, 0).unwrap(), 11.0);
-        assert_eq!(m.get(7, 0).unwrap(), 22.0);
-        assert_eq!(m.get(0, 7).unwrap(), 33.0);
-        assert_eq!(m.get(7, 7).unwrap(), 44.0);
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 11.0);
+        assert_eq!(m.get(7, 0).ok_or("ElementMissing")?, 22.0);
+        assert_eq!(m.get(0, 7).ok_or("ElementMissing")?, 33.0);
+        assert_eq!(m.get(7, 7).ok_or("ElementMissing")?, 44.0);
 
-        m.set_state(MatrixState::FACTORING).unwrap();
+        m.set_state(MatrixState::FACTORING)?;
         m.swap_rows(0, 7);
 
         checkups(&m);
-        assert_eq!(m.get(7, 0).unwrap(), 11.0);
-        assert_eq!(m.get(0, 0).unwrap(), 22.0);
-        assert_eq!(m.get(7, 7).unwrap(), 33.0);
-        assert_eq!(m.get(0, 7).unwrap(), 44.0);
+        assert_eq!(m.get(7, 0).ok_or("ElementMissing")?, 11.0);
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 22.0);
+        assert_eq!(m.get(7, 7).ok_or("ElementMissing")?, 33.0);
+        assert_eq!(m.get(0, 7).ok_or("ElementMissing")?, 44.0);
         Ok(())
     }
 
@@ -1382,16 +1354,16 @@ mod tests {
         m.add_element(2, 2, 22.2);
 
         checkups(&m);
-        assert_eq!(m.get(0, 0).unwrap(), 11.1);
-        assert_eq!(m.get(2, 2).unwrap(), 22.2);
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 11.1);
+        assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 22.2);
         assert_eq!(m.get(1, 1), None);
 
-        m.set_state(MatrixState::FACTORING).unwrap();
+        m.set_state(MatrixState::FACTORING)?;
         m.swap_rows(0, 2);
 
         checkups(&m);
-        assert_eq!(m.get(2, 0).unwrap(), 11.1);
-        assert_eq!(m.get(0, 2).unwrap(), 22.2);
+        assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 11.1);
+        assert_eq!(m.get(0, 2).ok_or("ElementMissing")?, 22.2);
         assert_eq!(m.get(1, 1), None);
         Ok(())
     }
@@ -1411,12 +1383,12 @@ mod tests {
         m.add_element(2, 2, 9.0);
 
         checkups(&m);
-        m.set_state(MatrixState::FACTORING).unwrap();
+        m.set_state(MatrixState::FACTORING)?;
         m.swap_rows(0, 2);
 
         checkups(&m);
-        assert_eq!(m.get(0, 0).unwrap(), 7.0);
-        assert_eq!(m.get(2, 0).unwrap(), 1.0);
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 7.0);
+        assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 1.0);
         // FIXME: check more
         Ok(())
     }
@@ -1429,17 +1401,17 @@ mod tests {
         m.add_element(2, 2, 99.0);
 
         checkups(&m);
-        assert_eq!(m.get(1, 0).unwrap(), 71.0);
-        assert_eq!(m.get(2, 0).unwrap(), -11.0);
-        assert_eq!(m.get(2, 2).unwrap(), 99.0);
+        assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 71.0);
+        assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, -11.0);
+        assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 99.0);
 
-        m.set_state(MatrixState::FACTORING).unwrap();
+        m.set_state(MatrixState::FACTORING)?;
         m.swap_rows(0, 2);
 
         checkups(&m);
-        assert_eq!(m.get(1, 0).unwrap(), 71.0);
-        assert_eq!(m.get(0, 0).unwrap(), -11.0);
-        assert_eq!(m.get(0, 2).unwrap(), 99.0);
+        assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 71.0);
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, -11.0);
+        assert_eq!(m.get(0, 2).ok_or("ElementMissing")?, 99.0);
         Ok(())
     }
 
@@ -1456,7 +1428,7 @@ mod tests {
         }
         checkups(&m);
 
-        m.set_state(MatrixState::FACTORING).unwrap();
+        m.set_state(MatrixState::FACTORING)?;
         m.swap_rows(0, 1);
 
         checkups(&m);
@@ -1470,7 +1442,7 @@ mod tests {
         let mut m = Matrix::identity(4);
         checkups(&m);
 
-        m.set_state(MatrixState::FACTORING).unwrap();
+        m.set_state(MatrixState::FACTORING)?;
         m.axes[ROWS].setup_factoring();
         m.swap_rows(0, 3);
 
@@ -1504,9 +1476,9 @@ mod tests {
         checkups(&m);
         m.lu_factorize()?;
         checkups(&m);
-        assert_eq!(m.get(0, 0).unwrap(), 1.0);
-        assert_eq!(m.get(1, 1).unwrap(), 1.0);
-        assert_eq!(m.get(2, 2).unwrap(), 1.0);
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(1, 1).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 1.0);
         return Ok(());
     }
 
@@ -1522,23 +1494,23 @@ mod tests {
         m.add_element(2, 1, 1.0);
         m.add_element(2, 2, 1.0);
 
-        checkups(&m);
-        assert_eq!(m.get(0, 0).unwrap(), 1.0);
-        assert_eq!(m.get(1, 0).unwrap(), 1.0);
-        assert_eq!(m.get(2, 0).unwrap(), 1.0);
-        assert_eq!(m.get(1, 1).unwrap(), 1.0);
-        assert_eq!(m.get(2, 1).unwrap(), 1.0);
-        assert_eq!(m.get(2, 2).unwrap(), 1.0);
+        checkups(&m)?;
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(1, 1).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 1).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 1.0);
 
         m.lu_factorize()?;
 
-        checkups(&m);
-        assert_eq!(m.get(0, 0).unwrap(), 1.0);
-        assert_eq!(m.get(1, 0).unwrap(), 1.0);
-        assert_eq!(m.get(2, 0).unwrap(), 1.0);
-        assert_eq!(m.get(1, 1).unwrap(), 1.0);
-        assert_eq!(m.get(2, 1).unwrap(), 1.0);
-        assert_eq!(m.get(2, 2).unwrap(), 1.0);
+        checkups(&m)?;
+        assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(1, 1).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 1).ok_or("ElementMissing")?, 1.0);
+        assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 1.0);
         Ok(())
     }
 
@@ -1621,7 +1593,7 @@ mod tests {
 
     fn assert_entries(m: &Matrix, entries: Vec<Entry>) -> TestResult {
         for e in entries.iter() {
-            assert(m.get(e.0, e.1).unwrap()).eq(e.2)?;
+            assert(m.get(e.0, e.1).ok_or("ElementMissing")?).eq(e.2)?;
         }
         Ok(())
     }
