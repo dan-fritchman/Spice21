@@ -12,6 +12,7 @@ enum CompParse {
     V(f64, NodeRef, NodeRef),
     D(f64, f64, NodeRef, NodeRef),
     Mos(bool, NodeRef, NodeRef, NodeRef, NodeRef),
+    C(f64, NodeRef, NodeRef),
 }
 
 struct CktParse {
@@ -41,7 +42,15 @@ fn get_matrix_elem(mat: &Matrix, row: NodeRef, col: NodeRef) -> Option<Eindex> {
     }
 }
 
+fn get_v(x: &Vec<f64>, n:NodeRef) -> f64 {
+    match n {
+        NodeRef::Gnd => 0.0,
+        NodeRef::Num(k) => x[k]
+    }
+}
+
 trait Component {
+    fn tstep(&mut self, _an: &Vec<f64>) { } 
     fn load(&self, an: &DcOp) -> Stamps;
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
@@ -81,6 +90,71 @@ impl Component for Vsrc {
             ],
             j: vec![],
             b: vec![(self.ivar, self.v)],
+        };
+    }
+}
+
+struct Capacitor {
+    c: f64,
+    p: NodeRef,
+    n: NodeRef,
+    g: f64, i: f64, 
+    pp: Option<Eindex>,
+    nn: Option<Eindex>,
+    pn: Option<Eindex>,
+    np: Option<Eindex>,
+}
+
+impl Capacitor {
+    fn new(c:f64, p:NodeRef, n:NodeRef) -> Capacitor {
+        Capacitor {
+            c, p, n,
+            g: 0.0, i: 0.0,
+            pp: None,
+            pn: None,
+            np: None,
+            nn: None,
+        }
+    }
+}
+const the_timestep:f64 = 1e-12;
+
+impl Component for Capacitor {
+    fn create_matrix_elems(&self, mat: &mut Matrix) {
+        make_matrix_elem(mat, self.p, self.p);
+        make_matrix_elem(mat, self.p, self.n);
+        make_matrix_elem(mat, self.n, self.p);
+        make_matrix_elem(mat, self.n, self.n);
+    }
+    fn get_matrix_elems(&mut self, mat: &Matrix) {
+        self.pp = get_matrix_elem(mat, self.p, self.p);
+        self.pn = get_matrix_elem(mat, self.p, self.n);
+        self.np = get_matrix_elem(mat, self.n, self.p);
+        self.nn = get_matrix_elem(mat, self.n, self.n);
+    }
+    fn tstep(&mut self, x: &Vec<f64>) {
+        let vp = get_v(x, self.p);
+        let vn = get_v(x, self.n);
+        let vd = vp - vn;
+        self.i = vd * self.c / the_timestep;
+        self.g = self.c / the_timestep;
+        println!("CAP UPDATED WITH i={} g={}", self.i, self.g);
+    }
+    fn load(&self, an: &DcOp) -> Stamps {
+        // FIXME: make a real index-attribute for this b-vector 
+        let mut b: Vec<(NodeRef, f64)> = vec![];
+        if let NodeRef::Num(_p) = self.p { b.push((self.p, self.i)) };
+        if let NodeRef::Num(_n) = self.n { b.push((self.n, -self.i)) };
+
+        return Stamps {
+            j: vec![],
+            g: vec![  // Seems weird that these are in G, eh?
+                (self.pp, self.g),
+                (self.nn, self.g),
+                (self.pn, -self.g),
+                (self.np, -self.g),
+            ],
+            b: b
         };
     }
 }
@@ -278,6 +352,7 @@ impl Component for Diode {
 
         // FIXME: make a real index-attribute for this b-vector 
         let mut b: Vec<(NodeRef, f64)> = vec![];
+        // FIXME: signs
         if let NodeRef::Num(_p) = self.p { b.push((self.p, -i)) };
         if let NodeRef::Num(_n) = self.n { b.push((self.n, -i)) };
 
@@ -383,6 +458,10 @@ impl DcOp {
                 };
                 self.comps.push(Box::new(r));
             }
+            CompParse::C(c, p, n) => {
+                let c = Capacitor::new(c, p, n);
+                self.comps.push(Box::new(c));
+            }
             CompParse::I(i, p, n) => {
                 let i = Isrc { i, p, n };
                 self.comps.push(Box::new(i));
@@ -461,7 +540,7 @@ impl DcOp {
         self.x = vec![0.0; self.rhs.len()];
         let dx = vec![0.0; self.rhs.len()];
 
-        for _k in 0..100 {
+        for _k in 0..20 {
             // FIXME: number of iterations
             // Make a copy of state for tracking
             self.history.push(self.x.clone());
@@ -498,6 +577,7 @@ impl DcOp {
                 if let (Some(ei), val) = *upd { self.mat.update(ei, val); }
             }
             println!("MAT: {:?}", self.mat);
+            println!("RHS: {:?}", self.rhs);
             println!("RES: {:?}", res);
             // Solve for our update
             let mut dx = self.mat.solve(res)?;
@@ -515,6 +595,7 @@ impl DcOp {
             for r in 0..self.x.len() {
                 self.x[r] += dx[r];
             }
+            println!("X: {:?}", self.x);
         }
         return Err("Convergence Failed");
     }
@@ -538,6 +619,43 @@ impl DcOp {
 fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
     let mut op = DcOp::new(ckt);
     return op.solve();
+}
+
+struct Tran {
+    solver: DcOp,
+    tstop: usize,
+}
+
+impl Tran {
+    fn new(ckt: CktParse) -> Tran {
+        let solver = DcOp::new(ckt);
+        return Tran {
+            solver, tstop: 100
+        };
+    }
+    fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
+        let mut res: Vec<Vec<f64>> = vec![];
+        for _t in 0..self.tstop {
+            let tsoln = self.solver.solve();
+            let tpoint = match tsoln {
+                Ok(x) => x,
+                Err(e) => {
+                    println!("Failed at t={}", _t);
+                    return Err(e);
+                }
+            };
+            for c in self.solver.comps.iter_mut() {
+                c.tstep(&tpoint);
+            }
+            res.push(tpoint);
+        }
+        return Ok(res);
+    }
+}
+
+fn tran(ckt: CktParse) -> SpResult<Vec<Vec<f64>>> {
+    let mut tran = Tran::new(ckt);
+    return tran.solve();
 }
 
 #[cfg(test)]
@@ -945,4 +1063,58 @@ mod tests {
         assert!(soln[5].abs() < 1e-6);
         Ok(())
     }
+    #[test]
+    fn test_dcop13() -> TestResult {
+        // RC Low-Pass Filter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::R(1e-3, Num(1), Num(0)),
+                CompParse::C(1e-9, Num(1), Gnd),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln, vec![1.0, 1.0, 0.0]);
+        Ok(())
+    }
+    #[test]
+    fn test_dcop13b() -> TestResult {
+        // RC High-Pass Filter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::R(1e-3, Num(1), Gnd),
+                CompParse::C(1e-9, Num(1), Num(0)),
+            ],
+        };
+        let mut dcop = DcOp::new(ckt);
+        let soln = dcop.solve()?;
+        assert_eq!(soln, vec![1.0, 0.0, 0.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_tran1() -> TestResult {
+        // RC Low-Pass Filter
+        use NodeRef::{Gnd, Num};
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::R(1e-3, Num(1), Num(0)),
+                CompParse::C(1e-9, Num(1), Gnd),
+            ],
+        };
+        let soln = tran(ckt)?;
+        for point in soln {
+            assert(point).eq(vec![1.0, 1.0, 0.0]);
+        }
+        Ok(())
+    }
 }
+

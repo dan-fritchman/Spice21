@@ -287,13 +287,13 @@ impl Matrix {
             }
         }
 
-        println!("MAT_BEFORE_DOT: {:?}", self);
+        // println!("MAT_BEFORE_DOT: {:?}", self);
 
         let m: Vec<f64> = self.vecmul(&xi)?;
-        println!("X: {:?}", x);
-        println!("XI: {:?}", xi);
-        println!("DOT_PROD: {:?}", m);
-        println!("RHS: {:?}", rhs);
+        // println!("X: {:?}", x);
+        // println!("XI: {:?}", xi);
+        // println!("DOT_PROD: {:?}", m);
+        // println!("RHS: {:?}", rhs);
         let mut res = vec![0.0; m.len()];
 
         if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
@@ -305,7 +305,7 @@ impl Matrix {
                 res[k] = rhs[k] - m[k];
             }
         }
-        println!("RES: {:?}", res);
+        // println!("RES: {:?}", res);
         return Ok(res);
     }
     fn insert(&mut self, e: &mut Element) {
