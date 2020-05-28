@@ -1,10 +1,12 @@
 use std::ops::{Index, IndexMut};
 use std::cmp::PartialEq;
 
-mod sparse21;
+pub mod spresult;
+pub mod sparse21;
+pub mod assert;
+
+use spresult::SpResult;
 use sparse21::{Eindex, Matrix};
-mod assert;
-use assert::{assert};
 
 
 enum CompParse {
@@ -16,16 +18,9 @@ enum CompParse {
     C(f64, NodeRef, NodeRef),
 }
 
-struct CktParse {
+pub struct CktParse {
     nodes: usize,
     comps: Vec<CompParse>,
-}
-
-type SpResult<T> = Result<T, &'static str>;
-
-struct Node {
-    rf: NodeRef,
-    solve: bool,
 }
 
 /// Helper function to create matrix element at (row,col) if both are non-ground
@@ -43,7 +38,7 @@ fn get_matrix_elem(mat: &Matrix, row: NodeRef, col: NodeRef) -> Option<Eindex> {
     }
 }
 
-fn get_v(x: &Vec<f64>, n:NodeRef) -> f64 {
+fn get_v(x: &Vec<f64>, n: NodeRef) -> f64 {
     match n {
         NodeRef::Gnd => 0.0,
         NodeRef::Num(k) => x[k]
@@ -51,12 +46,12 @@ fn get_v(x: &Vec<f64>, n:NodeRef) -> f64 {
 }
 
 trait Component {
-    fn tstep(&mut self, _an: &Vec<f64>) { } 
-    fn update(&mut self, _val: f64) { } // FIXME: prob not for every Component
+    fn tstep(&mut self, _an: &Vec<f64>) {}
+    fn update(&mut self, _val: f64) {}
+    // FIXME: prob not for every Component
     fn load(&self, an: &DcOp) -> Stamps;
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
-
 }
 
 struct Vsrc {
@@ -71,13 +66,13 @@ struct Vsrc {
 }
 
 impl Vsrc {
-    fn new(v:f64, p:NodeRef, n:NodeRef, ivar:NodeRef) -> Vsrc {
-        Vsrc { v, p, n, ivar, pi:None, ip: None, ni:None, in_:None }
+    fn new(v: f64, p: NodeRef, n: NodeRef, ivar: NodeRef) -> Vsrc {
+        Vsrc { v, p, n, ivar, pi: None, ip: None, ni: None, in_: None }
     }
-    
 }
+
 impl Component for Vsrc {
-    fn update(&mut self, val:f64) { self.v = val; }
+    fn update(&mut self, val: f64) { self.v = val; }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         make_matrix_elem(mat, self.p, self.ivar);
         make_matrix_elem(mat, self.ivar, self.p);
@@ -108,7 +103,9 @@ struct Capacitor {
     c: f64,
     p: NodeRef,
     n: NodeRef,
-    g: f64, i: f64, vp: f64,
+    g: f64,
+    i: f64,
+    vp: f64,
     pp: Option<Eindex>,
     nn: Option<Eindex>,
     pn: Option<Eindex>,
@@ -116,10 +113,14 @@ struct Capacitor {
 }
 
 impl Capacitor {
-    fn new(c:f64, p:NodeRef, n:NodeRef) -> Capacitor {
+    fn new(c: f64, p: NodeRef, n: NodeRef) -> Capacitor {
         Capacitor {
-            c, p, n,
-            g: 0.0, i: 0.0, vp:0.0,
+            c,
+            p,
+            n,
+            g: 0.0,
+            i: 0.0,
+            vp: 0.0,
             pp: None,
             pn: None,
             np: None,
@@ -127,7 +128,8 @@ impl Capacitor {
         }
     }
 }
-const the_timestep:f64 = 1e-9;
+
+const THE_TIMESTEP: f64 = 1e-9;
 
 impl Component for Capacitor {
     fn create_matrix_elems(&self, mat: &mut Matrix) {
@@ -147,22 +149,22 @@ impl Component for Capacitor {
         let vn = get_v(x, self.n);
         let vd = vp - vn;
         self.vp = vd;
-        self.i = vd * self.c / the_timestep;
-        self.g = self.c / the_timestep;
+        self.i = vd * self.c / THE_TIMESTEP;
+        self.g = self.c / THE_TIMESTEP;
     }
     fn load(&self, an: &DcOp) -> Stamps {
         if an.an_mode != AnalysisMode::TRAN {
             return Stamps::new();
         }
 
-        let i = self.c * self.vp / the_timestep;
-        let g = self.c / the_timestep;
-        
+        let i = self.c * self.vp / THE_TIMESTEP;
+        let g = self.c / THE_TIMESTEP;
+
         // FIXME: make a real index-attribute for this b-vector 
         let mut b: Vec<(NodeRef, f64)> = vec![];
         if let NodeRef::Num(_p) = self.p { b.push((self.p, i)) };
         if let NodeRef::Num(_n) = self.n { b.push((self.n, -i)) };
-        
+
         return Stamps {
             j: vec![],
             g: vec![
@@ -171,7 +173,7 @@ impl Component for Capacitor {
                 (self.pn, -g),
                 (self.np, -g),
             ],
-            b: b
+            b: b,
         };
     }
 }
@@ -187,12 +189,13 @@ struct Resistor {
 }
 
 impl Resistor {
-    fn new(g:f64, p:NodeRef, n:NodeRef) -> Resistor {
-        Resistor { g, p, n, pp:None, pn: None, np:None, nn:None }
+    fn new(g: f64, p: NodeRef, n: NodeRef) -> Resistor {
+        Resistor { g, p, n, pp: None, pn: None, np: None, nn: None }
     }
 }
+
 impl Component for Resistor {
-    fn update(&mut self, val:f64) { self.g = val; }
+    fn update(&mut self, val: f64) { self.g = val; }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
         make_matrix_elem(mat, self.p, self.p);
         make_matrix_elem(mat, self.p, self.n);
@@ -225,7 +228,7 @@ enum MosTerm { G = 0, D = 1, S = 2, B = 3 }
 
 // SPICE order: g, d, s, b
 impl MosTerm {
-    pub fn iterator() -> impl Iterator<Item=MosTerm> {
+    fn iterator() -> impl Iterator<Item=MosTerm> {
         use MosTerm::{G, D, S, B};
         [G, D, S, B].iter().copied()
     }
@@ -445,20 +448,15 @@ enum Var {
 struct Variables(Vec<Var>);
 
 impl Variables {
-    fn new() -> Variables {
-        Variables(vec![])
-    }
-    fn all_v(len: usize) -> Variables {
-        Variables(vec![Var::V; len])
-    }
-    fn add(&mut self, kind:Var) -> usize {
+    fn all_v(len: usize) -> Variables { Variables(vec![Var::V; len]) }
+    fn add(&mut self, kind: Var) -> usize {
         self.0.push(kind);
         return self.0.len() - 1;
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum AnalysisMode{ OP, DC, TRAN, AC }
+enum AnalysisMode { OP, DC, TRAN, AC }
 
 struct DcOp {
     comps: Vec<Box<dyn Component>>,
@@ -543,7 +541,7 @@ impl DcOp {
             x: vec![],
             rhs: vec![],
             history: vec![],
-            an_mode: AnalysisMode::OP
+            an_mode: AnalysisMode::OP,
         };
 
         for comp in ckt.comps.iter() {
@@ -563,7 +561,7 @@ impl DcOp {
         return op;
     }
     fn solve(&mut self) -> SpResult<Vec<f64>> {
-        if self.x.len()==0 { self.x = vec![0.0; self.vars.0.len()]; }
+        if self.x.len() == 0 { self.x = vec![0.0; self.vars.0.len()]; }
         let dx = vec![0.0; self.vars.0.len()];
 
         for _k in 0..20 {
@@ -635,7 +633,7 @@ impl DcOp {
     }
 }
 
-fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
+pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
     let mut op = DcOp::new(ckt);
     return op.solve();
 }
@@ -649,9 +647,12 @@ struct Tran {
 
 impl Tran {
     fn new(ckt: CktParse) -> Tran {
-        let mut solver = DcOp::new(ckt);
+        let solver = DcOp::new(ckt);
         return Tran {
-            solver, tstop: 20, vic:vec![], ric:vec![],
+            solver,
+            tstop: 20,
+            vic: vec![],
+            ric: vec![],
         };
     }
     fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
@@ -675,7 +676,7 @@ impl Tran {
             c.tstep(&tpoint);
         }
         res.push(tpoint);
-        
+
         self.solver.an_mode = AnalysisMode::TRAN;
         for _t in 1..self.tstop {
             let tsoln = self.solver.solve();
@@ -693,7 +694,7 @@ impl Tran {
         }
         return Ok(res);
     }
-    fn ic(&mut self, n:NodeRef, val:f64) {
+    fn ic(&mut self, n: NodeRef, val: f64) {
         let fnode = NodeRef::Num(self.solver.vars.add(Var::V));
         let ivar = NodeRef::Num(self.solver.vars.add(Var::I));
 
@@ -701,25 +702,26 @@ impl Tran {
         r.create_matrix_elems(&mut self.solver.mat);
         r.get_matrix_elems(&self.solver.mat);
         self.solver.comps.push(Box::new(r));
-        self.ric.push(self.solver.comps.len()-1);
+        self.ric.push(self.solver.comps.len() - 1);
         let mut v = Vsrc::new(val, fnode, NodeRef::Gnd, ivar);
         v.create_matrix_elems(&mut self.solver.mat);
         v.get_matrix_elems(&self.solver.mat);
         self.solver.comps.push(Box::new(v));
-        self.vic.push(self.solver.comps.len()-1);
+        self.vic.push(self.solver.comps.len() - 1);
     }
 }
 
-fn tran(ckt: CktParse) -> SpResult<Vec<Vec<f64>>> {
+pub fn tran(ckt: CktParse) -> SpResult<Vec<Vec<f64>>> {
     let mut tran = Tran::new(ckt);
     return tran.solve();
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    type TestResult = Result<(), &'static str>;
+    use super::assert::assert;
+    use super::spresult::TestResult;
 
     /// Create a very basic Circuit
     fn parse_ckt() -> CktParse {
@@ -734,7 +736,7 @@ mod tests {
 
     #[test]
     fn test_ckt_parse() -> TestResult {
-        let ckt = parse_ckt();
+        parse_ckt();
         Ok(())
     }
 
@@ -1120,6 +1122,7 @@ mod tests {
         assert!(soln[5].abs() < 1e-6);
         Ok(())
     }
+
     #[test]
     fn test_dcop13() -> TestResult {
         // RC Low-Pass Filter
@@ -1137,6 +1140,7 @@ mod tests {
         assert_eq!(soln, vec![1.0, 1.0, 0.0]);
         Ok(())
     }
+
     #[test]
     fn test_dcop13b() -> TestResult {
         // RC High-Pass Filter
@@ -1169,10 +1173,11 @@ mod tests {
         };
         let soln = tran(ckt)?;
         for point in soln {
-            assert(point).eq(vec![1.0, 1.0, 0.0]);
+            assert(point).eq(vec![1.0, 1.0, 0.0])?;
         }
         Ok(())
     }
+
     #[test]
     fn test_tran2() -> TestResult {
         // RC Low-Pass Filter, with Initial Condition
@@ -1190,13 +1195,13 @@ mod tests {
         tran.ic(Num(0), 0.0);
         let soln = tran.solve()?;
 
-        assert(soln[0][0]).eq(5e-3);
-        assert(soln[0][1]).eq(0.0);
-        assert(soln[0][2]).eq(5e-3);
+        assert(soln[0][0]).eq(5e-3)?;
+        assert(soln[0][1]).eq(0.0)?;
+        assert(soln[0][2]).eq(5e-3)?;
         for k in 1..soln.len() {
-            assert(soln[k][0] - soln[k-1][0] - 5e-3).lt(1e-6);
-            assert(soln[k][1]).eq(0.0);
-            assert(soln[k][2]).lt(1e-6);
+            assert(soln[k][0] - soln[k - 1][0] - 5e-3).lt(1e-6)?;
+            assert(soln[k][1]).eq(0.0)?;
+            assert(soln[k][2]).lt(1e-6)?;
         }
         Ok(())
     }

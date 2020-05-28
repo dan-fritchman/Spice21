@@ -2,37 +2,62 @@
 /// Assertion-Based Debugging Utilities
 ///
 
+use super::spresult::TestResult;
+
 pub struct Assert<T> { val: T }
 
 pub fn assert<T>(val: T) -> Assert<T> { Assert { val } }
 
 impl<T> Assert<T> {
-    fn raise(&self) -> Result<(), &'static str> {
+    fn raise(&self) -> TestResult {
         // Breakpoint here
         return Err("Assertion Failed");
     }
 }
 
 impl<T: PartialEq> Assert<T> {
-    pub fn eq(&self, other: T) -> Result<(), &'static str> {
+    pub fn eq(&self, other: T) -> TestResult {
         if self.val != other { self.raise() } else { Ok(()) }
     }
-    pub fn ne(&self, other: T) -> Result<(), &'static str> {
+    pub fn ne(&self, other: T) -> TestResult {
         if self.val == other { self.raise() } else { Ok(()) }
     }
 }
 
 impl<T: PartialOrd> Assert<T> {
-    pub fn gt(&self, other: T) -> Result<(), &'static str> {
+    pub fn gt(&self, other: T) -> TestResult {
         if self.val <= other { self.raise() } else { Ok(()) }
     }
-    pub fn lt(&self, other: T) -> Result<(), &'static str> {
+    pub fn lt(&self, other: T) -> TestResult {
         if self.val >= other { self.raise() } else { Ok(()) }
     }
-    pub fn ge(&self, other: T) -> Result<(), &'static str> {
+    pub fn ge(&self, other: T) -> TestResult {
         if self.val < other { self.raise() } else { Ok(()) }
     }
-    pub fn le(&self, other: T) -> Result<(), &'static str> {
+    pub fn le(&self, other: T) -> TestResult {
         if self.val > other { self.raise() } else { Ok(()) }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_eq() -> TestResult { assert(5).eq(5) }
+
+    #[test]
+    fn test_ne() -> TestResult { assert(1).ne(5) }
+
+    #[test]
+    fn test_gt() -> TestResult { assert(5).gt(1) }
+
+    #[test]
+    fn test_lt() -> TestResult { assert(1).lt(5) }
+
+    #[test]
+    fn test_ge() -> TestResult { assert(5).ge(5) }
+
+    #[test]
+    fn test_le() -> TestResult { assert(1).le(5) }
 }
