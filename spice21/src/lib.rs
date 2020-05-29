@@ -24,10 +24,11 @@ pub struct CktParse {
 }
 
 /// Helper function to create matrix element at (row,col) if both are non-ground
-fn make_matrix_elem(mat: &mut Matrix, row: Option<VarIndex>, col: Option<VarIndex>) {
+fn make_matrix_elem(mat: &mut Matrix, row: Option<VarIndex>, col: Option<VarIndex>) -> Option<Eindex> {
     if let (Some(r), Some(c)) = (row, col) {
-        mat.make(r.0, c.0);
+        return Some(mat.make(r.0, c.0));
     }
+    return None;
 }
 
 /// Helper function to get matrix element-pointer at (row, col) if present. or None if not 
@@ -52,8 +53,7 @@ trait Component {
     // FIXME: prob not for every Component
 
     fn load(&self, an: &DcOp) -> Stamps;
-    fn create_matrix_elems(&self, mat: &mut Matrix);
-    fn get_matrix_elems(&mut self, mat: &Matrix);
+    fn create_matrix_elems(&mut self, mat: &mut Matrix);
 }
 
 struct Vsrc {
@@ -75,17 +75,11 @@ impl Vsrc {
 
 impl Component for Vsrc {
     fn update(&mut self, val: f64) { self.v = val; }
-    fn create_matrix_elems(&self, mat: &mut Matrix) {
-        make_matrix_elem(mat, self.p, Some(self.ivar));
-        make_matrix_elem(mat, Some(self.ivar), self.p);
-        make_matrix_elem(mat, self.n, Some(self.ivar));
-        make_matrix_elem(mat, Some(self.ivar), self.n);
-    }
-    fn get_matrix_elems(&mut self, mat: &Matrix) {
-        self.pi = get_matrix_elem(mat, self.p, Some(self.ivar));
-        self.ip = get_matrix_elem(mat, Some(self.ivar), self.p);
-        self.ni = get_matrix_elem(mat, self.n, Some(self.ivar));
-        self.in_ = get_matrix_elem(mat, Some(self.ivar), self.n);
+    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+        self.pi = make_matrix_elem(mat, self.p, Some(self.ivar));
+        self.ip = make_matrix_elem(mat, Some(self.ivar), self.p);
+        self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
+        self.in_ = make_matrix_elem(mat, Some(self.ivar), self.n);
     }
     fn load(&self, _an: &DcOp) -> Stamps {
         return Stamps {
@@ -101,6 +95,7 @@ impl Component for Vsrc {
     }
 }
 
+#[derive(Default)]
 struct Capacitor {
     c: f64,
     p: Option<VarIndex>,
@@ -120,13 +115,7 @@ impl Capacitor {
             c,
             p,
             n,
-            g: 0.0,
-            i: 0.0,
-            vp: 0.0,
-            pp: None,
-            pn: None,
-            np: None,
-            nn: None,
+            ..Default::default()
         }
     }
 }
@@ -134,17 +123,11 @@ impl Capacitor {
 const THE_TIMESTEP: f64 = 1e-9;
 
 impl Component for Capacitor {
-    fn create_matrix_elems(&self, mat: &mut Matrix) {
-        make_matrix_elem(mat, self.p, self.p);
-        make_matrix_elem(mat, self.p, self.n);
-        make_matrix_elem(mat, self.n, self.p);
-        make_matrix_elem(mat, self.n, self.n);
-    }
-    fn get_matrix_elems(&mut self, mat: &Matrix) {
-        self.pp = get_matrix_elem(mat, self.p, self.p);
-        self.pn = get_matrix_elem(mat, self.p, self.n);
-        self.np = get_matrix_elem(mat, self.n, self.p);
-        self.nn = get_matrix_elem(mat, self.n, self.n);
+    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+        self.pp = make_matrix_elem(mat, self.p, self.p);
+        self.pn = make_matrix_elem(mat, self.p, self.n);
+        self.np = make_matrix_elem(mat, self.n, self.p);
+        self.nn = make_matrix_elem(mat, self.n, self.n);
     }
     fn tstep(&mut self, x: &Vec<f64>) {
         let vp = get_v(x, self.p);
@@ -178,43 +161,62 @@ impl Component for Capacitor {
     }
 }
 
+
+#[derive(Clone, Copy)]
+enum TwoTerm { P = 0, N = 1 }
+
+struct TwoTerminals([Option<VarIndex>; 2]);
+
+impl Index<TwoTerm> for TwoTerminals {
+    type Output = Option<VarIndex>;
+    fn index(&self, t: TwoTerm) -> &Option<VarIndex> { &self.0[t as usize] }
+}
+
+struct TwoTermMatrixPointers([[Option<Eindex>; 2]; 2]);
+
+impl Index<(TwoTerm, TwoTerm)> for TwoTermMatrixPointers {
+    type Output = Option<Eindex>;
+    fn index(&self, ts: (TwoTerm, TwoTerm)) -> &Option<Eindex> {
+        &self.0[ts.0 as usize][ts.1 as usize]
+    }
+}
+
+impl IndexMut<(TwoTerm, TwoTerm)> for TwoTermMatrixPointers {
+    fn index_mut(&mut self, ts: (TwoTerm, TwoTerm)) -> &mut Self::Output {
+        &mut self.0[ts.0 as usize][ts.1 as usize]
+    }
+}
+
 struct Resistor {
     g: f64,
-    p: Option<VarIndex>,
-    n: Option<VarIndex>,
-    pp: Option<Eindex>,
-    nn: Option<Eindex>,
-    pn: Option<Eindex>,
-    np: Option<Eindex>,
+    terms: TwoTerminals,
+    matps: TwoTermMatrixPointers,
 }
 
 impl Resistor {
     fn new(g: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Resistor {
-        Resistor { g, p, n, pp: None, pn: None, np: None, nn: None }
+        Resistor { g, terms: TwoTerminals([p, n]), matps: TwoTermMatrixPointers([[None; 2]; 2]) }
     }
 }
 
 impl Component for Resistor {
     fn update(&mut self, val: f64) { self.g = val; }
-    fn create_matrix_elems(&self, mat: &mut Matrix) {
-        make_matrix_elem(mat, self.p, self.p);
-        make_matrix_elem(mat, self.p, self.n);
-        make_matrix_elem(mat, self.n, self.p);
-        make_matrix_elem(mat, self.n, self.n);
-    }
-    fn get_matrix_elems(&mut self, mat: &Matrix) {
-        self.pp = get_matrix_elem(mat, self.p, self.p);
-        self.pn = get_matrix_elem(mat, self.p, self.n);
-        self.np = get_matrix_elem(mat, self.n, self.p);
-        self.nn = get_matrix_elem(mat, self.n, self.n);
+    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+        use TwoTerm::{P, N};
+        for l in [P, N].into_iter() {
+            for r in [P, N].into_iter() {
+                self.matps[(*l, *r)] = make_matrix_elem(mat, self.terms[*l], self.terms[*r]);
+            }
+        }
     }
     fn load(&self, _an: &DcOp) -> Stamps {
+        use TwoTerm::{P, N};
         return Stamps {
             g: vec![
-                (self.pp, self.g),
-                (self.nn, self.g),
-                (self.pn, -self.g),
-                (self.np, -self.g)
+                (self.matps[(P, P)], self.g),
+                (self.matps[(N, N)], self.g),
+                (self.matps[(P, N)], -self.g),
+                (self.matps[(N, P)], -self.g)
             ],
             j: vec![],
             b: vec![],
@@ -277,18 +279,11 @@ impl Mos {
 }
 
 impl Component for Mos {
-    fn create_matrix_elems(&self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
         use MosTerm::{G, D, S};
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
-            make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
-        }
-    }
-    fn get_matrix_elems(&mut self, mat: &Matrix) {
-        use MosTerm::{G, D, S};
-        let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
-        for (t1, t2) in matps.iter() {
-            self.matps[(*t1, *t2)] = get_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
+            self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
     fn load(&self, an: &DcOp) -> Stamps {
@@ -344,7 +339,7 @@ impl Component for Mos {
     }
 }
 
-
+#[derive(Default)]
 struct Diode {
     isat: f64,
     vt: f64,
@@ -357,17 +352,11 @@ struct Diode {
 }
 
 impl Component for Diode {
-    fn create_matrix_elems(&self, mat: &mut Matrix) {
-        make_matrix_elem(mat, self.p, self.p);
-        make_matrix_elem(mat, self.p, self.n);
-        make_matrix_elem(mat, self.n, self.p);
-        make_matrix_elem(mat, self.n, self.n);
-    }
-    fn get_matrix_elems(&mut self, mat: &Matrix) {
-        self.pp = get_matrix_elem(mat, self.p, self.p);
-        self.pn = get_matrix_elem(mat, self.p, self.n);
-        self.np = get_matrix_elem(mat, self.n, self.p);
-        self.nn = get_matrix_elem(mat, self.n, self.n);
+    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+        self.pp = make_matrix_elem(mat, self.p, self.p);
+        self.pn = make_matrix_elem(mat, self.p, self.n);
+        self.np = make_matrix_elem(mat, self.n, self.p);
+        self.nn = make_matrix_elem(mat, self.n, self.n);
     }
     fn load(&self, an: &DcOp) -> Stamps {
         let vp = an.get_v(self.p);
@@ -392,6 +381,7 @@ impl Component for Diode {
     }
 }
 
+#[derive(Default)]
 struct Isrc {
     i: f64,
     p: Option<VarIndex>,
@@ -399,8 +389,7 @@ struct Isrc {
 }
 
 impl Component for Isrc {
-    fn create_matrix_elems(&self, _mat: &mut Matrix) {}
-    fn get_matrix_elems(&mut self, _mat: &Matrix) {}
+    fn create_matrix_elems(&mut self, _mat: &mut Matrix) {}
     fn load(&self, _an: &DcOp) -> Stamps {
         return Stamps {
             g: vec![],
@@ -484,7 +473,6 @@ struct DcOp {
     vars: Variables,
     mat: Matrix,
     rhs: Vec<f64>,
-    x: Vec<f64>,
     history: Vec<Vec<f64>>,
     an_mode: AnalysisMode,
 }
@@ -510,10 +498,7 @@ impl DcOp {
                     vt,
                     p: p.into(),
                     n: n.into(),
-                    pp: None,
-                    pn: None,
-                    np: None,
-                    nn: None,
+                    ..Default::default()
                 };
                 self.comps.push(Box::new(c));
             }
@@ -537,30 +522,22 @@ impl DcOp {
             comps: vec![],
             vars: Variables::all_v(ckt.nodes),
             mat: Matrix::new(),
-            x: vec![],
             rhs: vec![],
             history: vec![],
             an_mode: AnalysisMode::OP,
         };
 
+        // Convert each circuit-parser component into a corresponding component-solver
         for comp in ckt.comps.iter() {
             op.add_comp(comp);
         }
-        // Set up matrix elements per variable, and append them to Components
-        // Sadly our borrow-check fighting requires two loop through the comp-list,
-        // First to create matrix elements, and a second to append their references to Components.
-        // I expect there's a way around this, although don't know one yet.
-        for comp in op.comps.iter() {
+        // Create the corresponding matrix-elements
+        for comp in op.comps.iter_mut() {
             comp.create_matrix_elems(&mut op.mat);
         }
-        for comp in op.comps.iter_mut() {
-            comp.get_matrix_elems(&op.mat);
-        }
-
         return op;
     }
     fn solve(&mut self) -> SpResult<Vec<f64>> {
-//        if self.x.len() == 0 { self.x = vec![0.0; self.vars.0.len()]; }
         let mut dx = vec![0.0; self.vars.len()];
 
         for _k in 0..20 {
@@ -699,12 +676,10 @@ impl Tran {
 
         let mut r = Resistor::new(1.0, Some(fnode), n.into());
         r.create_matrix_elems(&mut self.solver.mat);
-        r.get_matrix_elems(&self.solver.mat);
         self.solver.comps.push(Box::new(r));
         self.ric.push(self.solver.comps.len() - 1);
         let mut v = Vsrc::new(val, Some(fnode), None, ivar);
         v.create_matrix_elems(&mut self.solver.mat);
-        v.get_matrix_elems(&self.solver.mat);
         self.solver.comps.push(Box::new(v));
         self.vic.push(self.solver.comps.len() - 1);
     }
