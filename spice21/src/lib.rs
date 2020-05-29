@@ -562,7 +562,7 @@ impl DcOp {
     }
     fn solve(&mut self) -> SpResult<Vec<f64>> {
         if self.x.len() == 0 { self.x = vec![0.0; self.vars.0.len()]; }
-        let dx = vec![0.0; self.vars.0.len()];
+        let mut dx = vec![0.0; self.vars.0.len()];
 
         for _k in 0..20 {
             // FIXME: number of iterations
@@ -601,7 +601,7 @@ impl DcOp {
                 if let (Some(ei), val) = *upd { self.mat.update(ei, val); }
             }
             // Solve for our update
-            let mut dx = self.mat.solve(res)?;
+            dx = self.mat.solve(res)?;
             let max_step = 1000e-3;
             let max_abs = dx.iter().fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
             if max_abs > max_step {
@@ -1180,13 +1180,11 @@ mod tests {
 
     #[test]
     fn test_tran2() -> TestResult {
-        // RC Low-Pass Filter, with Initial Condition
+        // I-C Integrator, with Initial Condition
         use NodeRef::{Gnd, Num};
         let ckt = CktParse {
             nodes: 1,
             comps: vec![
-                // CompParse::V(1.0, Num(1), Gnd),
-                // CompParse::R(1e-3, Num(1), Num(0)),
                 CompParse::I(5e-3, Num(0), Gnd),
                 CompParse::C(1e-9, Num(0), Gnd),
             ],
@@ -1205,5 +1203,39 @@ mod tests {
         }
         Ok(())
     }
+
+
+//    #[test]
+//    fn test_tran3() -> TestResult {
+//        // Ring Oscillator
+//        use NodeRef::{Gnd, Num};
+//        let ckt = CktParse {
+//            nodes: 4,
+//            comps: vec![
+//                CompParse::V(1.0, Num(0), Gnd),
+//                CompParse::R(1e-3, Num(0), Gnd),
+//                CompParse::Mos(false, Num(3), Num(1), Num(0), Num(0)),
+//                CompParse::Mos(true, Num(3), Num(1), Gnd, Gnd),
+//                CompParse::R(1e-5, Num(1), Gnd),
+//                CompParse::C(1e-9, Num(1), Gnd),
+////                CompParse::Mos(false, Num(1), Num(2), Num(0), Num(0)),
+////                CompParse::Mos(true, Num(1), Num(2), Gnd, Gnd),
+//                CompParse::R(1e-5, Num(2), Gnd),
+//                CompParse::C(1e-9, Num(2), Gnd),
+////                CompParse::Mos(false, Num(2), Num(3), Num(0), Num(0)),
+////                CompParse::Mos(true, Num(2), Num(3), Gnd, Gnd),
+//                CompParse::R(1e-5, Num(3), Gnd),
+//                CompParse::C(1e-9, Num(3), Gnd),
+//            ],
+//        };
+//
+////        let mut dcop = DcOp::new(ckt);
+////        let soln = dcop.solve()?;
+//
+//        let mut tran = Tran::new(ckt);
+//////        tran.ic(Num(1), 0.0);
+//        let soln = tran.solve()?;
+//        Ok(())
+//    }
 }
 

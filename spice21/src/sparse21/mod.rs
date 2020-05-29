@@ -115,6 +115,7 @@ impl Element {
     }
 }
 
+#[derive(Debug)]
 struct AxisMapping {
     e2i: Vec<usize>,
     i2e: Vec<usize>,
@@ -290,7 +291,7 @@ impl Matrix {
         if let Some(col_mapping) = self.axes[COLS].mapping.as_ref() {
             // If we have factored, unwind any column-swaps
             for k in 0..xi.len() {
-                xi[k] = x[col_mapping.e2i[k]];
+                xi[k] = x[col_mapping.i2e[k]];
             }
         } else {
             for k in 0..xi.len() {
@@ -700,6 +701,26 @@ impl Matrix {
         }
         return best;
     }
+    /// Find the max (abs) value element at/after location `after_loc` in row/col `in_loc`
+    fn max_after_loc(&self, ax: Axis, in_loc: usize, after_loc: usize) -> Option<Eindex> {
+        let mut e = self.axes[ax].hdrs[in_loc];
+        let off_ax = ax.other();
+        while let Some(ei) = e {
+            if self[ei].loc(off_ax) >= after_loc { break; }
+            e = self[ei].next(ax);
+        }
+        let mut best = e?;
+        let mut best_val = self[best].val.abs();
+        while let Some(ei) = e {
+            let val = self[ei].val.abs();
+            if val > best_val {
+                best = ei;
+                best_val = val;
+            }
+            e = self[ei].next(ax);
+        }
+        return Some(best);
+    }
 
     fn markowitz_product(&self, ei: Eindex) -> usize {
         let e = &self[ei];
@@ -718,12 +739,16 @@ impl Matrix {
 
         for k in n..self.diag.len() {
             let d = match self.diag[k] {
-                None => { continue; }
+                None => { continue; },
                 Some(d) => d,
             };
 
             // Check whether this element meets our threshold criteria
-            let max_in_col = self.max_after(COLS, d);
+            let max_in_col = match self.max_after_loc(COLS, k, n) {
+                None => { continue; },
+                Some(d) => d,
+            };
+            // FIXME: abs-value criterion for max_in_col
             let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.abs() + MARKOWITZ_CONFIG.abs_threshold;
             if self[d].val.abs() < threshold {
                 continue;
@@ -966,7 +991,6 @@ impl Matrix {
     fn set_hdr(&mut self, ax: Axis, loc: usize, ei: Option<Eindex>) { self.axes[ax].hdrs[loc] = ei; }
     fn num_rows(&self) -> usize { self.axes[ROWS].hdrs.len() }
     fn num_cols(&self) -> usize { self.axes[COLS].hdrs.len() }
-
 }
 
 #[cfg(test)]
