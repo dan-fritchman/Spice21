@@ -24,24 +24,24 @@ pub struct CktParse {
 }
 
 /// Helper function to create matrix element at (row,col) if both are non-ground
-fn make_matrix_elem(mat: &mut Matrix, row: NodeRef, col: NodeRef) {
-    if let (NodeRef::Num(r), NodeRef::Num(c)) = (row, col) {
-        mat.make(r, c);
+fn make_matrix_elem(mat: &mut Matrix, row: Option<VarIndex>, col: Option<VarIndex>) {
+    if let (Some(r), Some(c)) = (row, col) {
+        mat.make(r.0, c.0);
     }
 }
 
 /// Helper function to get matrix element-pointer at (row, col) if present. or None if not 
-fn get_matrix_elem(mat: &Matrix, row: NodeRef, col: NodeRef) -> Option<Eindex> {
+fn get_matrix_elem(mat: &Matrix, row: Option<VarIndex>, col: Option<VarIndex>) -> Option<Eindex> {
     match (row, col) {
-        (NodeRef::Num(r), NodeRef::Num(c)) => mat.get_elem(r, c),
+        (Some(r), Some(c)) => mat.get_elem(r.0, c.0),
         _ => None,
     }
 }
 
-fn get_v(x: &Vec<f64>, n: NodeRef) -> f64 {
+fn get_v(x: &Vec<f64>, n: Option<VarIndex>) -> f64 {
     match n {
-        NodeRef::Gnd => 0.0,
-        NodeRef::Num(k) => x[k]
+        None => 0.0,
+        Some(k) => x[k.0]
     }
 }
 
@@ -58,9 +58,9 @@ trait Component {
 
 struct Vsrc {
     v: f64,
-    p: NodeRef,
-    n: NodeRef,
-    ivar: NodeRef,
+    p: Option<VarIndex>,
+    n: Option<VarIndex>,
+    ivar: VarIndex,
     pi: Option<Eindex>,
     ip: Option<Eindex>,
     ni: Option<Eindex>,
@@ -68,7 +68,7 @@ struct Vsrc {
 }
 
 impl Vsrc {
-    fn new(v: f64, p: NodeRef, n: NodeRef, ivar: NodeRef) -> Vsrc {
+    fn new(v: f64, p: Option<VarIndex>, n: Option<VarIndex>, ivar: VarIndex) -> Vsrc {
         Vsrc { v, p, n, ivar, pi: None, ip: None, ni: None, in_: None }
     }
 }
@@ -76,16 +76,16 @@ impl Vsrc {
 impl Component for Vsrc {
     fn update(&mut self, val: f64) { self.v = val; }
     fn create_matrix_elems(&self, mat: &mut Matrix) {
-        make_matrix_elem(mat, self.p, self.ivar);
-        make_matrix_elem(mat, self.ivar, self.p);
-        make_matrix_elem(mat, self.n, self.ivar);
-        make_matrix_elem(mat, self.ivar, self.n);
+        make_matrix_elem(mat, self.p, Some(self.ivar));
+        make_matrix_elem(mat, Some(self.ivar), self.p);
+        make_matrix_elem(mat, self.n, Some(self.ivar));
+        make_matrix_elem(mat, Some(self.ivar), self.n);
     }
     fn get_matrix_elems(&mut self, mat: &Matrix) {
-        self.pi = get_matrix_elem(mat, self.p, self.ivar);
-        self.ip = get_matrix_elem(mat, self.ivar, self.p);
-        self.ni = get_matrix_elem(mat, self.n, self.ivar);
-        self.in_ = get_matrix_elem(mat, self.ivar, self.n);
+        self.pi = get_matrix_elem(mat, self.p, Some(self.ivar));
+        self.ip = get_matrix_elem(mat, Some(self.ivar), self.p);
+        self.ni = get_matrix_elem(mat, self.n, Some(self.ivar));
+        self.in_ = get_matrix_elem(mat, Some(self.ivar), self.n);
     }
     fn load(&self, _an: &DcOp) -> Stamps {
         return Stamps {
@@ -96,15 +96,15 @@ impl Component for Vsrc {
                 (self.in_, -1.0),
             ],
             j: vec![],
-            b: vec![(self.ivar, self.v)],
+            b: vec![(Some(self.ivar), self.v)],
         };
     }
 }
 
 struct Capacitor {
     c: f64,
-    p: NodeRef,
-    n: NodeRef,
+    p: Option<VarIndex>,
+    n: Option<VarIndex>,
     g: f64,
     i: f64,
     vp: f64,
@@ -115,7 +115,7 @@ struct Capacitor {
 }
 
 impl Capacitor {
-    fn new(c: f64, p: NodeRef, n: NodeRef) -> Capacitor {
+    fn new(c: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Capacitor {
         Capacitor {
             c,
             p,
@@ -162,11 +162,6 @@ impl Component for Capacitor {
         let i = self.c * self.vp / THE_TIMESTEP;
         let g = self.c / THE_TIMESTEP;
 
-        // FIXME: make a real index-attribute for this b-vector 
-        let mut b: Vec<(NodeRef, f64)> = vec![];
-        if let NodeRef::Num(_p) = self.p { b.push((self.p, i)) };
-        if let NodeRef::Num(_n) = self.n { b.push((self.n, -i)) };
-
         return Stamps {
             j: vec![],
             g: vec![
@@ -175,15 +170,18 @@ impl Component for Capacitor {
                 (self.pn, -g),
                 (self.np, -g),
             ],
-            b: b,
+            b: vec![
+                (self.p, i),
+                (self.n, -i)
+            ],
         };
     }
 }
 
 struct Resistor {
     g: f64,
-    p: NodeRef,
-    n: NodeRef,
+    p: Option<VarIndex>,
+    n: Option<VarIndex>,
     pp: Option<Eindex>,
     nn: Option<Eindex>,
     pn: Option<Eindex>,
@@ -191,7 +189,7 @@ struct Resistor {
 }
 
 impl Resistor {
-    fn new(g: f64, p: NodeRef, n: NodeRef) -> Resistor {
+    fn new(g: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Resistor {
         Resistor { g, p, n, pp: None, pn: None, np: None, nn: None }
     }
 }
@@ -236,11 +234,11 @@ impl MosTerm {
     }
 }
 
-struct MosTerminals([NodeRef; 4]);
+struct MosTerminals([Option<VarIndex>; 4]);
 
 impl Index<MosTerm> for MosTerminals {
-    type Output = NodeRef;
-    fn index(&self, t: MosTerm) -> &NodeRef { &self.0[t as usize] }
+    type Output = Option<VarIndex>;
+    fn index(&self, t: MosTerm) -> &Option<VarIndex> { &self.0[t as usize] }
 }
 
 struct MosMatrixPointers([[Option<Eindex>; 4]; 4]);
@@ -266,7 +264,7 @@ struct Mos {
 }
 
 impl Mos {
-    fn new(ports: &[NodeRef; 4], vth: f64, beta: f64, lam: f64, polarity: bool) -> Mos {
+    fn new(ports: &[Option<VarIndex>; 4], vth: f64, beta: f64, lam: f64, polarity: bool) -> Mos {
         Mos {
             vth,
             beta,
@@ -350,8 +348,8 @@ impl Component for Mos {
 struct Diode {
     isat: f64,
     vt: f64,
-    p: NodeRef,
-    n: NodeRef,
+    p: Option<VarIndex>,
+    n: Option<VarIndex>,
     pp: Option<Eindex>,
     nn: Option<Eindex>,
     pn: Option<Eindex>,
@@ -378,12 +376,6 @@ impl Component for Diode {
         let i = self.isat * ((vd / self.vt).exp() - 1.0);
         let di_dv = (self.isat / self.vt) * (vd / self.vt).exp();
 
-        // FIXME: make a real index-attribute for this b-vector 
-        let mut b: Vec<(NodeRef, f64)> = vec![];
-        // FIXME: signs
-        if let NodeRef::Num(_p) = self.p { b.push((self.p, -i)) };
-        if let NodeRef::Num(_n) = self.n { b.push((self.n, -i)) };
-
         return Stamps {
             g: vec![],
             j: vec![
@@ -392,15 +384,18 @@ impl Component for Diode {
                 (self.pn, -di_dv),
                 (self.np, -di_dv)
             ],
-            b: b,
+            b: vec![
+                (self.p, -i), // FIXME: signs
+                (self.n, -i)
+            ],
         };
     }
 }
 
 struct Isrc {
     i: f64,
-    p: NodeRef,
-    n: NodeRef,
+    p: Option<VarIndex>,
+    n: Option<VarIndex>,
 }
 
 impl Component for Isrc {
@@ -428,7 +423,7 @@ enum NodeRef {
 struct Stamps {
     g: Vec<(Option<Eindex>, f64)>,
     j: Vec<(Option<Eindex>, f64)>,
-    b: Vec<(NodeRef, f64)>,
+    b: Vec<(Option<VarIndex>, f64)>,
 }
 
 impl Stamps {
@@ -441,20 +436,44 @@ impl Stamps {
     }
 }
 
-#[derive(Debug, Clone)]
-enum Var {
-    V,
-    I,
+#[derive(Debug, Clone, Copy)]
+enum VarKind { V = 0, I }
+
+#[derive(Debug, Clone, Copy)]
+struct VarIndex(usize);
+
+use std::convert::From;
+
+impl From<NodeRef> for Option<VarIndex> {
+    fn from(node: NodeRef) -> Self {
+        match node {
+            NodeRef::Gnd => None,
+            NodeRef::Num(i) => Some(VarIndex(i)),
+        }
+    }
 }
 
-struct Variables(Vec<Var>);
+struct Variables {
+    kinds: Vec<VarKind>,
+    values: Vec<f64>,
+}
 
 impl Variables {
-    fn all_v(len: usize) -> Variables { Variables(vec![Var::V; len]) }
-    fn add(&mut self, kind: Var) -> usize {
-        self.0.push(kind);
-        return self.0.len() - 1;
+    fn all_v(len: usize) -> Variables {
+        Variables { kinds: vec![VarKind::V; len], values: vec![0.0; len] }
     }
+    fn add(&mut self, kind: VarKind) -> VarIndex {
+        self.kinds.push(kind);
+        self.values.push(0.0);
+        return VarIndex(self.kinds.len() - 1);
+    }
+    fn get(&self, i: Option<VarIndex>) -> f64 {
+        match i {
+            None => 0.0,
+            Some(ii) => self.values[ii.0],
+        }
+    }
+    fn len(&self) -> usize { self.kinds.len() }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -474,31 +493,23 @@ impl DcOp {
     fn add_comp(&mut self, comp: &CompParse) {
         match *comp {
             CompParse::R(g, p, n) => {
-                let r = Resistor {
-                    g,
-                    p,
-                    n,
-                    pp: None,
-                    pn: None,
-                    np: None,
-                    nn: None,
-                };
+                let r = Resistor::new(g, p.into(), n.into());
                 self.comps.push(Box::new(r));
             }
             CompParse::C(c, p, n) => {
-                let c = Capacitor::new(c, p, n);
+                let c = Capacitor::new(c, p.into(), n.into());
                 self.comps.push(Box::new(c));
             }
             CompParse::I(i, p, n) => {
-                let i = Isrc { i, p, n };
+                let i = Isrc { i, p: p.into(), n: n.into() };
                 self.comps.push(Box::new(i));
             }
             CompParse::D(isat, vt, p, n) => {
                 let c = Diode {
                     isat,
                     vt,
-                    p,
-                    n,
+                    p: p.into(),
+                    n: n.into(),
                     pp: None,
                     pn: None,
                     np: None,
@@ -507,34 +518,20 @@ impl DcOp {
                 self.comps.push(Box::new(c));
             }
             CompParse::V(v, p, n) => {
-                let ivar = self.vars.add(Var::I);
-                let v = Vsrc {
-                    v,
-                    p,
-                    n,
-                    ivar: NodeRef::Num(ivar), // FIXME: eventually a variable-index thing
-                    pi: None,
-                    ip: None,
-                    ni: None,
-                    in_: None,
-                };
+                let ivar = self.vars.add(VarKind::I);
+                let v = Vsrc::new(v, p.into(), n.into(), ivar);
                 self.comps.push(Box::new(v));
             }
             CompParse::Mos(pol, g, d, s, b) => {
                 let x = Mos::new(
-                    &[g, d, s, b],
+                    &[g.into(), d.into(), s.into(), b.into()],
                     0.25, 50e-3, 3e-3, pol,
                 );
                 self.comps.push(Box::new(x));
             }
         }
     }
-    fn get_v(&self, node: NodeRef) -> f64 {
-        match node {
-            NodeRef::Num(k) => self.x[k],
-            NodeRef::Gnd => 0.0
-        }
-    }
+    fn get_v(&self, idx: Option<VarIndex>) -> f64 { self.vars.get(idx) }
     fn new(ckt: CktParse) -> DcOp {
         let mut op = DcOp {
             comps: vec![],
@@ -563,16 +560,16 @@ impl DcOp {
         return op;
     }
     fn solve(&mut self) -> SpResult<Vec<f64>> {
-        if self.x.len() == 0 { self.x = vec![0.0; self.vars.0.len()]; }
-        let mut dx = vec![0.0; self.vars.0.len()];
+//        if self.x.len() == 0 { self.x = vec![0.0; self.vars.0.len()]; }
+        let mut dx = vec![0.0; self.vars.len()];
 
         for _k in 0..20 {
             // FIXME: number of iterations
             // Make a copy of state for tracking
-            self.history.push(self.x.clone());
+            self.history.push(self.vars.values.clone());
             // Reset our matrix and RHS vector
             self.mat.reset();
-            self.rhs = vec![0.0; self.vars.0.len()];
+            self.rhs = vec![0.0; self.vars.len()];
 
             // Load up component updates
             let mut jupdates: Vec<(Option<Eindex>, f64)> = vec![];
@@ -585,18 +582,18 @@ impl DcOp {
                     }
                 }
                 for upd in updates.b.iter() {
-                    if let (NodeRef::Num(ei), val) = *upd {
-                        self.rhs[ei] += val;
+                    if let (Some(ei), val) = *upd {
+                        self.rhs[ei.0] += val;
                     }
                 }
                 // And save J-updates for later
                 jupdates.extend(updates.j);
             }
             // Calculate the residual error
-            let res: Vec<f64> = self.mat.res(&self.x, &self.rhs)?;
+            let res: Vec<f64> = self.mat.res(&self.vars.values, &self.rhs)?;
             // Check convergence
             if self.converged(&dx, &res) {
-                return Ok(self.x.clone());
+                return Ok(self.vars.values.clone());
             }
             // Didn't converge, add in the Jacobian terms
             for upd in jupdates.iter() {
@@ -612,8 +609,8 @@ impl DcOp {
                 }
             }
             // And update our guess
-            for r in 0..self.x.len() {
-                self.x[r] += dx[r];
+            for r in 0..self.vars.len() {
+                self.vars.values[r] += dx[r];
             }
         }
         return Err("Convergence Failed");
@@ -697,15 +694,15 @@ impl Tran {
         return Ok(res);
     }
     fn ic(&mut self, n: NodeRef, val: f64) {
-        let fnode = NodeRef::Num(self.solver.vars.add(Var::V));
-        let ivar = NodeRef::Num(self.solver.vars.add(Var::I));
+        let fnode = self.solver.vars.add(VarKind::V);
+        let ivar = self.solver.vars.add(VarKind::I);
 
-        let mut r = Resistor::new(1.0, fnode, n);
+        let mut r = Resistor::new(1.0, Some(fnode), n.into());
         r.create_matrix_elems(&mut self.solver.mat);
         r.get_matrix_elems(&self.solver.mat);
         self.solver.comps.push(Box::new(r));
         self.ric.push(self.solver.comps.len() - 1);
-        let mut v = Vsrc::new(val, fnode, NodeRef::Gnd, ivar);
+        let mut v = Vsrc::new(val, Some(fnode), None, ivar);
         v.create_matrix_elems(&mut self.solver.mat);
         v.get_matrix_elems(&self.solver.mat);
         self.solver.comps.push(Box::new(v));
