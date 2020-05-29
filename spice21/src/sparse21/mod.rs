@@ -122,6 +122,19 @@ struct AxisMapping {
     history: Vec<(usize, usize)>,
 }
 
+///
+/// AxisMapping from "internal", row/column-swapped, to "external" indices
+///
+/// In converting between externally-indexed vectors `x` and internal-indexed vectors `xi`,
+/// each of the following holds:
+///
+/// xi[k] == x[i2e[k]]
+/// xi[e2i[k]] == x[k]
+///
+/// For matrix-level conversions, operations on `x` solution vectors typically
+/// access the *row* mappings.
+/// Conversions of RHS vectors typically access *column* mappings.
+///
 impl AxisMapping {
     fn new(size: usize) -> AxisMapping {
         AxisMapping {
@@ -299,22 +312,18 @@ impl Matrix {
             }
         }
 
-        // println!("MAT_BEFORE_DOT: {:?}", self);
+        // Take the matrix-vector product with `xi`
+        let ri: Vec<f64> = self.vecmul(&xi)?;
 
-        let m: Vec<f64> = self.vecmul(&xi)?;
-        // println!("X: {:?}", x);
-        // println!("XI: {:?}", xi);
-        // println!("DOT_PROD: {:?}", m);
-        // println!("RHS: {:?}", rhs);
-        let mut res = vec![0.0; m.len()];
-
+        // Add in the RHS, unwinding row-swaps along the way
+        let mut res = vec![0.0; ri.len()];
         if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
             for k in 0..xi.len() {
-                res[k] = rhs[k] - m[row_mapping.e2i[k]];
+                res[k] = rhs[k] - ri[row_mapping.e2i[k]];
             }
         } else {
             for k in 0..xi.len() {
-                res[k] = rhs[k] - m[k];
+                res[k] = rhs[k] - ri[k];
             }
         }
         // println!("RES: {:?}", res);
@@ -929,7 +938,7 @@ impl Matrix {
 
         if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
             for k in 0..c.len() {
-                c[row_mapping.e2i[k]] = rhs[k];
+                c[k] = rhs[row_mapping.i2e[k]];
             }
         } else { return Err("Missing Row Mapping"); }
 

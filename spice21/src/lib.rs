@@ -47,8 +47,10 @@ fn get_v(x: &Vec<f64>, n: NodeRef) -> f64 {
 
 trait Component {
     fn tstep(&mut self, _an: &Vec<f64>) {}
+
     fn update(&mut self, _val: f64) {}
     // FIXME: prob not for every Component
+
     fn load(&self, an: &DcOp) -> Stamps;
     fn create_matrix_elems(&self, mat: &mut Matrix);
     fn get_matrix_elems(&mut self, mat: &Matrix);
@@ -1205,37 +1207,39 @@ mod tests {
     }
 
 
-//    #[test]
-//    fn test_tran3() -> TestResult {
-//        // Ring Oscillator
-//        use NodeRef::{Gnd, Num};
-//        let ckt = CktParse {
-//            nodes: 4,
-//            comps: vec![
-//                CompParse::V(1.0, Num(0), Gnd),
-//                CompParse::R(1e-3, Num(0), Gnd),
-//                CompParse::Mos(false, Num(3), Num(1), Num(0), Num(0)),
-//                CompParse::Mos(true, Num(3), Num(1), Gnd, Gnd),
-//                CompParse::R(1e-5, Num(1), Gnd),
-//                CompParse::C(1e-9, Num(1), Gnd),
-////                CompParse::Mos(false, Num(1), Num(2), Num(0), Num(0)),
-////                CompParse::Mos(true, Num(1), Num(2), Gnd, Gnd),
-//                CompParse::R(1e-5, Num(2), Gnd),
-//                CompParse::C(1e-9, Num(2), Gnd),
-////                CompParse::Mos(false, Num(2), Num(3), Num(0), Num(0)),
-////                CompParse::Mos(true, Num(2), Num(3), Gnd, Gnd),
-//                CompParse::R(1e-5, Num(3), Gnd),
-//                CompParse::C(1e-9, Num(3), Gnd),
-//            ],
-//        };
-//
-////        let mut dcop = DcOp::new(ckt);
-////        let soln = dcop.solve()?;
-//
-//        let mut tran = Tran::new(ckt);
-//////        tran.ic(Num(1), 0.0);
-//        let soln = tran.solve()?;
-//        Ok(())
-//    }
+    #[test]
+    fn test_tran3() -> TestResult {
+        // Ring Oscillator
+        use NodeRef::{Gnd, Num};
+        let c = 1e-10;
+        let ckt = CktParse {
+            nodes: 4,
+            comps: vec![
+                CompParse::V(1.0, Num(0), Gnd),
+                CompParse::R(1e-3, Num(0), Gnd),
+                CompParse::Mos(false, Num(3), Num(1), Num(0), Num(0)),
+                CompParse::Mos(true, Num(3), Num(1), Gnd, Gnd),
+                CompParse::R(1e-5, Num(1), Gnd),
+                CompParse::C(c, Num(1), Gnd),
+                CompParse::Mos(false, Num(1), Num(2), Num(0), Num(0)),
+                CompParse::Mos(true, Num(1), Num(2), Gnd, Gnd),
+                CompParse::R(1e-5, Num(2), Gnd),
+                CompParse::C(c, Num(2), Gnd),
+                CompParse::Mos(false, Num(2), Num(3), Num(0), Num(0)),
+                CompParse::Mos(true, Num(2), Num(3), Gnd, Gnd),
+                CompParse::R(1e-5, Num(3), Gnd),
+                CompParse::C(c, Num(3), Gnd),
+            ],
+        };
+
+//        let mut dcop = DcOp::new(ckt);
+//        let soln = dcop.solve()?;
+
+        let mut tran = Tran::new(ckt);
+        tran.ic(Num(1), 0.0);
+        let soln = tran.solve()?;
+        // FIXME: dream up some checks
+        Ok(())
+    }
 }
 
