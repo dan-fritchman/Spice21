@@ -432,6 +432,7 @@ enum VarKind { V = 0, I }
 struct VarIndex(usize);
 
 use std::convert::From;
+use std::io::Write;
 
 impl From<NodeRef> for Option<VarIndex> {
     fn from(node: NodeRef) -> Self {
@@ -626,14 +627,46 @@ impl Tran {
         let solver = DcOp::new(ckt);
         return Tran {
             solver,
-            tstop: 20,
+            tstop: 200,
             vic: vec![],
             ric: vec![],
         };
     }
     fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
-        let mut res: Vec<Vec<f64>> = vec![];
+        use std::thread;
+        use std::sync::mpsc;
+        use std::time::Duration;
 
+        enum IoWriterMessage { STOP, DATA(Vec<f64>) }
+        enum IoWriterResponse { OK, RESULT(Vec<Vec<f64>>) }
+        let (tx, rx) = mpsc::channel::<IoWriterMessage>();
+        let (tx2, rx2) = mpsc::channel::<IoWriterResponse>();
+
+        let t = thread::spawn(move || {
+            use std::fs::File;
+            use serde::ser::{SerializeSeq, Serializer};
+            use serde_json::to_writer;
+
+            let mut res: Vec<Vec<f64>> = vec![];
+
+            let mut f = File::create("data.json").unwrap();
+            let mut ser = serde_json::Serializer::new(f);
+            let mut seq = ser.serialize_seq(None).unwrap();
+
+            for msg in rx {
+                match msg {
+                    IoWriterMessage::DATA(d) => {
+                        seq.serialize_element(&d).unwrap();
+                        res.push(d);
+                    }
+                    IoWriterMessage::STOP => {
+                        seq.end().unwrap();
+                        tx2.send(IoWriterResponse::RESULT(res));
+                        return;
+                    }
+                };
+            }
+        });
         let tsoln = self.solver.solve();
         let tpoint = match tsoln {
             Ok(x) => x,
@@ -651,7 +684,7 @@ impl Tran {
         for c in self.solver.comps.iter_mut() {
             c.tstep(&tpoint);
         }
-        res.push(tpoint);
+        tx.send(IoWriterMessage::DATA(tpoint));
 
         self.solver.an_mode = AnalysisMode::TRAN;
         for _t in 1..self.tstop {
@@ -666,9 +699,19 @@ impl Tran {
             for c in self.solver.comps.iter_mut() {
                 c.tstep(&tpoint);
             }
-            res.push(tpoint);
+            tx.send(IoWriterMessage::DATA(tpoint));
         }
-        return Ok(res);
+        tx.send(IoWriterMessage::STOP);
+        for msg in rx2 {
+            match msg {
+                IoWriterResponse::OK => { continue; }
+                IoWriterResponse::RESULT(res) => {
+                    t.join();
+                    return Ok(res);
+                }
+            }
+        }
+        Err("Tran Results Failure")
     }
     fn ic(&mut self, n: NodeRef, val: f64) {
         let fnode = self.solver.vars.add(VarKind::V);
@@ -689,7 +732,6 @@ pub fn tran(ckt: CktParse) -> SpResult<Vec<Vec<f64>>> {
     let mut tran = Tran::new(ckt);
     return tran.solve();
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1146,7 +1188,7 @@ mod tests {
             ],
         };
         let soln = tran(ckt)?;
-        for point in soln {
+        for point in soln.into_iter() {
             assert(point).eq(vec![1.0, 1.0, 0.0])?;
         }
         Ok(())
@@ -1178,7 +1220,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn test_tran3() -> TestResult {
         // Ring Oscillator
@@ -1203,9 +1244,6 @@ mod tests {
                 CompParse::C(c, Num(3), Gnd),
             ],
         };
-
-//        let mut dcop = DcOp::new(ckt);
-//        let soln = dcop.solve()?;
 
         let mut tran = Tran::new(ckt);
         tran.ic(Num(1), 0.0);
