@@ -52,7 +52,7 @@ trait Component {
     fn update(&mut self, _val: f64) {}
     // FIXME: prob not for every Component
 
-    fn load(&self, an: &DcOp) -> Stamps;
+    fn load(&self, an: &Solver) -> Stamps;
     fn create_matrix_elems(&mut self, mat: &mut Matrix);
 }
 
@@ -81,7 +81,7 @@ impl Component for Vsrc {
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
         self.in_ = make_matrix_elem(mat, Some(self.ivar), self.n);
     }
-    fn load(&self, _an: &DcOp) -> Stamps {
+    fn load(&self, _an: &Solver) -> Stamps {
         return Stamps {
             g: vec![
                 (self.pi, 1.0),
@@ -122,6 +122,7 @@ impl Capacitor {
 
 const THE_TIMESTEP: f64 = 1e-9;
 
+
 impl Component for Capacitor {
     fn create_matrix_elems(&mut self, mat: &mut Matrix) {
         self.pp = make_matrix_elem(mat, self.p, self.p);
@@ -137,7 +138,7 @@ impl Component for Capacitor {
         self.i = vd * self.c / THE_TIMESTEP;
         self.g = self.c / THE_TIMESTEP;
     }
-    fn load(&self, an: &DcOp) -> Stamps {
+    fn load(&self, an: &Solver) -> Stamps {
         if an.an_mode != AnalysisMode::TRAN {
             return Stamps::new();
         }
@@ -209,7 +210,7 @@ impl Component for Resistor {
             }
         }
     }
-    fn load(&self, _an: &DcOp) -> Stamps {
+    fn load(&self, _an: &Solver) -> Stamps {
         use TwoTerm::{P, N};
         return Stamps {
             g: vec![
@@ -286,7 +287,7 @@ impl Component for Mos {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&self, an: &DcOp) -> Stamps {
+    fn load(&self, an: &Solver) -> Stamps {
         use MosTerm::{G, D, S, B};
 
         let vg = an.get_v(self.ports[G]);
@@ -358,7 +359,7 @@ impl Component for Diode {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&self, an: &DcOp) -> Stamps {
+    fn load(&self, an: &Solver) -> Stamps {
         let vp = an.get_v(self.p);
         let vn = an.get_v(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);
@@ -390,7 +391,7 @@ struct Isrc {
 
 impl Component for Isrc {
     fn create_matrix_elems(&mut self, _mat: &mut Matrix) {}
-    fn load(&self, _an: &DcOp) -> Stamps {
+    fn load(&self, _an: &Solver) -> Stamps {
         return Stamps {
             g: vec![],
             j: vec![],
@@ -469,7 +470,7 @@ impl Variables {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum AnalysisMode { OP, DC, TRAN, AC }
 
-struct DcOp {
+struct Solver {
     comps: Vec<Box<dyn Component>>,
     vars: Variables,
     mat: Matrix,
@@ -478,7 +479,7 @@ struct DcOp {
     an_mode: AnalysisMode,
 }
 
-impl DcOp {
+impl Solver {
     fn add_comp(&mut self, comp: &CompParse) {
         match *comp {
             CompParse::R(g, p, n) => {
@@ -518,8 +519,8 @@ impl DcOp {
         }
     }
     fn get_v(&self, idx: Option<VarIndex>) -> f64 { self.vars.get(idx) }
-    fn new(ckt: CktParse) -> DcOp {
-        let mut op = DcOp {
+    fn new(ckt: CktParse) -> Solver {
+        let mut op = Solver {
             comps: vec![],
             vars: Variables::all_v(ckt.nodes),
             mat: Matrix::new(),
@@ -611,12 +612,12 @@ impl DcOp {
 }
 
 pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
-    let mut op = DcOp::new(ckt);
-    return op.solve();
+    let mut s = Solver::new(ckt);
+    return s.solve();
 }
 
 struct Tran {
-    solver: DcOp,
+    solver: Solver,
     tstop: usize,
     vic: Vec<usize>,
     ric: Vec<usize>,
@@ -624,7 +625,7 @@ struct Tran {
 
 impl Tran {
     fn new(ckt: CktParse) -> Tran {
-        let solver = DcOp::new(ckt);
+        let solver = Solver::new(ckt);
         return Tran {
             solver,
             tstop: 200,
@@ -728,9 +729,13 @@ impl Tran {
     }
 }
 
+pub struct TranOptions {
+    tstep: f64,
+    tstop: f64,
+}
+
 pub fn tran(ckt: CktParse) -> SpResult<Vec<Vec<f64>>> {
-    let mut tran = Tran::new(ckt);
-    return tran.solve();
+    return Tran::new(ckt).solve();
 }
 
 #[cfg(test)]
@@ -762,8 +767,8 @@ mod tests {
             nodes: 1,
             comps: vec![CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![0.0]);
         Ok(())
     }
@@ -771,8 +776,8 @@ mod tests {
     #[test]
     fn test_dcop2() -> TestResult {
         let ckt = parse_ckt();
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![1.0, ]);
         Ok(())
     }
@@ -788,8 +793,8 @@ mod tests {
                 CompParse::I(1e-3, NodeRef::Num(1), NodeRef::Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] - 1.0).abs() < 1e-4);
         assert!((soln[1] - 2.0).abs() < 1e-4);
         Ok(())
@@ -806,8 +811,8 @@ mod tests {
                 CompParse::R(2e-3, NodeRef::Num(0), NodeRef::Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![0.5, 1.0, -1e-3]);
         Ok(())
     }
@@ -823,8 +828,8 @@ mod tests {
                 CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] - 0.7).abs() < 1e-3);
         Ok(())
     }
@@ -840,8 +845,8 @@ mod tests {
                 CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] - 0.7).abs() < 1e-3);
         Ok(())
     }
@@ -858,8 +863,8 @@ mod tests {
                 CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], 1.0);
         assert_eq!(soln[1], 1.0);
         assert_eq!(soln[2], 0.0);
@@ -879,8 +884,8 @@ mod tests {
                 CompParse::Mos(false, Num(0), Num(1), Gnd, Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], -1.0);
         assert_eq!(soln[1], -1.0);
         assert_eq!(soln[2], 0.0);
@@ -900,8 +905,8 @@ mod tests {
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] - 0.697).abs() < 1e-3);
         Ok(())
     }
@@ -918,8 +923,8 @@ mod tests {
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] - 0.697).abs() < 1e-3);
         Ok(())
     }
@@ -936,8 +941,8 @@ mod tests {
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] + 0.697).abs() < 1e-3);
         Ok(())
     }
@@ -954,8 +959,8 @@ mod tests {
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert!((soln[0] + 0.697).abs() < 1e-3);
         Ok(())
     }
@@ -971,8 +976,8 @@ mod tests {
                 CompParse::Mos(true, Num(0), Num(0), Gnd, Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
         Ok(())
     }
@@ -988,8 +993,8 @@ mod tests {
                 CompParse::Mos(true, Num(0), Gnd, Num(0), Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
         Ok(())
     }
@@ -1005,8 +1010,8 @@ mod tests {
                 CompParse::Mos(false, Num(0), Num(0), Gnd, Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
         Ok(())
     }
@@ -1022,8 +1027,8 @@ mod tests {
                 CompParse::Mos(false, Num(0), Gnd, Num(0), Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
         Ok(())
     }
@@ -1040,8 +1045,8 @@ mod tests {
                 CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], 1.0);
         assert!(soln[1] < 50e-3);
         assert!((soln[2] + 1e-3).abs() < 0.1e-3);
@@ -1060,8 +1065,8 @@ mod tests {
                 CompParse::Mos(false, Num(0), Num(1), Gnd, Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln[0], -1.0);
         assert!(soln[1].abs() < 50e-3);
         assert!((soln[2] - 1e-3).abs() < 0.1e-3);
@@ -1081,8 +1086,8 @@ mod tests {
                 CompParse::R(1e-9, Num(1), Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![1.0, 0.0, 0.0]);
         Ok(())
     }
@@ -1100,8 +1105,8 @@ mod tests {
                 CompParse::R(1e-9, Num(1), Num(0)),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![1.0, 1.0, 0.0]);
         Ok(())
     }
@@ -1128,8 +1133,8 @@ mod tests {
                 CompParse::R(1e-9, Num(4), Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert(soln[0]).eq(1.0)?;
         assert!(soln[1].abs() < 1e-3);
         assert!((soln[2] - 1.0).abs() < 1e-3);
@@ -1151,8 +1156,8 @@ mod tests {
                 CompParse::C(1e-9, Num(1), Gnd),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![1.0, 1.0, 0.0]);
         Ok(())
     }
@@ -1169,8 +1174,8 @@ mod tests {
                 CompParse::C(1e-9, Num(1), Num(0)),
             ],
         };
-        let mut dcop = DcOp::new(ckt);
-        let soln = dcop.solve()?;
+
+        let soln = dcop(ckt)?;
         assert_eq!(soln, vec![1.0, 0.0, 0.0]);
         Ok(())
     }
