@@ -47,12 +47,12 @@ fn get_v(x: &Vec<f64>, n: Option<VarIndex>) -> f64 {
 }
 
 trait Component {
-    fn tstep(&mut self, _an: &Vec<f64>) {}
+    fn tstep(&mut self, _guess: &Vec<f64>) {}
 
     fn update(&mut self, _val: f64) {}
     // FIXME: prob not for every Component
 
-    fn load(&self, an: &Solver) -> Stamps;
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps;
     fn create_matrix_elems(&mut self, mat: &mut Matrix);
 }
 
@@ -81,7 +81,7 @@ impl Component for Vsrc {
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
         self.in_ = make_matrix_elem(mat, Some(self.ivar), self.n);
     }
-    fn load(&self, _an: &Solver) -> Stamps {
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
         return Stamps {
             g: vec![
                 (self.pi, 1.0),
@@ -95,18 +95,40 @@ impl Component for Vsrc {
     }
 }
 
+/// Numerical Integration
+/// Calculated (G,I) from charge and time changes and derivative
+fn num_integ(q: f64, qp: f64, dq_dv: f64, vguess: f64, ip: Option<f64>, dt: f64) -> (f64, f64, f64) {
+    // You can have any method you want, as long as its Backward Euler
+    // let g = dq_dv / dt;
+    // let i = (q - qp) / dt;
+    // let rhs = i - g * vguess;
+
+    // You can have any method you want, as long as its TRAP
+    let g = 2.0 * dq_dv / dt;
+    let i = 2.0 * (q - qp) / dt - ip.unwrap();
+    let rhs = i - g * vguess;
+    return (g, i, rhs);
+}
+
 #[derive(Default)]
 struct Capacitor {
     c: f64,
     p: Option<VarIndex>,
     n: Option<VarIndex>,
-    g: f64,
-    i: f64,
-    vp: f64,
     pp: Option<Eindex>,
     nn: Option<Eindex>,
     pn: Option<Eindex>,
     np: Option<Eindex>,
+    op: CapOpPoint,
+    guess: CapOpPoint,
+}
+
+
+#[derive(Clone, Copy, Default)]
+struct CapOpPoint {
+    v: f64,
+    q: f64,
+    i: f64,
 }
 
 impl Capacitor {
@@ -117,6 +139,12 @@ impl Capacitor {
             n,
             ..Default::default()
         }
+    }
+    fn q(&self, v: f64) -> f64 {
+        return self.c * v;
+    }
+    fn dq_dv(&self, v: f64) -> f64 {
+        return self.c;
     }
 }
 
@@ -130,21 +158,25 @@ impl Component for Capacitor {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
+    /// Load our last guess as the new operating point
     fn tstep(&mut self, x: &Vec<f64>) {
-        let vp = get_v(x, self.p);
-        let vn = get_v(x, self.n);
-        let vd = vp - vn;
-        self.vp = vd;
-        self.i = vd * self.c / THE_TIMESTEP;
-        self.g = self.c / THE_TIMESTEP;
+        self.op = self.guess;
     }
-    fn load(&self, an: &Solver) -> Stamps {
-        if an.an_mode != AnalysisMode::TRAN {
-            return Stamps::new();
-        }
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+        let vd = guess.get(self.p) - guess.get(self.n);
+        let q = self.q(vd);
 
-        let i = self.c * self.vp / THE_TIMESTEP;
-        let g = self.c / THE_TIMESTEP;
+        let data = match *an {
+            AnalysisInfo::TRAN(d) => d,
+            _ => {
+                // FIXME: calculating this during DCOP, so we copy cleanly afterward
+                // Should probably just find a way to calculate it then
+                self.guess = CapOpPoint { v: vd, q: q, i: 0.0 };
+                return Stamps::new();
+            }
+        };
+        let (g, i, rhs) = num_integ(q, self.op.q, self.dq_dv(vd), vd, Some(self.op.i), THE_TIMESTEP);
+        self.guess = CapOpPoint { v: vd, q: q, i: i };
 
         return Stamps {
             j: vec![],
@@ -155,8 +187,8 @@ impl Component for Capacitor {
                 (self.np, -g),
             ],
             b: vec![
-                (self.p, i),
-                (self.n, -i)
+                (self.p, -rhs),
+                (self.n, rhs)
             ],
         };
     }
@@ -210,7 +242,7 @@ impl Component for Resistor {
             }
         }
     }
-    fn load(&self, _an: &Solver) -> Stamps {
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
         use TwoTerm::{P, N};
         return Stamps {
             g: vec![
@@ -287,13 +319,13 @@ impl Component for Mos {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&self, an: &Solver) -> Stamps {
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
         use MosTerm::{G, D, S, B};
 
-        let vg = an.get_v(self.ports[G]);
-        let vd = an.get_v(self.ports[D]);
-        let vs = an.get_v(self.ports[S]);
-        let vb = an.get_v(self.ports[B]);
+        let vg = guess.get(self.ports[G]);
+        let vd = guess.get(self.ports[D]);
+        let vs = guess.get(self.ports[S]);
+        let vb = guess.get(self.ports[B]);
         println!("vg={} vd={} vs={} vb={}", vg, vd, vs, vb);
 
         let p = if self.polarity { 1.0 } else { -1.0 };
@@ -359,9 +391,9 @@ impl Component for Diode {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&self, an: &Solver) -> Stamps {
-        let vp = an.get_v(self.p);
-        let vn = an.get_v(self.n);
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+        let vp = guess.get(self.p);
+        let vn = guess.get(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);
         let i = self.isat * ((vd / self.vt).exp() - 1.0);
         let di_dv = (self.isat / self.vt) * (vd / self.vt).exp();
@@ -391,7 +423,7 @@ struct Isrc {
 
 impl Component for Isrc {
     fn create_matrix_elems(&mut self, _mat: &mut Matrix) {}
-    fn load(&self, _an: &Solver) -> Stamps {
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
         return Stamps {
             g: vec![],
             j: vec![],
@@ -539,7 +571,7 @@ impl Solver {
         }
         return op;
     }
-    fn solve(&mut self) -> SpResult<Vec<f64>> {
+    fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<f64>> {
         let mut dx = vec![0.0; self.vars.len()];
 
         for _k in 0..20 {
@@ -552,8 +584,8 @@ impl Solver {
 
             // Load up component updates
             let mut jupdates: Vec<(Option<Eindex>, f64)> = vec![];
-            for comp in self.comps.iter() {
-                let updates = comp.load(&self);
+            for comp in self.comps.iter_mut() {
+                let updates = comp.load(&self.vars, an);
                 // Make updates for G and b
                 for upd in updates.g.iter() {
                     if let (Some(ei), val) = *upd {
@@ -613,7 +645,7 @@ impl Solver {
 
 pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
     let mut s = Solver::new(ckt);
-    return s.solve();
+    return s.solve(&AnalysisInfo::OP);
 }
 
 struct Tran {
@@ -621,6 +653,11 @@ struct Tran {
     tstop: usize,
     vic: Vec<usize>,
     ric: Vec<usize>,
+}
+
+enum AnalysisInfo<'a> {
+    OP,
+    TRAN(&'a Vec<f64>),
 }
 
 impl Tran {
@@ -632,6 +669,19 @@ impl Tran {
             vic: vec![],
             ric: vec![],
         };
+    }
+    fn ic(&mut self, n: NodeRef, val: f64) {
+        let fnode = self.solver.vars.add(VarKind::V);
+        let ivar = self.solver.vars.add(VarKind::I);
+
+        let mut r = Resistor::new(1.0, Some(fnode), n.into());
+        r.create_matrix_elems(&mut self.solver.mat);
+        self.solver.comps.push(Box::new(r));
+        self.ric.push(self.solver.comps.len() - 1);
+        let mut v = Vsrc::new(val, Some(fnode), None, ivar);
+        v.create_matrix_elems(&mut self.solver.mat);
+        self.solver.comps.push(Box::new(v));
+        self.vic.push(self.solver.comps.len() - 1);
     }
     fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
         use std::thread;
@@ -646,7 +696,6 @@ impl Tran {
         let t = thread::spawn(move || {
             use std::fs::File;
             use serde::ser::{SerializeSeq, Serializer};
-            use serde_json::to_writer;
 
             let mut res: Vec<Vec<f64>> = vec![];
 
@@ -668,7 +717,7 @@ impl Tran {
                 };
             }
         });
-        let tsoln = self.solver.solve();
+        let tsoln = self.solver.solve(&AnalysisInfo::OP);
         let tpoint = match tsoln {
             Ok(x) => x,
             Err(e) => {
@@ -685,11 +734,12 @@ impl Tran {
         for c in self.solver.comps.iter_mut() {
             c.tstep(&tpoint);
         }
+        let mut state = tpoint.clone();
         tx.send(IoWriterMessage::DATA(tpoint));
 
         self.solver.an_mode = AnalysisMode::TRAN;
         for _t in 1..self.tstop {
-            let tsoln = self.solver.solve();
+            let tsoln = self.solver.solve(&AnalysisInfo::TRAN(&state));
             let tpoint = match tsoln {
                 Ok(x) => x,
                 Err(e) => {
@@ -713,19 +763,6 @@ impl Tran {
             }
         }
         Err("Tran Results Failure")
-    }
-    fn ic(&mut self, n: NodeRef, val: f64) {
-        let fnode = self.solver.vars.add(VarKind::V);
-        let ivar = self.solver.vars.add(VarKind::I);
-
-        let mut r = Resistor::new(1.0, Some(fnode), n.into());
-        r.create_matrix_elems(&mut self.solver.mat);
-        self.solver.comps.push(Box::new(r));
-        self.ric.push(self.solver.comps.len() - 1);
-        let mut v = Vsrc::new(val, Some(fnode), None, ivar);
-        v.create_matrix_elems(&mut self.solver.mat);
-        self.solver.comps.push(Box::new(v));
-        self.vic.push(self.solver.comps.len() - 1);
     }
 }
 
