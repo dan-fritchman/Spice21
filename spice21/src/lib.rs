@@ -289,6 +289,185 @@ impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
     }
 }
 
+enum MosType { NMOS = 1, PMOS = -1 }
+
+struct Mos1Model {
+    mos_type: MosType,
+    vt0: f64,
+    kp: f64,
+    gamma: f64,
+    phi: f64,
+    lambda: f64,
+    rd: f64,
+    rs: f64,
+    cbd: f64,
+    cbs: f64,
+    is: f64,
+    pb: f64,
+    cgso: f64,
+    cgdo: f64,
+    cgbo: f64,
+    rsh: f64,
+    cj: f64,
+    mj: f64,
+    cjsw: f64,
+    mjsw: f64,
+    js: f64,
+    tox: f64,
+    ld: f64,
+    u0: f64,
+    fc: f64,
+    nsub: f64,
+    tpg: bool,
+    nss: f64,
+    tnom: f64,
+    kf: f64,
+    af: f64,
+}
+
+impl Default for Mos1Model {
+    fn default() -> Mos1Model {
+        Mos1Model {
+            mos_type: MosType::NMOS,
+            vt0: 0.0,
+            kp: 2.0e-5,
+            gamma: 0.0,
+            phi: 0.6,
+            lambda: 0.0,
+            rd: 0.0,
+            rs: 0.0,
+            cbd: 0.0,
+            cbs: 0.0,
+            is: 1.0e-14,
+            pb: 0.8,
+            cgso: 0.0,
+            cgdo: 0.0,
+            cgbo: 0.0,
+            rsh: 0.0,
+            cj: 0.0,
+            mj: 0.5,
+            cjsw: 0.0,
+            mjsw: 0.5,
+            js: 1.0e-8, // FIXME
+            tox: 1.0e-7,
+            nsub: 0.0,
+            nss: 0.0,
+            tpg: false,
+            ld: 0.0,
+            u0: 600.0,
+            fc: 0.5,
+            kf: 0.0,
+            af: 1.0,
+            tnom: 27.0,
+        }
+    }
+}
+
+struct Mos1InstanceParams {
+    m: f64,
+    l: f64,
+    w: f64,
+    a_d: f64,
+    a_s: f64,
+    pd: f64,
+    ps: f64,
+    nrd: f64,
+    nrs: f64,
+    off: bool,
+    icvds: f64,
+    icvgs: f64,
+    icvbs: f64,
+    temp: f64,
+    dtemp: f64,
+    ic: f64,
+}
+
+struct Mos1OpPoint {
+    id: f64,
+    is: f64,
+    ig: f64,
+    ib: f64,
+    ibd: f64,
+    ibs: f64,
+    vgs: f64,
+    vds: f64,
+    vbs: f64,
+    vbd: f64,
+
+    von: f64,
+    vdsat: f64,
+    sourcevcrit: f64,
+    drainvcrit: f64,
+    rs: f64,
+    sourceconductance: f64,
+    rd: f64,
+    drainconductance: f64,
+
+    gm: f64,
+    gds: f64,
+    gmb: f64,
+    gmbs: f64,
+    gbd: f64,
+    gbs: f64,
+
+    cbd: f64,
+    cbs: f64,
+    cgs: f64,
+    cgd: f64,
+    cgb: f64,
+
+    cqgs: f64,
+    cqgd: f64,
+    cqgb: f64,
+    cqbd: f64,
+    cqbs: f64,
+
+    cbd0: f64,
+    cbdsw0: f64,
+    cbs0: f64,
+    cbssw0: f64,
+
+    qgs: f64,
+    qgd: f64,
+    qgb: f64,
+    qbd: f64,
+    qbs: f64,
+    pwr: f64,
+}
+
+struct Mos1<'a> {
+    model: &'a Mos1Model,
+    params: Mos1InstanceParams,
+    op: Mos1OpPoint,
+    guess: Mos1OpPoint,
+    ports: MosTerminals,
+    matps: MosMatrixPointers,
+}
+
+//impl Mos1 {
+//    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+//
+//        // Sort out which are the "reported" drain and source terminals (sr, dr)
+//        let (sr, dr) = if !reversed { (S, D) } else { (D, S) };
+//        return Stamps {
+//            g: vec![],
+//            j: vec![
+//                (self.matps[(dr, dr)], gds),
+//                (self.matps[(sr, sr)], (gm + gds)),
+//                (self.matps[(dr, sr)], -(gm + gds)),
+//                (self.matps[(sr, dr)], -gds),
+//                (self.matps[(dr, G)], gm),
+//                (self.matps[(sr, G)], -gm),
+//            ],
+//            b: vec![
+//                (self.ports[dr], -p * ids),
+//                (self.ports[sr], p * ids),
+//                (self.ports[G], p * ids),
+//            ],
+//        };
+//    }
+//}
+
 struct Mos {
     vth: f64,
     beta: f64,
@@ -354,9 +533,10 @@ impl Component for Mos {
         }
         // Sort out which are the "reported" drain and source terminals (sr, dr)
         let (sr, dr) = if !reversed { (S, D) } else { (D, S) };
+        let irhs = ids - gm * vgs - gds * vds;
         return Stamps {
-            g: vec![],
-            j: vec![
+            j: vec![],
+            g: vec![
                 (self.matps[(dr, dr)], gds),
                 (self.matps[(sr, sr)], (gm + gds)),
                 (self.matps[(dr, sr)], -(gm + gds)),
@@ -365,8 +545,8 @@ impl Component for Mos {
                 (self.matps[(sr, G)], -gm),
             ],
             b: vec![
-                (self.ports[dr], -p * ids),
-                (self.ports[sr], p * ids),
+                (self.ports[dr], -p * irhs),
+                (self.ports[sr], p * irhs),
             ],
         };
     }
@@ -397,18 +577,19 @@ impl Component for Diode {
         let vd = (vp - vn).max(-1.5).min(1.5);
         let i = self.isat * ((vd / self.vt).exp() - 1.0);
         let di_dv = (self.isat / self.vt) * (vd / self.vt).exp();
+        let irhs = i - vd * di_dv;
 
         return Stamps {
-            g: vec![],
-            j: vec![
+            j: vec![],
+            g: vec![
                 (self.pp, di_dv),
                 (self.nn, di_dv),
                 (self.pn, -di_dv),
                 (self.np, -di_dv)
             ],
             b: vec![
-                (self.p, -i), // FIXME: signs
-                (self.n, -i)
+                (self.p, -irhs),
+                (self.n, irhs)
             ],
         };
     }
@@ -445,6 +626,7 @@ enum NodeRef {
 struct Stamps {
     g: Vec<(Option<Eindex>, f64)>,
     j: Vec<(Option<Eindex>, f64)>,
+    // FIXME: j can go!
     b: Vec<(Option<VarIndex>, f64)>,
 }
 
@@ -542,8 +724,11 @@ impl Solver {
                 self.comps.push(Box::new(v));
             }
             CompParse::Mos(pol, g, d, s, b) => {
+//                let dp = self.vars.add(VarKind::V);
+//                let sp = self.vars.add(VarKind::V);
                 let x = Mos::new(
                     &[g.into(), d.into(), s.into(), b.into()],
+//                    dp.into(), ds.into(),
                     0.25, 50e-3, 3e-3, pol,
                 );
                 self.comps.push(Box::new(x));
@@ -583,7 +768,7 @@ impl Solver {
             self.rhs = vec![0.0; self.vars.len()];
 
             // Load up component updates
-            let mut jupdates: Vec<(Option<Eindex>, f64)> = vec![];
+            let mut jupdates: Vec<(Option<Eindex>, f64)> = vec![]; // FIXME: get ridda J
             for comp in self.comps.iter_mut() {
                 let updates = comp.load(&self.vars, an);
                 // Make updates for G and b
