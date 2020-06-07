@@ -15,6 +15,7 @@ enum CompParse {
     V(f64, NodeRef, NodeRef),
     D(f64, f64, NodeRef, NodeRef),
     Mos(bool, NodeRef, NodeRef, NodeRef, NodeRef),
+    Mos1(Mos1Model, Mos1InstanceParams, NodeRef, NodeRef, NodeRef, NodeRef),
     C(f64, NodeRef, NodeRef),
 }
 
@@ -276,6 +277,15 @@ impl Index<MosTerm> for MosTerminals {
     fn index(&self, t: MosTerm) -> &Option<VarIndex> { &self.0[t as usize] }
 }
 
+impl From<[&NodeRef; 4]> for MosTerminals {
+    fn from(n: [&NodeRef; 4]) -> Self {
+        return MosTerminals(
+            [n[0].into(), n[1].into(), n[2].into(), n[3].into()]
+        );
+    }
+}
+
+#[derive(Default)]
 struct MosMatrixPointers([[Option<Eindex>; 4]; 4]);
 
 impl Index<(MosTerm, MosTerm)> for MosMatrixPointers {
@@ -289,8 +299,11 @@ impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
     }
 }
 
-enum MosType { NMOS = 1, PMOS = -1 }
+#[derive(Clone)]
+enum MosType { NMOS, PMOS }
 
+// FIXME: should reference instead of cloning, when we can get it to play nicely with `Box<dyn Comp>`
+#[derive(Clone)]
 struct Mos1Model {
     mos_type: MosType,
     vt0: f64,
@@ -363,6 +376,7 @@ impl Default for Mos1Model {
     }
 }
 
+#[derive(Default, Clone, Copy, Debug)]
 struct Mos1InstanceParams {
     m: f64,
     l: f64,
@@ -382,6 +396,25 @@ struct Mos1InstanceParams {
     ic: f64,
 }
 
+/// Mos1 Internal "Parameters", derived at instance-construction
+/// and updated only on changes in temperature
+#[derive(Default)]
+struct Mos1InternalParams {
+    temp: f64,
+    vt_t: f64,
+    phi_t: f64,
+    beta: f64,
+    cox: f64,
+    cgs_ov: f64,
+    cgd_ov: f64,
+    cgb_ov: f64,
+    leff: f64,
+    isat_bd: f64,
+    isat_bs: f64,
+}
+
+/// Mos1 DC & Transient Operating Point
+#[derive(Default)]
 struct Mos1OpPoint {
     id: f64,
     is: f64,
@@ -393,6 +426,8 @@ struct Mos1OpPoint {
     vds: f64,
     vbs: f64,
     vbd: f64,
+    vgd: f64,
+    vgb: f64,
 
     von: f64,
     vdsat: f64,
@@ -435,38 +470,193 @@ struct Mos1OpPoint {
     pwr: f64,
 }
 
-struct Mos1<'a> {
-    model: &'a Mos1Model,
+struct Mos1 {
+    model: Mos1Model,
     params: Mos1InstanceParams,
+    intparams: Mos1InternalParams,
     op: Mos1OpPoint,
     guess: Mos1OpPoint,
     ports: MosTerminals,
     matps: MosMatrixPointers,
 }
 
-//impl Mos1 {
-//    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
-//
-//        // Sort out which are the "reported" drain and source terminals (sr, dr)
-//        let (sr, dr) = if !reversed { (S, D) } else { (D, S) };
-//        return Stamps {
-//            g: vec![],
-//            j: vec![
-//                (self.matps[(dr, dr)], gds),
-//                (self.matps[(sr, sr)], (gm + gds)),
-//                (self.matps[(dr, sr)], -(gm + gds)),
-//                (self.matps[(sr, dr)], -gds),
-//                (self.matps[(dr, G)], gm),
-//                (self.matps[(sr, G)], -gm),
-//            ],
-//            b: vec![
-//                (self.ports[dr], -p * ids),
-//                (self.ports[sr], p * ids),
-//                (self.ports[G], p * ids),
-//            ],
-//        };
-//    }
-//}
+impl Mos1 {
+    fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosTerminals) -> Mos1 {
+        let intparams = Mos1::derive(&model, &params);
+        Mos1 { model, params, intparams, ports, op: Mos1OpPoint::default(), guess: Mos1OpPoint::default(), matps: MosMatrixPointers::default() }
+    }
+    /// Calculate derived parameters from instance parameters
+    fn derive(model: &Mos1Model, inst: &Mos1InstanceParams) -> Mos1InternalParams {
+        Mos1InternalParams { ..Default::default() } // FIXME!
+    }
+}
+
+impl Component for Mos1 {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+        use MosTerm::{G, D, S};
+        let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
+        for (t1, t2) in matps.iter() {
+            self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
+        }
+    }
+    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+        use MosTerm::{G, D, S, B};
+
+        let vg = guess.get(self.ports[G]);
+        let vd = guess.get(self.ports[D]);
+        let vs = guess.get(self.ports[S]);
+        let vb = guess.get(self.ports[B]);
+        println!("vg={} vd={} vs={} vb={}", vg, vd, vs, vb);
+
+        // Initially factor out polarity of NMOS/PMOS and source/drain swapping
+        // All math after this block uses increasing vgs,vds <=> increasing ids,
+        // e.g. the polarities typically expressed for NMOS
+        let p = match self.model.mos_type { MosType::NMOS => 1.0, MosType::PMOS => -1.0 };
+        let vds1 = p * (vd - vs);
+        let reversed = vds1 < 0.0;
+        let vgs = if reversed { p * (vg - vd) } else { p * (vg - vs) };
+        let vds = if reversed { -vds1 } else { vds1 };
+        let vsb = if reversed { vd - vb } else { vs - vb };
+        let vdb = if reversed { vs - vb } else { vd - vb };
+
+        let von = if vsb > 0.0 {
+            self.intparams.vt_t + self.model.gamma * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
+        } else {
+            self.intparams.vt_t // FIXME: body effect for Vsb < 0
+        };
+
+        let vov = vgs - von;
+        let vdsat = vov.max(0.0);
+
+        let mut ids = 0.0;
+        let mut gm = 0.0;
+        let mut gds = 0.0;
+        let mut gmbs = 0.0;
+        if vov <= 0.0 { // Cutoff
+            // Already set
+            println!("CUTOFF: vgs={} vds={}", vgs, vds);
+        } else if vds >= vov { // Sat
+            ids = self.intparams.beta / 2.0 * vov.powi(2) * (1.0 + self.model.lambda * vds);
+            gm = self.intparams.beta * vov * (1.0 + self.model.lambda * vds);
+            gds = self.model.lambda * self.intparams.beta / 2.0 * vov.powi(2);
+            gmbs = gm * self.model.gamma / 2.0 / (2.0 * self.intparams.phi_t + vsb).sqrt();
+            println!("SAT: vgs={} vds={}, ids={}, gm={}, gds={}", vgs, vds, ids, gm, gds);
+        } else { //Triode
+            ids = self.intparams.beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + self.model.lambda * vds);
+            gm = self.intparams.beta * vds * (1.0 + self.model.lambda * vds);
+            gds = self.intparams.beta * ((vov - vds) * (1.0 + self.model.lambda * vds) + self.model.lambda * ((vov * vds) - vds.powi(2) / 2.0));
+            gmbs = gm * self.model.gamma / 2.0 / (2.0 * self.intparams.phi_t + vsb).sqrt();
+            println!("LIN: vgs={} vds={}, ids={}, gm={}, gds={}", vgs, vds, ids, gm, gds);
+        }
+        let vgs1 = self.op.vgs;
+        let vgd1 = self.op.vgd;
+        let vgb1 = self.op.vgb;
+
+        let mut capgs: f64;
+        let mut capgd: f64;
+        let mut capgb: f64;
+        let cox = self.intparams.cox;
+
+        if (vov <= -self.intparams.phi_t) {
+            capgb = cox / 2.0;
+            capgs = 0.0;
+            capgd = 0.0;
+        } else if (vov <= -self.intparams.phi_t / 2.0) {
+            capgb = -vov * cox / (2.0 * self.intparams.phi_t);
+            capgs = 0.0;
+            capgd = 0.0;
+        } else if (vov <= 0.0) {
+            capgb = -vov * cox / (2.0 * self.intparams.phi_t);
+            capgs = vov * cox / (1.5 * self.intparams.phi_t) + cox / 3.0;
+            capgd = 0.0;
+        } else if (vdsat <= vds) {
+            capgs = cox / 3.0;
+            capgd = 0.0;
+            capgb = 0.0;
+        } else {
+            let vddif = 2.0 * vdsat - vds;
+            let vddif1 = vdsat - vds/*-1.0e-12*/;
+            let vddif2 = vddif * vddif;
+            capgd = cox * (1.0 - vdsat * vdsat / vddif2) / 3.0;
+            capgs = cox * (1.0 - vddif1 * vddif1 / vddif2) / 3.0;
+            capgb = 0.0;
+        }
+
+        // Now start incorporating past history
+        // FIXME: gotta sort out swaps in polarity between time-points
+        capgs += self.op.cgs + self.intparams.cgs_ov;
+        capgd += self.op.cgd + self.intparams.cgd_ov;
+        capgb += self.op.cgb + self.intparams.cgb_ov;
+
+        let vgd = vgs - vds;
+        let vgb = vgs + vsb;
+
+        let qgs = (vgs - vgs1) * capgs + self.op.qgs;
+        let qgd = (vgd - vgd1) * capgd + self.op.qgd;
+        let qgb = (vgb - vgb1) * capgb + self.op.qgb;
+
+        let (gcgs, mut ceqgs, rhsgs) = num_integ(qgs, self.op.qgs, capgs, vgs, None, THE_TIMESTEP);
+        let (gcgd, mut ceqgd, rhsgd) = num_integ(qgd, self.op.qgd, capgd, vgd, None, THE_TIMESTEP);
+        let (gcgb, mut ceqgb, rhsgb) = num_integ(qgb, self.op.qgb, capgb, vgb, None, THE_TIMESTEP);
+        ceqgs -= (gcgs * vgs - 2.0 * qgs / THE_TIMESTEP);
+        ceqgd -= (gcgd * vgd - 2.0 * qgd / THE_TIMESTEP);
+        ceqgb -= (gcgd * vgb - 2.0 * qgb / THE_TIMESTEP);
+
+        // FIXME: bulk junction diodes
+        let cbs = 0.0;
+        let cbd = 0.0;
+        let gbd = 0.0;
+        let gbs = 0.0;
+        let gcbd = 0.0;
+        let gcbs = 0.0;
+        let gcbg = 0.0;
+        // FIXME: terminal resistances
+        let grd = 0.0;
+        let grs = 0.0;
+
+        // Bulk junction caps RHS adjustment
+        let ceqbs = p * (cbs + gbs * vsb);
+        let ceqbd = p * (cbd + gbd * vdb);
+        let irhs = ids - gm * vgs - gds * vds;
+
+        // Sort out which are the "reported" drain and source terminals (sr, dr)
+        let (sr, sx, dr, dx) = if !reversed { (S, S, D, D) } else { (D, D, S, S) };
+        return Stamps {
+            j: vec![],
+            g: vec![
+                (self.matps[(dr, dr)], gds + grd + gbd + gcgd),
+                (self.matps[(sr, sr)], gm + gds + grs + gbs + gmbs + gcgs),
+                (self.matps[(dr, sr)], -gm - gds - gmbs),
+                (self.matps[(sr, dr)], -gds),
+                (self.matps[(dr, G)], gm - gcgd),
+                (self.matps[(sr, G)], -gm - gcgs),
+                (self.matps[(G, G)], (gcgd + gcgs + gcgb)),
+                (self.matps[(B, B)], (gbd + gbs + gcgb)),
+                (self.matps[(G, B)], -gcgb),
+                (self.matps[(G, dr)], -gcgd),
+                (self.matps[(G, sr)], -gcgs),
+                (self.matps[(B, G)], -gcbg),
+                (self.matps[(G, dr)], -gcgd),
+                (self.matps[(B, dr)], -gbd),
+                (self.matps[(B, sr)], -gbs),
+                (self.matps[(dr, B)], -gbd + gmbs),
+                (self.matps[(sr, B)], -gbs - gmbs),
+                (self.matps[(dx, dr)], -grd),
+                (self.matps[(dr, dx)], -grd),
+                (self.matps[(dx, dx)], grd),
+                (self.matps[(sx, sr)], -grs),
+                (self.matps[(sr, sx)], -grs),
+                (self.matps[(sx, sx)], grs),
+            ],
+            b: vec![
+                (self.ports[dr], -p * irhs + ceqbd + p * ceqgd),
+                (self.ports[sr], p * irhs + ceqbs + p * ceqgs),
+                (self.ports[G], -p * (ceqgs + ceqgb + ceqgd)),
+                (self.ports[B], -(ceqbs + ceqbd - p * ceqgb)),
+            ],
+        };
+    }
+}
 
 struct Mos {
     vth: f64,
@@ -478,13 +668,13 @@ struct Mos {
 }
 
 impl Mos {
-    fn new(ports: &[Option<VarIndex>; 4], vth: f64, beta: f64, lam: f64, polarity: bool) -> Mos {
+    fn new(ports: MosTerminals, vth: f64, beta: f64, lam: f64, polarity: bool) -> Mos {
         Mos {
             vth,
             beta,
             lam,
             polarity,
-            ports: MosTerminals(ports.clone()),
+            ports,
             matps: MosMatrixPointers([[None; 4]; 4]),
         }
     }
@@ -649,6 +839,7 @@ struct VarIndex(usize);
 use std::convert::From;
 use std::io::Write;
 
+/// Conversions from Nodes and their references
 impl From<NodeRef> for Option<VarIndex> {
     fn from(node: NodeRef) -> Self {
         match node {
@@ -657,6 +848,21 @@ impl From<NodeRef> for Option<VarIndex> {
         }
     }
 }
+
+impl From<&NodeRef> for Option<VarIndex> {
+    fn from(node: &NodeRef) -> Self { (*node).into() }
+}
+
+// This kinda thing doesn't quite work for arrays; maybe it can some day
+//impl From<[NodeRef; 4]> for [Option<VarIndex>; 4] {
+//    fn from(noderefs: [NodeRef; 4]) -> [Option<VarIndex>; 4] {
+//        let mut opts: [Option<VarIndex>; 4] = [None, None, None, None];
+//        for k in 0..noderefs.len() {
+//            opts[k] = noderefs[k].into();
+//        }
+//        return opts;
+//    }
+//}
 
 struct Variables {
     kinds: Vec<VarKind>,
@@ -695,23 +901,23 @@ struct Solver {
 
 impl Solver {
     fn add_comp(&mut self, comp: &CompParse) {
-        match *comp {
+        match comp {
             CompParse::R(g, p, n) => {
-                let r = Resistor::new(g, p.into(), n.into());
+                let r = Resistor::new(*g, p.into(), n.into());
                 self.comps.push(Box::new(r));
             }
             CompParse::C(c, p, n) => {
-                let c = Capacitor::new(c, p.into(), n.into());
+                let c = Capacitor::new(*c, p.into(), n.into());
                 self.comps.push(Box::new(c));
             }
             CompParse::I(i, p, n) => {
-                let i = Isrc { i, p: p.into(), n: n.into() };
+                let i = Isrc { i: *i, p: p.into(), n: n.into() };
                 self.comps.push(Box::new(i));
             }
             CompParse::D(isat, vt, p, n) => {
                 let c = Diode {
-                    isat,
-                    vt,
+                    isat: *isat,
+                    vt: *vt,
                     p: p.into(),
                     n: n.into(),
                     ..Default::default()
@@ -720,17 +926,21 @@ impl Solver {
             }
             CompParse::V(v, p, n) => {
                 let ivar = self.vars.add(VarKind::I);
-                let v = Vsrc::new(v, p.into(), n.into(), ivar);
+                let v = Vsrc::new(*v, p.into(), n.into(), ivar);
                 self.comps.push(Box::new(v));
             }
             CompParse::Mos(pol, g, d, s, b) => {
 //                let dp = self.vars.add(VarKind::V);
 //                let sp = self.vars.add(VarKind::V);
                 let x = Mos::new(
-                    &[g.into(), d.into(), s.into(), b.into()],
+                    [g, d, s, b].into(),
 //                    dp.into(), ds.into(),
-                    0.25, 50e-3, 3e-3, pol,
+                    0.25, 50e-3, 3e-3, *pol,
                 );
+                self.comps.push(Box::new(x));
+            }
+            CompParse::Mos1(model, params, g, d, s, b) => {
+                let x = Mos1::new(model.clone(), params.clone(), [g, d, s, b].into());
                 self.comps.push(Box::new(x));
             }
         }
@@ -979,7 +1189,13 @@ mod tests {
 
     #[test]
     fn test_ckt_parse() -> TestResult {
-        parse_ckt();
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            ],
+        };
         Ok(())
     }
 
@@ -997,7 +1213,13 @@ mod tests {
 
     #[test]
     fn test_dcop2() -> TestResult {
-        let ckt = parse_ckt();
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            ],
+        };
 
         let soln = dcop(ckt)?;
         assert_eq!(soln, vec![1.0, ]);
