@@ -9,6 +9,21 @@ pub mod assert;
 use spresult::SpResult;
 use sparse21::{Eindex, Matrix};
 
+use prost::Message;
+
+
+// Include the `items` module, which is generated from items.proto.
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/spice21.proto.rs"));
+    fn some() -> Circuit {
+        return Circuit {
+            name: String::from("tbd"),
+            statements: vec![
+//                Statement { statement: Some(Statement::Instance(Instance { name: String::from("???") })) }
+            ],
+        };
+    }
+}
 
 enum CompParse {
     R(f64, NodeRef, NodeRef),
@@ -540,8 +555,8 @@ impl Mos1 {
 impl Component for Mos1 {
     fn create_matrix_elems(&mut self, mat: &mut Matrix) {
         use MosTerm::{G, D, S, B};
-        for t1 in [G,D,S,B].iter() {
-            for t2 in [G,D,S,B].iter() {
+        for t1 in [G, D, S, B].iter() {
+            for t2 in [G, D, S, B].iter() {
                 self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
             }
         }

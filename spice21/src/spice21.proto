@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package spice21.proto;
+
+message Node {
+    string name = 1;
+}
+
+message Resistor {
+    Node p = 1;
+    Node n = 2;
+    float g = 3;
+}
+
+message Circuit {
+    string name = 1;
+    repeated Statement statements = 2;
+}
+
+message Sim {
+    Circuit ckt = 1;
+}
+
+message Instance {
+    string name = 1;
+}
+
+message Statement {
+    oneof statement {
+        Node node = 1;
+        Instance instance = 2;
+    }
+}
