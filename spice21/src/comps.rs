@@ -14,7 +14,7 @@ pub trait Component {
     // FIXME: prob not for every Component
 
     fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps;
-    fn create_matrix_elems(&mut self, mat: &mut Matrix);
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>);
 }
 
 pub struct Vsrc {
@@ -47,7 +47,7 @@ impl Component for Vsrc {
     fn update(&mut self, val: f64) {
         self.v = val;
     }
-    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
         self.pi = make_matrix_elem(mat, self.p, Some(self.ivar));
         self.ip = make_matrix_elem(mat, Some(self.ivar), self.p);
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
@@ -107,7 +107,7 @@ impl Capacitor {
 const THE_TIMESTEP: f64 = 1e-9;
 
 impl Component for Capacitor {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
         self.pp = make_matrix_elem(mat, self.p, self.p);
         self.pn = make_matrix_elem(mat, self.p, self.n);
         self.np = make_matrix_elem(mat, self.n, self.p);
@@ -196,7 +196,7 @@ impl Component for Resistor {
     fn update(&mut self, val: f64) {
         self.g = val;
     }
-    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
         use TwoTerm::{N, P};
         for l in [P, N].into_iter() {
             for r in [P, N].into_iter() {
@@ -523,7 +523,7 @@ impl Mos1 {
 }
 
 impl Component for Mos1 {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
         use MosTerm::{B, D, G, S};
         for t1 in [G, D, S, B].iter() {
             for t2 in [G, D, S, B].iter() {
@@ -774,7 +774,7 @@ impl Mos {
 }
 
 impl Component for Mos {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
         use MosTerm::{D, G, S};
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
@@ -871,7 +871,7 @@ impl Diode {
 }
 
 impl Component for Diode {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix) {
+    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
         self.pp = make_matrix_elem(mat, self.p, self.p);
         self.pn = make_matrix_elem(mat, self.p, self.n);
         self.np = make_matrix_elem(mat, self.n, self.p);
@@ -915,7 +915,7 @@ impl Isrc {
 }
 
 impl Component for Isrc {
-    fn create_matrix_elems(&mut self, _mat: &mut Matrix) {}
+    fn create_matrix_elems(&mut self, _mat: &mut Matrix<f64>) {}
     fn load(&mut self, _guess: &Variables, _an: &AnalysisInfo) -> Stamps {
         return Stamps {
             g: vec![],
@@ -926,7 +926,7 @@ impl Component for Isrc {
 
 /// Helper function to create matrix element at (row,col) if both are non-ground
 fn make_matrix_elem(
-    mat: &mut Matrix,
+    mat: &mut Matrix<f64>,
     row: Option<VarIndex>,
     col: Option<VarIndex>,
 ) -> Option<Eindex> {

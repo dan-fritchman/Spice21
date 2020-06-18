@@ -1,17 +1,32 @@
-use std::cmp::{max, min};
-
 use std::fmt;
+use std::cmp::{max, min};
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
+use num::{Num, Float, Zero, One};
+use num::traits::NumAssignOps;
+
 use super::assert::assert;
+
+// This long list of traits describes our required behavior for Numbers.
+pub trait SpNum: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug {}
+
+impl<T> SpNum for T where T: Clone + Copy + NumAssignOps + Zero + Num + Abs  + fmt::Display + fmt::Debug {}
+
+pub trait Abs {
+    fn absv(&self) -> f64;
+}
+
+impl Abs for f64 {
+    fn absv(&self) -> f64 { self.abs() }
+}
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eindex(usize);
 
 // `Entry`s are a type alias for tuples of (row, col, val).
-type Entry = (usize, usize, f64);
+type Entry<T> = (usize, usize, T);
 
 #[derive(Debug, Copy, Clone)]
 enum Axis {
@@ -59,25 +74,25 @@ impl<T> IndexMut<Axis> for AxisPair<T> {
 enum MatrixState { CREATED = 0, FACTORING, FACTORED, RESET }
 
 #[derive(Debug)]
-pub struct Element {
+pub struct Element<T: Num> {
     index: Eindex,
     row: usize,
     col: usize,
-    val: f64,
+    val: T,
     fillin: bool,
-    orig: (usize, usize, f64),
+    orig: (usize, usize, T),
     next_in_row: Option<Eindex>,
     next_in_col: Option<Eindex>,
 }
 
-impl PartialEq for Element {
+impl<T: SpNum> PartialEq for Element<T> {
     fn eq(&self, other: &Self) -> bool {
         return self.row == other.row && self.col == other.col && self.val == other.val;
     }
 }
 
-impl Element {
-    fn new(index: Eindex, row: usize, col: usize, val: f64, fillin: bool) -> Element {
+impl<T: SpNum> Element<T> {
+    fn new(index: Eindex, row: usize, col: usize, val: T, fillin: bool) -> Element<T> {
         Element {
             index,
             row,
@@ -213,19 +228,19 @@ const MARKOWITZ_CONFIG: MarkowitzConfig = MarkowitzConfig {
 };
 
 /// Sparse Matrix
-pub struct Matrix {
+pub struct Matrix<T: Num> {
     // Matrix.elements is the owner of all `Element`s.
     // Everything else gets referenced via `Eindex`es.
     state: MatrixState,
-    elements: Vec<Element>,
+    elements: Vec<Element<T>>,
     axes: AxisPair<AxisData>,
     diag: Vec<Option<Eindex>>,
     fillins: Vec<Eindex>,
 }
 
-impl Matrix {
+impl<T: SpNum> Matrix<T> {
     /// Create a new, initially empty `Matrix`
-    pub fn new() -> Matrix {
+    pub fn new() -> Matrix<T> {
         Matrix {
             state: MatrixState::CREATED,
             axes: AxisPair {
@@ -238,29 +253,20 @@ impl Matrix {
         }
     }
     /// Create a new `Matrix` from a vector of (row, col, val) `entries`.
-    pub fn from_entries(entries: Vec<Entry>) -> Matrix {
-        let mut m = Matrix::new();
+    pub fn from_entries(entries: Vec<Entry<T>>) -> Matrix<T> {
+        let mut m = Matrix::<T>::new();
         for e in entries.iter() {
             m.add_element(e.0, e.1, e.2);
         }
         return m;
     }
-    /// Create an n*n identity `Matrix`
-    ///
-    pub fn identity(n: usize) -> Matrix {
-        let mut m = Matrix::new();
-        for k in 0..n {
-            m.add_element(k, k, 1.0);
-        }
-        return m;
-    }
     /// Add an element at location `(row, col)` with value `val`.
-    pub fn add_element(&mut self, row: usize, col: usize, val: f64) {
+    pub fn add_element(&mut self, row: usize, col: usize, val: T) {
         self._add_element(row, col, val, false);
     }
     /// Add elements correspoding to each triplet `(row, col, val)`
-    /// Rows and columns are `usize`, and `vals` are `f64`.
-    pub fn add_elements(&mut self, elements: Vec<Entry>) {
+    /// Rows and columns are `usize`, and `vals` are `T`.
+    pub fn add_elements(&mut self, elements: Vec<Entry<T>>) {
         for e in elements.iter() {
             self.add_element(e.0, e.1, e.2);
         }
@@ -270,26 +276,27 @@ impl Matrix {
     pub fn make(&mut self, row: usize, col: usize) -> Eindex {
         return match self.get_elem(row, col) {
             Some(ei) => ei,
-            None => self._add_element(row, col, 0.0, false),
+            None => self._add_element(row, col, T::zero(), false),
         };
     }
     /// Reset all Elements to zero value.
     pub fn reset(&mut self) {
         for e in self.elements.iter_mut() {
-            e.val = 0.0;
+            e.val = T::zero();
         }
         self.state = MatrixState::RESET;
     }
     /// Update `Element` `ei` by `val`
-    pub fn update(&mut self, ei: Eindex, val: f64) {
-        self[ei].val += val;
+    pub fn update(&mut self, ei: Eindex, val: T) {
+        let tmp = self[ei].val + val;
+        self[ei].val = tmp;
     }
     /// Multiply by Vec
-    pub fn vecmul(&self, x: &Vec<f64>) -> SpResult<Vec<f64>> {
+    pub fn vecmul(&self, x: &Vec<T>) -> SpResult<Vec<T>> {
         if x.len() != self.num_cols() {
             return Err("Invalid Dimensions");
         }
-        let mut y: Vec<f64> = vec![0.0; self.num_rows()];
+        let mut y: Vec<T> = vec![T::zero(); self.num_rows()];
         for row in 0..self.num_rows() {
             let mut ep = self.hdr(ROWS, row);
             while let Some(ei) = ep {
@@ -299,8 +306,8 @@ impl Matrix {
         }
         return Ok(y);
     }
-    pub fn res(&self, x: &Vec<f64>, rhs: &Vec<f64>) -> SpResult<Vec<f64>> {
-        let mut xi: Vec<f64> = vec![0.0; self.num_cols()];
+    pub fn res(&self, x: &Vec<T>, rhs: &Vec<T>) -> SpResult<Vec<T>> {
+        let mut xi: Vec<T> = vec![T::zero(); self.num_cols()];
         if let Some(col_mapping) = self.axes[COLS].mapping.as_ref() {
             // If we have factored, unwind any column-swaps
             for k in 0..xi.len() {
@@ -313,10 +320,10 @@ impl Matrix {
         }
 
         // Take the matrix-vector product with `xi`
-        let ri: Vec<f64> = self.vecmul(&xi)?;
+        let ri: Vec<T> = self.vecmul(&xi)?;
 
         // Add in the RHS, unwinding row-swaps along the way
-        let mut res = vec![0.0; ri.len()];
+        let mut res = vec![T::zero(); ri.len()];
         if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
             for k in 0..xi.len() {
                 res[k] = rhs[k] - ri[row_mapping.e2i[k]];
@@ -329,7 +336,7 @@ impl Matrix {
         // println!("RES: {:?}", res);
         return Ok(res);
     }
-    fn insert(&mut self, e: &mut Element) {
+    fn insert(&mut self, e: &mut Element<T>) {
         let mut expanded = false;
         if e.row + 1 > self.num_rows() {
             self.axes[Axis::ROWS].grow(e.row + 1);
@@ -363,7 +370,7 @@ impl Matrix {
             self.fillins.push(e.index);
         }
     }
-    fn insert_axis(&mut self, ax: Axis, e: &mut Element) {
+    fn insert_axis(&mut self, ax: Axis, e: &mut Element<T>) {
         // Insert Element `e` along Axis `ax`
 
         let head_ptr = self.axes[ax].hdrs[e.loc(ax)];
@@ -394,9 +401,9 @@ impl Matrix {
         self[prev].set_next(ax, Some(e.index));
     }
     fn add_fillin(&mut self, row: usize, col: usize) -> Eindex {
-        return self._add_element(row, col, 0.0, true);
+        return self._add_element(row, col, T::zero(), true);
     }
-    fn _add_element(&mut self, row: usize, col: usize, val: f64, fillin: bool) -> Eindex {
+    fn _add_element(&mut self, row: usize, col: usize, val: T, fillin: bool) -> Eindex {
         // Element creation & insertion, used by `add_fillin` and the public `add_element`.
         let index = Eindex(self.elements.len());
         let mut e = Element::new(index.clone(), row, col, val, fillin);
@@ -431,7 +438,7 @@ impl Matrix {
         return None;
     }
     /// Returns the Element-value at `(row, col)` if present, or None if not.
-    pub fn get(&self, row: usize, col: usize) -> Option<f64> {
+    pub fn get(&self, row: usize, col: usize) -> Option<T> {
         return match self.get_elem(row, col) {
             None => None,
             Some(ei) => Some(self[ei].val),
@@ -697,11 +704,11 @@ impl Matrix {
 
     fn max_after(&self, ax: Axis, after: Eindex) -> Eindex {
         let mut best = after;
-        let mut best_val = self[after].val.abs();
+        let mut best_val = self[after].val.absv();
         let mut e = self[after].next(ax);
 
         while let Some(ei) = e {
-            let val = self[ei].val.abs();
+            let val = self[ei].val.absv();
             if val > best_val {
                 best = ei;
                 best_val = val;
@@ -719,9 +726,9 @@ impl Matrix {
             e = self[ei].next(ax);
         }
         let mut best = e?;
-        let mut best_val = self[best].val.abs();
+        let mut best_val = self[best].val.absv();
         while let Some(ei) = e {
-            let val = self[ei].val.abs();
+            let val = self[ei].val.absv();
             if val > best_val {
                 best = ei;
                 best_val = val;
@@ -748,18 +755,18 @@ impl Matrix {
 
         for k in n..self.diag.len() {
             let d = match self.diag[k] {
-                None => { continue; },
+                None => { continue; }
                 Some(d) => d,
             };
 
             // Check whether this element meets our threshold criteria
             let max_in_col = match self.max_after_loc(COLS, k, n) {
-                None => { continue; },
+                None => { continue; }
                 Some(d) => d,
             };
             // FIXME: abs-value criterion for max_in_col
-            let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.abs() + MARKOWITZ_CONFIG.abs_threshold;
-            if self[d].val.abs() < threshold {
+            let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.absv() + MARKOWITZ_CONFIG.abs_threshold;
+            if self[d].val.absv() < threshold {
                 continue;
             }
 
@@ -769,10 +776,10 @@ impl Matrix {
                 num_ties = 0;
                 best_elem = self.diag[k];
                 best_mark = mark;
-                best_ratio = (self[d].val / self[max_in_col].val).abs();
+                best_ratio = (self[d].val / self[max_in_col].val).absv();
             } else if mark == best_mark {
                 num_ties += 1;
-                let ratio = (self[d].val / self[max_in_col].val).abs();
+                let ratio = (self[d].val / self[max_in_col].val).absv();
                 if ratio > best_ratio {
                     best_elem = self.diag[k];
                     best_mark = mark;
@@ -808,7 +815,7 @@ impl Matrix {
 
             // Check whether this element meets our threshold criteria
             let max_in_col = self.max_after(COLS, ei);
-//            let threshold = MARKOWITZ_CONFIG.rel_threshol * self[max_in_col].val.abs() + MARKOWITZ_CONFIG.abs_threshol;
+//            let threshold = MARKOWITZ_CONFIG.rel_threshol * self[max_in_col].val.absv() + MARKOWITZ_CONFIG.abs_threshol;
 
             while let Some(ei) = e {
                 // If so, compute and compare its Markowitz product to our best
@@ -817,10 +824,10 @@ impl Matrix {
 //                    num_ties = 0;
                     best_elem = e;
                     best_mark = mark;
-                    best_ratio = (self[ei].val / self[max_in_col].val).abs();
+                    best_ratio = (self[ei].val / self[max_in_col].val).absv();
                 } else if mark == best_mark {
 //                    num_ties += 1;
-                    let ratio = (self[ei].val / self[max_in_col].val).abs();
+                    let ratio = (self[ei].val / self[max_in_col].val).absv();
                     if ratio > best_ratio {
                         best_elem = e;
                         best_mark = mark;
@@ -853,7 +860,7 @@ impl Matrix {
             }
             // And search over remaining elements
             while let Some(ei) = ep {
-                let val = self[ei].val.abs();
+                let val = self[ei].val.absv();
                 if val > max_val {
                     max_elem = ep;
                     max_val = val;
@@ -871,7 +878,7 @@ impl Matrix {
         };
         assert(de).eq(pivot)?;
         let pivot_val = self[pivot].val;
-        assert(pivot_val).ne(0.0)?;
+        assert(pivot_val).ne(T::zero())?;
 
         // Divide elements in the pivot column by the pivot-value
         let mut plower = self[pivot].next_in_col;
@@ -902,7 +909,8 @@ impl Matrix {
                 };
 
                 // Update the `psub` element value
-                self[pse].val -= self[pue].val * self[ple].val;
+                let v: T = self[pue].val.clone() * self[ple].val.clone();
+                self[pse].val -=  v;
                 psub = self[pse].next_in_col;
                 plower = self[ple].next_in_col;
             }
@@ -925,16 +933,16 @@ impl Matrix {
     /// * `b` is argument `rhs`
     /// * `x` is the return value.
     ///
-    /// Returns a `Result` containing the `Vec<f64>` representing `x` if successful.
+    /// Returns a `Result` containing the `Vec<T>` representing `x` if successful.
     /// Returns an `Err` if unsuccessful.
     ///
     /// Performs LU factorization, forward and backward substitution.
-    pub fn solve(&mut self, rhs: Vec<f64>) -> SpResult<Vec<f64>> {
+    pub fn solve(&mut self, rhs: Vec<T>) -> SpResult<Vec<T>> {
         if self.state != MatrixState::FACTORED { self.lu_factorize()?; }
         assert(self.state).eq(MatrixState::FACTORED)?;
 
         // Unwind any row-swaps
-        let mut c: Vec<f64> = vec![0.0; rhs.len()];
+        let mut c: Vec<T> = vec![T::zero(); rhs.len()];
 
         if let Some(row_mapping) = self.axes[ROWS].mapping.as_ref() {
             for k in 0..c.len() {
@@ -945,7 +953,7 @@ impl Matrix {
         // Forward substitution: Lc=b
         for k in 0..self.diag.len() {
             // Walk down each column, update c
-            if c[k] == 0.0 {
+            if c[k] == T::zero() {
                 continue;
             } // No updates to make on this iteration
 
@@ -957,7 +965,7 @@ impl Matrix {
             };
             let mut e = self[di].next_in_col;
             while let Some(ei) = e {
-                c[self[ei].row] -= c[k] * self[ei].val;
+                c[self[ei].row] = c[self[ei].row] - c[k] * self[ei].val; // FIXME: SubAssign
                 e = self[ei].next_in_col;
             }
         }
@@ -971,14 +979,14 @@ impl Matrix {
             };
             let mut ep = self[di].next_in_row;
             while let Some(ei) = ep {
-                c[k] -= c[self[ei].col] * self[ei].val;
+                c[k] = c[k] - c[self[ei].col] * self[ei].val; // FIXME: SubAssign
                 ep = self[ei].next_in_row;
             }
             c[k] /= self[di].val;
         }
 
         // Unwind any column-swaps
-        let mut soln: Vec<f64> = vec![0.0; c.len()];
+        let mut soln: Vec<T> = vec![T::zero(); c.len()];
         if let Some(col_mapping) = self.axes[COLS].mapping.as_ref() {
             for k in 0..c.len() {
                 soln[k] = c[col_mapping.e2i[k]];
@@ -987,8 +995,8 @@ impl Matrix {
         return Ok(soln);
     }
     /// Create a row-majory dense matrix representation
-    pub fn to_dense(&self) -> Vec<Vec<f64>> {
-        let mut res = vec![vec![0.0; self.num_cols()]; self.num_rows()];
+    pub fn to_dense(&self) -> Vec<Vec<T>> {
+        let mut res = vec![vec![T::zero(); self.num_cols()]; self.num_rows()];
         for ei in self.elements.iter() {
             res[self[ei.index].row][self[ei.index].col] = self[ei.index].val;
         }
@@ -1002,46 +1010,44 @@ impl Matrix {
     fn num_cols(&self) -> usize { self.axes[COLS].hdrs.len() }
 }
 
-#[cfg(test)]
-impl Matrix {
-    fn swap_rows(&mut self, x: usize, y: usize) {
-        self.swap(ROWS, x, y)
-    }
-    fn swap_cols(&mut self, x: usize, y: usize) {
-        self.swap(COLS, x, y)
-    }
-    fn size(&self) -> (usize, usize) {
-        (self.num_rows(), self.num_cols())
+impl<T: SpNum + One> Matrix<T> {
+    /// Create an n*n identity `Matrix`
+    pub fn identity(n: usize) -> Matrix<T> {
+        let mut m = Matrix::<T>::new();
+        for k in 0..n {
+            m.add_element(k, k, T::one());
+        }
+        return m;
     }
 }
 
-impl Index<Eindex> for Matrix {
-    type Output = Element;
+impl<T: SpNum> Index<Eindex> for Matrix<T> {
+    type Output = Element<T>;
     fn index(&self, index: Eindex) -> &Self::Output {
         &self.elements[index.0]
     }
 }
 
-impl IndexMut<Eindex> for Matrix {
+impl<T: SpNum> IndexMut<Eindex> for Matrix<T> {
     fn index_mut(&mut self, index: Eindex) -> &mut Self::Output {
         &mut self.elements[index.0]
     }
 }
 
-impl Index<Axis> for Matrix {
+impl<T: SpNum> Index<Axis> for Matrix<T> {
     type Output = AxisData;
     fn index(&self, ax: Axis) -> &Self::Output {
         &self.axes[ax]
     }
 }
 
-impl IndexMut<Axis> for Matrix {
+impl<T: SpNum> IndexMut<Axis> for Matrix<T> {
     fn index_mut(&mut self, ax: Axis) -> &mut Self::Output {
         &mut self.axes[ax]
     }
 }
 
-impl fmt::Debug for Matrix {
+impl<T: SpNum> fmt::Debug for Matrix<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -1061,80 +1067,103 @@ impl fmt::Debug for Matrix {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::spresult::TestResult;
 
-    fn checkups(m: &Matrix) -> TestResult {
+use crate::spresult::TestResult;
+
+#[cfg(test)]
+impl<T: SpNum> Matrix<T> {
+    fn swap_rows(&mut self, x: usize, y: usize) {
+        self.swap(ROWS, x, y)
+    }
+    fn swap_cols(&mut self, x: usize, y: usize) {
+        self.swap(COLS, x, y)
+    }
+    fn size(&self) -> (usize, usize) {
+        (self.num_rows(), self.num_cols())
+    }
+
+    fn checkups(&self) -> TestResult {
         // Internal consistency tests.  Probably pretty slow.
 
-        check_diagonal(&m)?;
+        self.check_diagonal()?;
 
         let mut next_in_rows: Vec<Eindex> = vec![];
         let mut next_in_cols: Vec<Eindex> = vec![];
 
-        for n in 0..m.axes[COLS].hdrs.len() {
-            let mut ep = m.hdr(COLS, n);
+        for n in 0..self.axes[COLS].hdrs.len() {
+            let mut ep = self.hdr(COLS, n);
             while let Some(ei) = ep {
-                assert(m[ei].col).eq(n)?;
+                assert(self[ei].col).eq(n)?;
 
-                if let Some(nxt) = m[ei].next_in_col {
-                    assert(m[nxt].row).gt(m[ei].row)?;
+                if let Some(nxt) = self[ei].next_in_col {
+                    assert(self[nxt].row).gt(self[ei].row)?;
                     assert!(!next_in_cols.contains(&nxt));
                     next_in_cols.push(nxt);
                 }
-                if let Some(nxt) = m[ei].next_in_row {
-                    assert(m[nxt].col).gt(m[ei].col)?;
+                if let Some(nxt) = self[ei].next_in_row {
+                    assert(self[nxt].col).gt(self[ei].col)?;
                     assert!(!next_in_rows.contains(&nxt));
                     next_in_rows.push(nxt);
                 }
-                ep = m[ei].next_in_col;
+                ep = self[ei].next_in_col;
             }
         }
         // Add the row/column headers to the "next" vectors
-        for ep in m.axes[Axis::COLS].hdrs.iter() {
+        for ep in self.axes[Axis::COLS].hdrs.iter() {
             if let Some(ei) = ep {
                 assert!(!next_in_cols.contains(ei));
                 next_in_cols.push(*ei);
             }
         }
-        for ep in m.axes[Axis::ROWS].hdrs.iter() {
+        for ep in self.axes[Axis::ROWS].hdrs.iter() {
             if let Some(ei) = ep {
                 assert!(!next_in_rows.contains(ei));
                 next_in_rows.push(*ei);
             }
         }
         // Check that all elements are included
-        assert(next_in_cols.len()).eq(m.elements.len())?;
-        assert(next_in_rows.len()).eq(m.elements.len())?;
-        for n in 0..m.elements.len() {
+        assert(next_in_cols.len()).eq(self.elements.len())?;
+        assert(next_in_rows.len()).eq(self.elements.len())?;
+        for n in 0..self.elements.len() {
             assert!(next_in_cols.contains(&Eindex(n)));
             assert!(next_in_rows.contains(&Eindex(n)));
         }
         Ok(())
     }
 
-    fn check_diagonal(m: &Matrix) -> TestResult {
-        for r in 0..m.diag.len() {
-            let eo = m.get(r, r);
+    fn check_diagonal(&self) -> TestResult {
+        for r in 0..self.diag.len() {
+            let eo = self.get(r, r);
             if let Some(e) = eo {
-                if let Some(d) = m.diag[r] {
-                    assert(m[d].val).eq(e)?;
+                if let Some(d) = self.diag[r] {
+                    assert(self[d].val).eq(e)?;
                 } else {
                     return Err("FAIL!");
                 }
                 // FIXME: would prefer something like the previous "same element ID" testing
-                // assert_eq!(e, m[m.diag[r]].val);
-                //                    assert_eq!(e.index, m.diag[r]);
+                // assert_eq!(e, m[self.diag[r]].val);
+                //                    assert_eq!(e.index, self.diag[r]);
                 //                    assert_eq!(e.row, r);
                 //                    assert_eq!(e.col, r);
             } else {
-                assert(m.diag[r]).eq(None)?;
+                assert(self.diag[r]).eq(None)?;
             }
         }
         Ok(())
     }
+    fn assert_entries(&self, entries: Vec<Entry<T>>) -> TestResult {
+        for e in entries.into_iter() {
+            assert(self.get(e.0, e.1).ok_or("ElementMissing")?).eq(e.2)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spresult::TestResult;
+
 
     #[test]
     fn test_create_element() -> TestResult {
@@ -1151,7 +1180,7 @@ mod tests {
 
     #[test]
     fn test_create_matrix() -> TestResult {
-        let m = Matrix::new();
+        let m = Matrix::<f64>::new();
         assert_eq!(m.state, MatrixState::CREATED);
         assert_eq!(m.diag, vec![]);
         assert_eq!(m.axes[Axis::ROWS].hdrs, vec![]);
@@ -1188,14 +1217,14 @@ mod tests {
     fn test_identity() -> TestResult {
         // Check identity matrices of each (small) size
         for k in 1..10 {
-            let ik = Matrix::identity(k);
+            let ik = Matrix::<f64>::identity(k);
 
             // Basic size checks
             assert_eq!(ik.num_rows(), k);
             assert_eq!(ik.num_cols(), k);
             assert_eq!(ik.size(), (k, k));
             assert_eq!(ik.elements.len(), k);
-            checkups(&ik)?;
+            ik.checkups()?;
 
             for v in 0..k {
                 // Check each row/ col head is the same element, and this element is on the diagonal
@@ -1219,7 +1248,7 @@ mod tests {
         m.add_element(0, 7, 33.0);
         m.add_element(7, 7, 44.0);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 11.0);
         assert_eq!(m.get(7, 0).ok_or("ElementMissing")?, 22.0);
         assert_eq!(m.get(0, 7).ok_or("ElementMissing")?, 33.0);
@@ -1228,7 +1257,7 @@ mod tests {
         m.state = MatrixState::FACTORING;
         m.swap_rows(0, 7);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(7, 0).ok_or("ElementMissing")?, 11.0);
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 22.0);
         assert_eq!(m.get(7, 7).ok_or("ElementMissing")?, 33.0);
@@ -1243,7 +1272,7 @@ mod tests {
         m.add_element(0, 0, 11.1);
         m.add_element(2, 2, 22.2);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 11.1);
         assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 22.2);
         assert_eq!(m.get(1, 1), None);
@@ -1251,7 +1280,7 @@ mod tests {
         m.state = MatrixState::FACTORING;
         m.swap_rows(0, 2);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 11.1);
         assert_eq!(m.get(0, 2).ok_or("ElementMissing")?, 22.2);
         assert_eq!(m.get(1, 1), None);
@@ -1272,11 +1301,11 @@ mod tests {
         m.add_element(2, 1, 8.0);
         m.add_element(2, 2, 9.0);
 
-        checkups(&m)?;
+        m.checkups()?;
         m.state = MatrixState::FACTORING;
         m.swap_rows(0, 2);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 7.0);
         assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 1.0);
         // FIXME: check more
@@ -1290,7 +1319,7 @@ mod tests {
         m.add_element(2, 0, -11.0);
         m.add_element(2, 2, 99.0);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 71.0);
         assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, -11.0);
         assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 99.0);
@@ -1298,7 +1327,7 @@ mod tests {
         m.state = MatrixState::FACTORING;
         m.swap_rows(0, 2);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 71.0);
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, -11.0);
         assert_eq!(m.get(0, 2).ok_or("ElementMissing")?, 99.0);
@@ -1316,12 +1345,12 @@ mod tests {
                 }
             }
         }
-        checkups(&m)?;
+        m.checkups()?;
 
         m.state = MatrixState::FACTORING;
         m.swap_rows(0, 1);
 
-        checkups(&m)?;
+        m.checkups()?;
 
         // FIXME: add some real checks on this
         Ok(())
@@ -1329,14 +1358,14 @@ mod tests {
 
     #[test]
     fn test_row_mappings() -> TestResult {
-        let mut m = Matrix::identity(4);
-        checkups(&m)?;
+        let mut m = Matrix::<f64>::identity(4);
+        m.checkups()?;
 
         m.state = MatrixState::FACTORING;
         m.axes[ROWS].setup_factoring();
         m.swap_rows(0, 3);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(
             m.axes[Axis::ROWS].mapping.as_ref().unwrap().e2i,
             vec![3, 1, 2, 0]
@@ -1348,7 +1377,7 @@ mod tests {
 
         m.swap_rows(0, 2);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(
             m.axes[Axis::ROWS].mapping.as_ref().unwrap().e2i,
             vec![3, 1, 0, 2]
@@ -1362,10 +1391,10 @@ mod tests {
 
     #[test]
     fn test_lu_id3() -> TestResult {
-        let mut m = Matrix::identity(3);
-        checkups(&m)?;
+        let mut m = Matrix::<f64>::identity(3);
+        m.checkups()?;
         m.lu_factorize()?;
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 1.0);
         assert_eq!(m.get(1, 1).ok_or("ElementMissing")?, 1.0);
         assert_eq!(m.get(2, 2).ok_or("ElementMissing")?, 1.0);
@@ -1384,7 +1413,7 @@ mod tests {
         m.add_element(2, 1, 1.0);
         m.add_element(2, 2, 1.0);
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 1.0);
         assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 1.0);
         assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 1.0);
@@ -1394,7 +1423,7 @@ mod tests {
 
         m.lu_factorize()?;
 
-        checkups(&m)?;
+        m.checkups()?;
         assert_eq!(m.get(0, 0).ok_or("ElementMissing")?, 1.0);
         assert_eq!(m.get(1, 0).ok_or("ElementMissing")?, 1.0);
         assert_eq!(m.get(2, 0).ok_or("ElementMissing")?, 1.0);
@@ -1416,9 +1445,8 @@ mod tests {
             (0, 1, 1.0),
             (0, 0, 1.0),
         ]);
-        checkups(&m)?;
-        assert_entries(
-            &m,
+        m.checkups()?;
+        m.assert_entries(
             vec![
                 (2, 2, -1.0),
                 (2, 1, 5.0),
@@ -1430,7 +1458,7 @@ mod tests {
                 (0, 0, 1.0),
             ])?;
         m.lu_factorize()?;
-        checkups(&m)?;
+        m.checkups()?;
         Ok(())
     }
 
@@ -1446,9 +1474,9 @@ mod tests {
             (2, 1, 5.0),
             (2, 2, -1.0),
         ]);
-        checkups(&m)?;
+        m.checkups()?;
         m.lu_factorize()?;
-        checkups(&m)?;
+        m.checkups()?;
         let rhs = vec![6.0, -4.0, 27.0];
         let soln = m.solve(rhs)?;
         let correct = vec![5.0, 3.0, -2.0];
@@ -1460,7 +1488,7 @@ mod tests {
 
     #[test]
     fn test_solve_id3() -> TestResult {
-        let mut m = Matrix::identity(3);
+        let mut m = Matrix::<f64>::identity(3);
         let soln = m.solve(vec![11.1, 30.3, 99.9])?;
         assert_eq!(soln, vec![11.1, 30.3, 99.9]);
         return Ok(());
@@ -1470,7 +1498,7 @@ mod tests {
     fn test_solve_identity() -> TestResult {
         // Test that solutions of Ix=b yield x=b
         for s in 1..10 {
-            let mut m = Matrix::identity(s);
+            let mut m = Matrix::<f64>::identity(s);
             let mut rhs: Vec<f64> = vec![];
             for e in 0..s {
                 rhs.push(e as f64);
@@ -1482,14 +1510,7 @@ mod tests {
         return Ok(());
     }
 
-    fn assert_entries(m: &Matrix, entries: Vec<Entry>) -> TestResult {
-        for e in entries.iter() {
-            assert(m.get(e.0, e.1).ok_or("ElementMissing")?).eq(e.2)?;
-        }
-        Ok(())
-    }
-
     fn isclose(a: f64, b: f64) -> bool {
-        return (a - b).abs() < 1e-9;
+        return (a - b).absv() < 1e-9;
     }
 }

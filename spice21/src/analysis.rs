@@ -99,7 +99,7 @@ enum AnalysisMode {
 struct Solver {
     comps: Vec<Box<dyn Component>>,
     vars: Variables,
-    mat: Matrix,
+    mat: Matrix<f64>,
     rhs: Vec<f64>,
     history: Vec<Vec<f64>>,
     an_mode: AnalysisMode,
