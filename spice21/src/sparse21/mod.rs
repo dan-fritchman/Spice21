@@ -3,23 +3,11 @@ use std::cmp::{max, min};
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
-use num::{Num, Float, Zero, One};
+use num::{Num, Float, Zero, One, Complex};
 use num::traits::NumAssignOps;
 
 use super::assert::assert;
-
-// This long list of traits describes our required behavior for Numbers.
-pub trait SpNum: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug {}
-
-impl<T> SpNum for T where T: Clone + Copy + NumAssignOps + Zero + Num + Abs  + fmt::Display + fmt::Debug {}
-
-pub trait Abs {
-    fn absv(&self) -> f64;
-}
-
-impl Abs for f64 {
-    fn absv(&self) -> f64 { self.abs() }
-}
+use super::SpNum;
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -910,7 +898,7 @@ impl<T: SpNum> Matrix<T> {
 
                 // Update the `psub` element value
                 let v: T = self[pue].val.clone() * self[ple].val.clone();
-                self[pse].val -=  v;
+                self[pse].val -= v;
                 psub = self[pse].next_in_col;
                 plower = self[ple].next_in_col;
             }
@@ -1163,6 +1151,7 @@ impl<T: SpNum> Matrix<T> {
 mod tests {
     use super::*;
     use crate::spresult::TestResult;
+    use num::Complex;
 
 
     #[test]
@@ -1511,6 +1500,40 @@ mod tests {
     }
 
     fn isclose(a: f64, b: f64) -> bool {
-        return (a - b).absv() < 1e-9;
+        return (a - b).abs() < 1e-9;
+    }
+
+    #[test]
+    fn test_create_complex() -> TestResult {
+        let mut m = Matrix::from_entries(vec![
+            (0, 0, Complex::one()),
+            (1, 1, Complex::one()),
+        ]);
+        m.lu_factorize()?;
+        Ok(())
+    }
+    #[test]
+    fn test_solve_complex_id2() -> TestResult {
+        let mut m = Matrix::from_entries(vec![
+            (0, 0, Complex::one()),
+            (1, 1, Complex::one()),
+        ]);
+        let soln = m.solve(vec![Complex::i(); 2])?;
+        assert(soln).eq(vec![Complex::i(); 2])?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_solve_complex() -> TestResult {
+        let mut m = Matrix::from_entries(vec![
+            (0, 0, Complex::one()),
+            (1, 0, Complex::new(-1.0, 0.0)),
+            (0, 1, Complex::new(-1.0, 0.0)),
+            (1, 1, Complex::new(1.0, 1.0)),
+        ]);
+        let soln = m.solve(vec![Complex::one(), Complex::zero()])?;
+        assert(soln).eq(vec![Complex::new(1.0, -1.0), Complex::new(0.0, -1.0)])?;
+        Ok(())
     }
 }
+

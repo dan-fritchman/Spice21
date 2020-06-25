@@ -1,19 +1,31 @@
+use enum_dispatch::enum_dispatch;
 use std::cmp::PartialEq;
 use std::convert::From;
 use std::ops::{Index, IndexMut};
 
+use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use super::proto::NodeRef;
-use super::analysis::{Variables, VarIndex, AnalysisInfo, Stamps};
 use super::sparse21::{Eindex, Matrix};
 
+#[enum_dispatch]
+pub enum ComponentSolver {
+    Vsrc,
+    Capacitor,
+    Resistor,
+    Mos1,
+    Mos,
+    Diode,
+    Isrc,
+}
 
+#[enum_dispatch(ComponentSolver)]
 pub trait Component {
     fn tstep(&mut self, _guess: &Vec<f64>) {}
 
     fn update(&mut self, _val: f64) {}
     // FIXME: prob not for every Component
 
-    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps;
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64>;
     fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>);
 }
 
@@ -53,7 +65,7 @@ impl Component for Vsrc {
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
         self.in_ = make_matrix_elem(mat, Some(self.ivar), self.n);
     }
-    fn load(&mut self, _guess: &Variables, _an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         return Stamps {
             g: vec![
                 (self.pi, 1.0),
@@ -65,7 +77,6 @@ impl Component for Vsrc {
         };
     }
 }
-
 
 #[derive(Default)]
 pub struct Capacitor {
@@ -117,7 +128,7 @@ impl Component for Capacitor {
     fn tstep(&mut self, _x: &Vec<f64>) {
         self.op = self.guess;
     }
-    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         let vd = guess.get(self.p) - guess.get(self.n);
         let q = self.q(vd);
 
@@ -133,8 +144,7 @@ impl Component for Capacitor {
                 return Stamps::new();
             }
             AnalysisInfo::TRAN(opts, state) => {
-                let (g, i, rhs) =
-                    state.integrate(q - self.op.q, self.dq_dv(vd), vd, self.op.i);
+                let (g, i, rhs) = state.integrate(q - self.op.q, self.dq_dv(vd), vd, self.op.i);
                 self.guess = CapOpPoint { v: vd, q: q, i: i };
 
                 return Stamps {
@@ -204,7 +214,7 @@ impl Component for Resistor {
             }
         }
     }
-    fn load(&mut self, _guess: &Variables, _an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         use TwoTerm::{N, P};
         return Stamps {
             g: vec![
@@ -535,7 +545,7 @@ impl Component for Mos1 {
     fn tstep(&mut self, _x: &Vec<f64>) {
         self.op = self.guess.clone();
     }
-    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         use MosTerm::{B, D, G, S};
 
         let vg = guess.get(self.ports[G]);
@@ -564,7 +574,7 @@ impl Component for Mos1 {
         let von = if vsb > 0.0 {
             self.intparams.vt_t
                 + self.model.gamma
-                * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
+                    * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
         } else {
             self.intparams.vt_t // FIXME: body effect for Vsb < 0
         };
@@ -577,7 +587,7 @@ impl Component for Mos1 {
         let mut gds = 0.0;
         let mut gmbs = 0.0;
         if vov <= 0.0 { // Cutoff
-            // Already set
+             // Already set
         } else {
             if vds >= vov {
                 // Sat
@@ -592,7 +602,7 @@ impl Component for Mos1 {
                 gm = self.intparams.beta * vds * (1.0 + self.model.lambda * vds);
                 gds = self.intparams.beta
                     * ((vov - vds) * (1.0 + self.model.lambda * vds)
-                    + self.model.lambda * ((vov * vds) - vds.powi(2) / 2.0));
+                        + self.model.lambda * ((vov * vds) - vds.powi(2) / 2.0));
             }
             gmbs = if self.intparams.phi_t + vsb > 0.0 {
                 gm * self.model.gamma / 2.0 / (self.intparams.phi_t + vsb).sqrt()
@@ -781,7 +791,7 @@ impl Component for Mos {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         use MosTerm::{B, D, G, S};
 
         let vg = guess.get(self.ports[G]);
@@ -823,7 +833,7 @@ impl Component for Mos {
             gm = self.beta * vds * (1.0 + self.lam * vds);
             gds = self.beta
                 * ((vov - vds) * (1.0 + self.lam * vds)
-                + self.lam * ((vov * vds) - vds.powi(2) / 2.0));
+                    + self.lam * ((vov * vds) - vds.powi(2) / 2.0));
             println!(
                 "LIN: vgs={} vds={}, ids={}, gm={}, gds={}",
                 vgs, vds, ids, gm, gds
@@ -877,7 +887,7 @@ impl Component for Diode {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&mut self, guess: &Variables, an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         let vp = guess.get(self.p);
         let vn = guess.get(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);
@@ -916,7 +926,7 @@ impl Isrc {
 
 impl Component for Isrc {
     fn create_matrix_elems(&mut self, _mat: &mut Matrix<f64>) {}
-    fn load(&mut self, _guess: &Variables, _an: &AnalysisInfo) -> Stamps {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         return Stamps {
             g: vec![],
             b: vec![(self.p, self.i), (self.n, -self.i)],
@@ -935,4 +945,3 @@ fn make_matrix_elem(
     }
     return None;
 }
-

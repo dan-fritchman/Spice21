@@ -2,25 +2,34 @@ use std::cmp::PartialEq;
 use std::convert::From;
 use std::ops::{Index, IndexMut};
 
+
+use std::fmt;
+use std::cmp::PartialOrd;
+use num::{Num,  Zero, One, Complex, Float};
+use num::traits::NumAssignOps;
+
+use crate::comps::{Component, ComponentSolver, Mos1InstanceParams, Mos1Model};
+use crate::proto::{CktParse, CompParse, NodeRef};
 use crate::sparse21::{Eindex, Matrix};
 use crate::spresult::SpResult;
-use crate::comps::{Component, Mos1Model, Mos1InstanceParams};
-use crate::proto::{NodeRef, CktParse, CompParse};
-
+use crate::{SpNum, Abs};
 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.j`
 /// and its RHS contributions in `Stamps.b`.
 #[derive(Debug)]
-pub struct Stamps {
-    pub g: Vec<(Option<Eindex>, f64)>,
-    pub b: Vec<(Option<VarIndex>, f64)>,
+pub struct Stamps<NumT> {
+    pub g: Vec<(Option<Eindex>, NumT)>,
+    pub b: Vec<(Option<VarIndex>, NumT)>,
 }
 
-impl Stamps {
-    pub fn new() -> Stamps {
-        Stamps { g: vec![], b: vec![] }
+impl<NumT: SpNum> Stamps<NumT> {
+    pub fn new() -> Stamps<NumT> {
+        Stamps {
+            g: vec![],
+            b: vec![],
+        }
     }
 }
 
@@ -60,26 +69,26 @@ impl From<&NodeRef> for Option<VarIndex> {
 //    }
 //}
 
-pub struct Variables {
+pub struct Variables<NumT> {
     kinds: Vec<VarKind>,
-    values: Vec<f64>,
+    values: Vec<NumT>,
 }
 
-impl Variables {
-    pub fn all_v(len: usize) -> Variables {
+impl<NumT: SpNum> Variables<NumT> {
+    pub fn all_v(len: usize) -> Variables<NumT> {
         Variables {
             kinds: vec![VarKind::V; len],
-            values: vec![0.0; len],
+            values: vec![NumT::zero(); len],
         }
     }
     fn add(&mut self, kind: VarKind) -> VarIndex {
         self.kinds.push(kind);
-        self.values.push(0.0);
+        self.values.push(NumT::zero());
         return VarIndex(self.kinds.len() - 1);
     }
-    pub fn get(&self, i: Option<VarIndex>) -> f64 {
+    pub fn get(&self, i: Option<VarIndex>) -> NumT {
         match i {
-            None => 0.0,
+            None => NumT::zero(),
             Some(ii) => self.values[ii.0],
         }
     }
@@ -96,66 +105,17 @@ enum AnalysisMode {
     AC,
 }
 
-struct Solver {
-    comps: Vec<Box<dyn Component>>,
-    vars: Variables,
-    mat: Matrix<f64>,
-    rhs: Vec<f64>,
-    history: Vec<Vec<f64>>,
+struct Solver<NumT: SpNum> {
+    comps: Vec<ComponentSolver>,
+    vars: Variables<NumT>,
+    mat: Matrix<NumT>,
+    rhs: Vec<NumT>,
+    history: Vec<Vec<NumT>>,
     an_mode: AnalysisMode,
 }
 
-impl Solver {
-    fn add_comp(&mut self, comp: &CompParse) {
-        match comp {
-            CompParse::R(g, p, n) => {
-                use crate::comps::Resistor;
-                let r = Resistor::new(*g, p.into(), n.into());
-                self.comps.push(Box::new(r));
-            }
-            CompParse::C(c, p, n) => {
-                use crate::comps::Capacitor;
-                let c = Capacitor::new(*c, p.into(), n.into());
-                self.comps.push(Box::new(c));
-            }
-            CompParse::I(i, p, n) => {
-                use crate::comps::Isrc;
-                let i = Isrc::new(*i, *p, *n);
-                self.comps.push(Box::new(i));
-            }
-            CompParse::D(isat, vt, p, n) => {
-                use crate::comps::Diode;
-                let c = Diode::new(*isat, *vt, *p, *n);
-                self.comps.push(Box::new(c));
-            }
-            CompParse::V(v, p, n) => {
-                use crate::comps::Vsrc;
-                let ivar = self.vars.add(VarKind::I);
-                let v = Vsrc::new(*v, p.into(), n.into(), ivar);
-                self.comps.push(Box::new(v));
-            }
-            CompParse::Mos(pol, g, d, s, b) => {
-                use crate::comps::Mos;
-                //let dp = self.vars.add(VarKind::V);
-                //let sp = self.vars.add(VarKind::V);
-                let x = Mos::new(
-                    [g, d, s, b].into(),
-                    //                    dp.into(), ds.into(),
-                    0.25,
-                    50e-3,
-                    3e-3,
-                    *pol,
-                );
-                self.comps.push(Box::new(x));
-            }
-            CompParse::Mos1(model, params, g, d, s, b) => {
-                use crate::comps::Mos1;
-                let x = Mos1::new(model.clone(), params.clone(), [g, d, s, b].into());
-                self.comps.push(Box::new(x));
-            }
-        }
-    }
-    fn new(ckt: CktParse) -> Solver {
+impl Solver<f64> {
+    fn new(ckt: CktParse) -> Solver<f64> {
         let mut op = Solver {
             comps: vec![],
             vars: Variables::all_v(ckt.nodes),
@@ -225,16 +185,68 @@ impl Solver {
         }
         return Err("Convergence Failed");
     }
-    fn converged(&self, dx: &Vec<f64>, res: &Vec<f64>) -> bool {
+}
+
+impl<NumT: SpNum> Solver<NumT> {
+    fn add_comp(&mut self, comp: &CompParse) {
+        match comp {
+            CompParse::R(g, p, n) => {
+                use crate::comps::Resistor;
+                let comp = Resistor::new(*g, p.into(), n.into());
+                self.comps.push(comp.into());
+            }
+            CompParse::C(c, p, n) => {
+                use crate::comps::Capacitor;
+                let comp = Capacitor::new(*c, p.into(), n.into());
+                self.comps.push(comp.into());
+            }
+            CompParse::I(i, p, n) => {
+                use crate::comps::Isrc;
+                let comp = Isrc::new(*i, *p, *n);
+                self.comps.push(comp.into());
+            }
+            CompParse::D(isat, vt, p, n) => {
+                use crate::comps::Diode;
+                let comp = Diode::new(*isat, *vt, *p, *n);
+                self.comps.push(comp.into());
+            }
+            CompParse::V(v, p, n) => {
+                use crate::comps::Vsrc;
+                let ivar = self.vars.add(VarKind::I);
+                let v = Vsrc::new(*v, p.into(), n.into(), ivar);
+                self.comps.push(v.into());
+            }
+            CompParse::Mos(pol, g, d, s, b) => {
+                use crate::comps::Mos;
+                //let dp = self.vars.add(VarKind::V);
+                //let sp = self.vars.add(VarKind::V);
+                let comp = Mos::new(
+                    [g, d, s, b].into(),
+                    //                    dp.into(), ds.into(),
+                    0.25,
+                    50e-3,
+                    3e-3,
+                    *pol,
+                );
+                self.comps.push(comp.into());
+            }
+            CompParse::Mos1(model, params, g, d, s, b) => {
+                use crate::comps::Mos1;
+                let comp = Mos1::new(model.clone(), params.clone(), [g, d, s, b].into());
+                self.comps.push(comp.into());
+            }
+        }
+    }
+    fn converged(&self, dx: &Vec<NumT>, res: &Vec<NumT>) -> bool {
         // Inter-step Newton convergence
         for e in dx.iter() {
-            if e.abs() > 1e-3 {
+            if e.absv() > 1e-3 {
                 return false;
             }
         }
         // KCL convergence
         for e in res.iter() {
-            if e.abs() > 1e-9 {
+            if e.absv() > 1e-9 {
                 return false;
             }
         }
@@ -243,14 +255,19 @@ impl Solver {
 }
 
 pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
-    let mut s = Solver::new(ckt);
+    let mut s = Solver::<f64>::new(ckt);
     return s.solve(&AnalysisInfo::OP);
 }
 
-enum NumericalIntegration { BE, TRAP }
+enum NumericalIntegration {
+    BE,
+    TRAP,
+}
 
 impl Default for NumericalIntegration {
-    fn default() -> NumericalIntegration { NumericalIntegration::BE }
+    fn default() -> NumericalIntegration {
+        NumericalIntegration::BE
+    }
 }
 
 #[derive(Default)]
@@ -264,8 +281,7 @@ pub struct TranState {
 
 impl TranState {
     /// Numerical Integration
-    pub fn integrate(&self, dq: f64, dq_dv: f64, vguess: f64, ip: f64,
-    ) -> (f64, f64, f64) {
+    pub fn integrate(&self, dq: f64, dq_dv: f64, vguess: f64, ip: f64) -> (f64, f64, f64) {
         let dt = self.dt;
         match self.ni {
             NumericalIntegration::BE => {
@@ -285,7 +301,7 @@ impl TranState {
 }
 
 pub struct Tran {
-    solver: Solver,
+    solver: Solver<f64>,
     state: TranState,
     pub opts: TranOptions,
 }
@@ -314,11 +330,11 @@ impl Tran {
 
         let mut r = Resistor::new(1.0, Some(fnode), n.into());
         r.create_matrix_elems(&mut self.solver.mat);
-        self.solver.comps.push(Box::new(r));
+        self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);
         let mut v = Vsrc::new(val, Some(fnode), None, ivar);
         v.create_matrix_elems(&mut self.solver.mat);
-        self.solver.comps.push(Box::new(v));
+        self.solver.comps.push(v.into());
         self.state.vic.push(self.solver.comps.len() - 1);
     }
     pub fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
@@ -429,6 +445,29 @@ pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
     return Tran::new(ckt, opts).solve();
 }
 
+// pub struct AcState {}
+
+// pub struct AcOptions {}
+
+// pub struct Ac {
+//     solver: Solver<Complex<f64>>,
+//     // state: AcState,
+//     // pub opts: AcOptions,
+// }
+
+// impl Ac {
+//     pub fn new(ckt: CktParse, opts: AcOptions) -> Ac {
+//         return Ac {
+//             solver: Solver::<Complex<f64>>::new(ckt),
+//             // ..Default::default()
+//         };
+//     }
+// }
+
+// pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+//     Err("????")
+// }
+
+
 #[cfg(test)]
 mod tests {}
-

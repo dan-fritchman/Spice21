@@ -5,6 +5,29 @@ pub mod proto;
 pub mod comps;
 pub mod analysis;
 
+use std::fmt;
+use std::cmp::PartialOrd;
+use num::{Num, Float, Zero, One, Complex};
+use num::traits::NumAssignOps;
+
+// This long list of traits describes our required behavior for numeric types.
+pub trait SpNum: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug  {}
+
+impl<T> SpNum for T where T: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug  {}
+
+/// Absolute Value Trait for numeric types
+pub trait Abs {
+    fn absv(&self) -> f64;
+}
+
+impl Abs for f64 {
+    fn absv(&self) -> f64 { self.abs() }
+}
+
+impl Abs for Complex<f64> {
+    fn absv(&self) -> f64 { self.norm() }
+}
+
 
 /// "Integration" Tests
 #[cfg(test)]
