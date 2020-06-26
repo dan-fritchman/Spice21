@@ -115,25 +115,22 @@ struct Solver<NumT: SpNum> {
 }
 
 impl Solver<f64> {
-    fn new(ckt: CktParse) -> Solver<f64> {
-        let mut op = Solver {
-            comps: vec![],
-            vars: Variables::all_v(ckt.nodes),
-            mat: Matrix::new(),
-            rhs: vec![],
-            history: vec![],
-            an_mode: AnalysisMode::OP,
-        };
-
-        // Convert each circuit-parser component into a corresponding component-solver
-        for comp in ckt.comps.iter() {
-            op.add_comp(comp);
+    /// Collect and incorporate updates from all components
+    fn update (&mut self, an:&AnalysisInfo) {
+        for comp in self.comps.iter_mut() {
+            let updates = comp.load(&self.vars, an);
+            // Make updates for G and b
+            for upd in updates.g.iter() {
+                if let (Some(ei), val) = *upd {
+                    self.mat.update(ei, val);
+                }
+            }
+            for upd in updates.b.iter() {
+                if let (Some(ei), val) = *upd {
+                    self.rhs[ei.0] += val;
+                }
+            }
         }
-        // Create the corresponding matrix-elements
-        for comp in op.comps.iter_mut() {
-            comp.create_matrix_elems(&mut op.mat);
-        }
-        return op;
     }
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<f64>> {
         let mut dx = vec![0.0; self.vars.len()];
@@ -147,20 +144,8 @@ impl Solver<f64> {
             self.rhs = vec![0.0; self.vars.len()];
 
             // Load up component updates
-            for comp in self.comps.iter_mut() {
-                let updates = comp.load(&self.vars, an);
-                // Make updates for G and b
-                for upd in updates.g.iter() {
-                    if let (Some(ei), val) = *upd {
-                        self.mat.update(ei, val);
-                    }
-                }
-                for upd in updates.b.iter() {
-                    if let (Some(ei), val) = *upd {
-                        self.rhs[ei.0] += val;
-                    }
-                }
-            }
+            self.update(an);
+
             // Calculate the residual error
             let res: Vec<f64> = self.mat.res(&self.vars.values, &self.rhs)?;
             // Check convergence
@@ -187,7 +172,88 @@ impl Solver<f64> {
     }
 }
 
+
+impl Solver<Complex<f64>> { // FIXME: share more of this 
+    /// Collect and incorporate updates from all components
+    fn update (&mut self, an:&AnalysisInfo) {
+        for comp in self.comps.iter_mut() {
+            let updates = comp.load_ac(&self.vars, an);
+            // Make updates for G and b
+            for upd in updates.g.iter() {
+                if let (Some(ei), val) = *upd {
+                    self.mat.update(ei, val);
+                }
+            }
+            for upd in updates.b.iter() {
+                if let (Some(ei), val) = *upd {
+                    self.rhs[ei.0] += val;
+                }
+            }
+        }
+    }
+    fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<Complex<f64>>> {
+        let mut dx = vec![Complex::zero(); self.vars.len()];
+
+        for _k in 0..20 {
+            // FIXME: number of iterations
+            // Make a copy of state for tracking
+            self.history.push(self.vars.values.clone());
+            // Reset our matrix and RHS vector
+            self.mat.reset();
+            self.rhs = vec![Complex::zero(); self.vars.len()];
+
+            // Load up component updates
+            self.update(an);
+
+            // Calculate the residual error
+            let res: Vec<Complex<f64>> = self.mat.res(&self.vars.values, &self.rhs)?;
+            // Check convergence
+            if self.converged(&dx, &res) {
+                return Ok(self.vars.values.clone());
+            }
+            // Solve for our update
+            dx = self.mat.solve(res)?;
+            let max_step = 1000e-3;
+            let max_abs = dx
+                .iter()
+                .fold(0.0, |s, v| if v.norm() > s { v.norm() } else { s });
+            if max_abs > max_step {
+                for r in 0..dx.len() {
+                    dx[r] = dx[r] * max_step / max_abs;
+                }
+            }
+            // And update our guess
+            for r in 0..self.vars.len() {
+                self.vars.values[r] += dx[r];
+            }
+        }
+        return Err("Convergence Failed");
+    }
+}
+
+
 impl<NumT: SpNum> Solver<NumT> {
+
+    fn new(ckt: CktParse) -> Solver<NumT> {
+        let mut op = Solver {
+            comps: vec![],
+            vars: Variables::all_v(ckt.nodes),
+            mat: Matrix::new(),
+            rhs: vec![],
+            history: vec![],
+            an_mode: AnalysisMode::OP,
+        };
+
+        // Convert each circuit-parser component into a corresponding component-solver
+        for comp in ckt.comps.iter() {
+            op.add_comp(comp);
+        }
+        // Create the corresponding matrix-elements
+        for comp in op.comps.iter_mut() {
+            comp.create_matrix_elems(&mut op.mat);
+        }
+        return op;
+    }
     fn add_comp(&mut self, comp: &CompParse) {
         match comp {
             CompParse::R(g, p, n) => {
@@ -309,6 +375,7 @@ pub struct Tran {
 pub enum AnalysisInfo<'a> {
     OP,
     TRAN(&'a TranOptions, &'a TranState),
+    AC(&'a AcOptions, &'a AcState),
 }
 
 impl Tran {
@@ -445,29 +512,61 @@ pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
     return Tran::new(ckt, opts).solve();
 }
 
-// pub struct AcState {}
+#[derive(Default)]
+pub struct AcState {
+    omega: f64,
+}
 
-// pub struct AcOptions {}
+#[derive(Default)]
+pub struct AcOptions {}
 
-// pub struct Ac {
-//     solver: Solver<Complex<f64>>,
-//     // state: AcState,
-//     // pub opts: AcOptions,
-// }
+pub struct Ac {
+    solver: Solver<Complex<f64>>,
+    state: AcState,
+    pub opts: AcOptions,
+}
 
-// impl Ac {
-//     pub fn new(ckt: CktParse, opts: AcOptions) -> Ac {
-//         return Ac {
-//             solver: Solver::<Complex<f64>>::new(ckt),
-//             // ..Default::default()
-//         };
-//     }
-// }
+impl Ac {
+    pub fn new(ckt: CktParse, opts: AcOptions) -> Ac {
+        return Ac {
+            solver: Solver::<Complex<f64>>::new(ckt),
+            opts: AcOptions::default(),
+            state: AcState::default()
+        };
+    }
+    pub fn solve(&mut self)  -> SpResult<Vec<Vec<Complex<f64>>>> {
+        let mut soln = vec![];
+        for fk in 1..10 {
+            use std::f64::consts::PI;
+            self.state.omega = 2.0 * PI * fk as f64;
+            let fsoln = self.solver.solve(&AnalysisInfo::AC(&self.opts, &self.state))?;
+            soln.push(fsoln);
+        }
+        return Ok(soln);
+    }
+}
 
-// pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
-//     Err("????")
-// }
+pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+    return Ac::new(ckt, opts).solve();
+}
 
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use crate::spresult::TestResult;
+    use crate::proto::{CktParse, CompParse};
+    use CompParse::{R, C};
+    use NodeRef::{Num, Gnd};
+
+    #[test]
+    fn test_ac1() -> TestResult {
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![R(1.0, Num(0), Gnd)],
+        };
+        let soln = ac(ckt, AcOptions{})?;
+
+        Ok(())
+    }
+}

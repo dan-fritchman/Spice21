@@ -2,7 +2,9 @@ use enum_dispatch::enum_dispatch;
 use std::cmp::PartialEq;
 use std::convert::From;
 use std::ops::{Index, IndexMut};
+use num::Complex;
 
+use super::SpNum;
 use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use super::proto::NodeRef;
 use super::sparse21::{Eindex, Matrix};
@@ -25,8 +27,9 @@ pub trait Component {
     fn update(&mut self, _val: f64) {}
     // FIXME: prob not for every Component
 
+    fn load_ac(&mut self, guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> { Stamps::<Complex<f64>>::new()}
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64>;
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>);
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>);
 }
 
 pub struct Vsrc {
@@ -59,7 +62,7 @@ impl Component for Vsrc {
     fn update(&mut self, val: f64) {
         self.v = val;
     }
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.pi = make_matrix_elem(mat, self.p, Some(self.ivar));
         self.ip = make_matrix_elem(mat, Some(self.ivar), self.p);
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
@@ -115,10 +118,8 @@ impl Capacitor {
     }
 }
 
-const THE_TIMESTEP: f64 = 1e-9;
-
 impl Component for Capacitor {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.pp = make_matrix_elem(mat, self.p, self.p);
         self.pn = make_matrix_elem(mat, self.p, self.n);
         self.np = make_matrix_elem(mat, self.n, self.p);
@@ -152,6 +153,7 @@ impl Component for Capacitor {
                     b: vec![(self.p, -rhs), (self.n, rhs)],
                 };
             }
+            AnalysisInfo::AC(_o, _s) => panic!("HOW WE GET HERE?!?")
         }
     }
 }
@@ -206,7 +208,7 @@ impl Component for Resistor {
     fn update(&mut self, val: f64) {
         self.g = val;
     }
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use TwoTerm::{N, P};
         for l in [P, N].into_iter() {
             for r in [P, N].into_iter() {
@@ -533,7 +535,7 @@ impl Mos1 {
 }
 
 impl Component for Mos1 {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use MosTerm::{B, D, G, S};
         for t1 in [G, D, S, B].iter() {
             for t2 in [G, D, S, B].iter() {
@@ -784,7 +786,7 @@ impl Mos {
 }
 
 impl Component for Mos {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use MosTerm::{D, G, S};
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
@@ -881,7 +883,7 @@ impl Diode {
 }
 
 impl Component for Diode {
-    fn create_matrix_elems(&mut self, mat: &mut Matrix<f64>) {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.pp = make_matrix_elem(mat, self.p, self.p);
         self.pn = make_matrix_elem(mat, self.p, self.n);
         self.np = make_matrix_elem(mat, self.n, self.p);
@@ -925,7 +927,7 @@ impl Isrc {
 }
 
 impl Component for Isrc {
-    fn create_matrix_elems(&mut self, _mat: &mut Matrix<f64>) {}
+    fn create_matrix_elems<T:SpNum>(&mut self, _mat: &mut Matrix<T>) {}
     fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         return Stamps {
             g: vec![],
@@ -935,8 +937,8 @@ impl Component for Isrc {
 }
 
 /// Helper function to create matrix element at (row,col) if both are non-ground
-fn make_matrix_elem(
-    mat: &mut Matrix<f64>,
+fn make_matrix_elem<T: SpNum>(
+    mat: &mut Matrix<T>,
     row: Option<VarIndex>,
     col: Option<VarIndex>,
 ) -> Option<Eindex> {

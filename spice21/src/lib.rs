@@ -762,8 +762,8 @@ mod tests {
         };
 
         let opts = TranOptions {
-            tstep: 1e-9,
-            tstop: 100e-9,
+            tstep: 5e-9,
+            tstop: 1000e-9,
         };
         let mut tran = Tran::new(ckt, opts);
         tran.ic(Num(1), 0.0);
