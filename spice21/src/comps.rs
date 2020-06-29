@@ -79,6 +79,17 @@ impl Component for Vsrc {
             b: vec![(Some(self.ivar), self.v)],
         };
     }
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        return Stamps {
+            g: vec![
+                (self.pi, Complex::new(1.0, 0.0)),
+                (self.ip, Complex::new(1.0, 0.0)),
+                (self.ni, Complex::new(-1.0, 0.0)),
+                (self.in_, Complex::new(-1.0, 0.0)),
+            ],
+            b: vec![(Some(self.ivar), Complex::new(self.v, 0.0))],
+        };
+    }
 }
 
 #[derive(Default)]
@@ -156,6 +167,23 @@ impl Component for Capacitor {
             AnalysisInfo::AC(_o, _s) => panic!("HOW WE GET HERE?!?")
         }
     }
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        use TwoTerm::{N, P};
+        let an_st = match an {
+            AnalysisInfo::AC(opts, state) => state,
+            _ => panic!("Invalid AC AnalysisInfo")
+        };
+        let c = self.dq_dv(0.0);
+        return Stamps {
+            g: vec![
+                (self.pp, Complex::new(0.0, an_st.omega * c)),
+                (self.nn, Complex::new(0.0, an_st.omega * c)),
+                (self.pn, Complex::new(0.0, -an_st.omega * c)),
+                (self.np, Complex::new(0.0, -an_st.omega * c)),
+            ],
+            b: vec![],
+        };
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -224,6 +252,18 @@ impl Component for Resistor {
                 (self.matps[(N, N)], self.g),
                 (self.matps[(P, N)], -self.g),
                 (self.matps[(N, P)], -self.g),
+            ],
+            b: vec![],
+        };
+    }
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        use TwoTerm::{N, P};
+        return Stamps {
+            g: vec![
+                (self.matps[(P, P)], Complex::new(self.g, 0.0)),
+                (self.matps[(N, N)], Complex::new(self.g, 0.0)),
+                (self.matps[(P, N)], Complex::new(-self.g, 0.0)),
+                (self.matps[(N, P)], Complex::new(-self.g, 0.0)),
             ],
             b: vec![],
         };

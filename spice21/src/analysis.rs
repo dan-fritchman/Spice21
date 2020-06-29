@@ -105,6 +105,13 @@ enum AnalysisMode {
     AC,
 }
 
+struct Iteration<NumT:SpNum> {
+    n: usize,
+    x: Vec<NumT>,
+    dx: Vec<NumT>,
+    vtol: Vec<bool>,
+    itol: Vec<bool>,
+}
 struct Solver<NumT: SpNum> {
     comps: Vec<ComponentSolver>,
     vars: Variables<NumT>,
@@ -193,6 +200,7 @@ impl Solver<Complex<f64>> { // FIXME: share more of this
     }
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<Complex<f64>>> {
         let mut dx = vec![Complex::zero(); self.vars.len()];
+        let mut iters: Vec<Iteration<Complex<f64>>> = vec![];
 
         for _k in 0..20 {
             // FIXME: number of iterations
@@ -207,13 +215,15 @@ impl Solver<Complex<f64>> { // FIXME: share more of this
 
             // Calculate the residual error
             let res: Vec<Complex<f64>> = self.mat.res(&self.vars.values, &self.rhs)?;
+            let vtol: Vec<bool> = dx.iter().map(|&v| v.norm() < 1e-3).collect();
+            let itol: Vec<bool> = res.iter().map(|&v| v.norm() < 1e-9).collect();
             // Check convergence
-            if self.converged(&dx, &res) {
+            if vtol.iter().all(|v| *v) && itol.iter().all(|v| *v) { //self.converged(&dx, &res) {
                 return Ok(self.vars.values.clone());
             }
             // Solve for our update
             dx = self.mat.solve(res)?;
-            let max_step = 1000e-3;
+            let max_step = 1.0;
             let max_abs = dx
                 .iter()
                 .fold(0.0, |s, v| if v.norm() > s { v.norm() } else { s });
@@ -226,6 +236,13 @@ impl Solver<Complex<f64>> { // FIXME: share more of this
             for r in 0..self.vars.len() {
                 self.vars.values[r] += dx[r];
             }
+            iters.push(Iteration {
+                n: _k,
+                x: self.vars.values.clone(),
+                dx: dx.clone(),
+                vtol: vtol,
+                itol: itol,
+            });
         }
         return Err("Convergence Failed");
     }
@@ -514,7 +531,7 @@ pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
 
 #[derive(Default)]
 pub struct AcState {
-    omega: f64,
+    pub omega: f64,
 }
 
 #[derive(Default)]
@@ -538,8 +555,14 @@ impl Ac {
         let mut soln = vec![];
         for fk in 1..10 {
             use std::f64::consts::PI;
-            self.state.omega = 2.0 * PI * fk as f64;
-            let fsoln = self.solver.solve(&AnalysisInfo::AC(&self.opts, &self.state))?;
+            self.state.omega = 2.0 * PI * 1e10 * fk as f64;
+            let an = AnalysisInfo::AC(&self.opts, &self.state);
+            let fsoln = match self.solver.solve(&an) {
+                Ok(ans) => ans,
+                Err(e) => {
+                    return Err("Failed");
+                }
+            };
             soln.push(fsoln);
         }
         return Ok(soln);
@@ -556,7 +579,7 @@ mod tests {
     use super::*;
     use crate::spresult::TestResult;
     use crate::proto::{CktParse, CompParse};
-    use CompParse::{R, C};
+    use CompParse::{R, C, V};
     use NodeRef::{Num, Gnd};
 
     #[test]
@@ -564,6 +587,21 @@ mod tests {
         let ckt = CktParse {
             nodes: 1,
             comps: vec![R(1.0, Num(0), Gnd)],
+        };
+        let soln = ac(ckt, AcOptions{})?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ac2() -> TestResult {
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                R(1e-3, Num(0), Num(1)),
+                C(1e-9, Num(1), Gnd),
+                V(1.0, Num(0), Gnd),
+            ],
         };
         let soln = ac(ckt, AcOptions{})?;
 
