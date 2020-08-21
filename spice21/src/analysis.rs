@@ -16,7 +16,7 @@ use crate::{SpNum, Abs};
 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
-/// conveying its Matrix-contributions in `Stamps.j`
+/// conveying its Matrix-contributions in `Stamps.g`
 /// and its RHS contributions in `Stamps.b`.
 #[derive(Debug)]
 pub struct Stamps<NumT> {
@@ -299,18 +299,11 @@ impl<NumT: SpNum> Solver<NumT> {
                 let v = Vsrc::new(*v, p.into(), n.into(), ivar);
                 self.comps.push(v.into());
             }
-            CompParse::Mos(pol, g, d, s, b) => {
-                use crate::comps::Mos;
+            CompParse::Mos0(pol, g, d, s, b) => {
+                use crate::comps::Mos0;
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
-                let comp = Mos::new(
-                    [g, d, s, b].into(),
-                    //                    dp.into(), ds.into(),
-                    0.25,
-                    50e-3,
-                    3e-3,
-                    *pol,
-                );
+                let comp = Mos0::new([g, d, s, b].into(), *pol);
                 self.comps.push(comp.into());
             }
             CompParse::Mos1(model, params, g, d, s, b) => {
@@ -340,6 +333,12 @@ impl<NumT: SpNum> Solver<NumT> {
 pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
     let mut s = Solver::<f64>::new(ckt);
     return s.solve(&AnalysisInfo::OP);
+}
+
+pub enum AnalysisInfo<'a> {
+    OP,
+    TRAN(&'a TranOptions, &'a TranState),
+    AC(&'a AcOptions, &'a AcState),
 }
 
 enum NumericalIntegration {
@@ -383,16 +382,16 @@ impl TranState {
     }
 }
 
+#[derive(Default)]
+pub struct TranOptions {
+    pub tstep: f64,
+    pub tstop: f64,
+}
+
 pub struct Tran {
     solver: Solver<f64>,
     state: TranState,
     pub opts: TranOptions,
-}
-
-pub enum AnalysisInfo<'a> {
-    OP,
-    TRAN(&'a TranOptions, &'a TranState),
-    AC(&'a AcOptions, &'a AcState),
 }
 
 impl Tran {
@@ -442,7 +441,7 @@ impl Tran {
 
             let mut res: Vec<Vec<f64>> = vec![];
 
-            let f = File::create("data.json").unwrap();
+            let f = File::create("data.json").unwrap(); // FIXME: name 
             let mut ser = serde_json::Serializer::new(f);
             let mut seq = ser.serialize_seq(None).unwrap();
 
@@ -519,15 +518,62 @@ impl Tran {
     }
 }
 
-#[derive(Default)]
-pub struct TranOptions {
-    pub tstep: f64,
-    pub tstop: f64,
-}
 
 pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
     return Tran::new(ckt, opts).solve();
 }
+
+// struct IoWriter {
+
+// }
+
+// enum IoWriterMessage {
+//     STOP,
+//     DATA(Vec<f64>),
+// }
+// enum IoWriterResponse {
+//     OK,
+//     RESULT(Vec<Vec<f64>>),
+// }
+
+// use mpsc::channel;
+
+// impl IoWriter {
+//     fn new(rx: channel::<IoWriterMessage>, tx:channel::<IoWriterResponse>) -> IoWriter {
+//         use std::sync::mpsc;
+//         use std::thread;
+
+//         let (tx, rx) = mpsc::channel::<IoWriterMessage>();
+//         let (tx2, rx2) = mpsc::channel::<IoWriterResponse>();
+
+//         let t = thread::spawn(move || {
+//             use serde::ser::{SerializeSeq, Serializer};
+//             use std::fs::File;
+
+//             let mut res: Vec<Vec<f64>> = vec![];
+
+//             let f = File::create("data.json").unwrap(); // FIXME: name 
+//             let mut ser = serde_json::Serializer::new(f);
+//             let mut seq = ser.serialize_seq(None).unwrap();
+
+//             for msg in rx {
+//                 match msg {
+//                     IoWriterMessage::DATA(d) => {
+//                         seq.serialize_element(&d).unwrap();
+//                         res.push(d);
+//                     }
+//                     IoWriterMessage::STOP => {
+//                         seq.end().unwrap();
+//                         tx2.send(IoWriterResponse::RESULT(res)).unwrap();
+//                         return;
+//                     }
+//                 };
+//             }
+//         });
+
+//         IoWriter { }
+//     }
+// }
 
 #[derive(Default)]
 pub struct AcState {
@@ -553,18 +599,32 @@ impl Ac {
     }
     pub fn solve(&mut self)  -> SpResult<Vec<Vec<Complex<f64>>>> {
         let mut soln = vec![];
-        for fk in 1..10 {
+
+        use serde::ser::{SerializeSeq, Serializer};
+        use std::fs::File;
+
+        let f = File::create("data.ac.json").unwrap(); // FIXME: name 
+        let mut ser = serde_json::Serializer::new(f);
+        let mut seq = ser.serialize_seq(None).unwrap();
+
+        for fk in 0..10 { // FIXME: parametrize
+            let f = (10.0).powi(fk);
+            // let f= 1e3 * fk as f64;
             use std::f64::consts::PI;
-            self.state.omega = 2.0 * PI * 1e10 * fk as f64;
+            self.state.omega = 2.0 * PI * f;
             let an = AnalysisInfo::AC(&self.opts, &self.state);
-            let fsoln = match self.solver.solve(&an) {
-                Ok(ans) => ans,
-                Err(e) => {
-                    return Err("Failed");
-                }
-            };
+            let fsoln = self.solver.solve(&an)?;
+            
+            // FIXME: data-storage format is fairly ad-hoc for now, interspersing re/im per signal 
+            let mut flat: Vec<f64> = vec![f];
+            for pt in fsoln.iter() {
+                flat.push(pt.re);
+                flat.push(pt.im);
+            }
+            seq.serialize_element(&flat).unwrap();
             soln.push(fsoln);
         }
+        seq.end().unwrap();
         return Ok(soln);
     }
 }
@@ -579,7 +639,8 @@ mod tests {
     use super::*;
     use crate::spresult::TestResult;
     use crate::proto::{CktParse, CompParse};
-    use CompParse::{R, C, V};
+    use crate::comps::{MosType};
+    use CompParse::{R, C, V, Mos0, Mos1};
     use NodeRef::{Num, Gnd};
 
     #[test]
@@ -601,6 +662,23 @@ mod tests {
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
                 V(1.0, Num(0), Gnd),
+            ],
+        };
+        let soln = ac(ckt, AcOptions{})?;
+        
+        Ok(())
+    }
+
+
+    #[test]
+    fn test_ac3() -> TestResult {
+        let ckt = CktParse {
+            nodes: 2,
+            comps: vec![
+                R(1e-3, Num(0), Num(1)),
+                C(1e-9, Num(1), Gnd),
+                V(1.0, Num(0), Gnd),
+                Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd)
             ],
         };
         let soln = ac(ckt, AcOptions{})?;

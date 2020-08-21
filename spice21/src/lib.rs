@@ -168,7 +168,7 @@ mod tests {
             comps: vec![
                 CompParse::V(1.0, NodeRef::Num(0), NodeRef::Gnd),
                 CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
-                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
             ],
         };
 
@@ -189,7 +189,7 @@ mod tests {
             comps: vec![
                 CompParse::V(-1.0, NodeRef::Num(0), NodeRef::Gnd),
                 CompParse::V(-1.0, NodeRef::Num(1), NodeRef::Gnd),
-                CompParse::Mos(false, Num(0), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Gnd, Gnd),
             ],
         };
 
@@ -209,7 +209,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::I(5e-3, Num(0), Gnd),
-                CompParse::Mos(true, Num(0), Num(0), Gnd, Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(0), Gnd, Gnd),
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
@@ -227,7 +227,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::I(5e-3, Num(0), Gnd),
-                CompParse::Mos(true, Num(0), Num(0), Gnd, Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(0), Gnd, Gnd),
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
@@ -251,7 +251,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::I(5e-3, Num(0), Gnd),
-                CompParse::Mos(true, Num(0), Gnd, Num(0), Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Gnd, Num(0), Gnd),
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
@@ -269,7 +269,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::I(-5e-3, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Num(0), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(0), Gnd, Gnd),
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
@@ -287,7 +287,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::I(-5e-3, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Num(0), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(0), Gnd, Gnd),
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
@@ -311,7 +311,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::I(-5e-3, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Gnd, Num(0), Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Gnd, Num(0), Gnd),
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
@@ -329,7 +329,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::R(1e-3, Num(0), Gnd),
-                CompParse::Mos(true, Num(0), Num(0), Gnd, Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(0), Gnd, Gnd),
             ],
         };
 
@@ -346,7 +346,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::R(1e-3, Num(0), Gnd),
-                CompParse::Mos(true, Num(0), Gnd, Num(0), Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Gnd, Num(0), Gnd),
             ],
         };
 
@@ -363,7 +363,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::R(1e-3, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Num(0), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(0), Gnd, Gnd),
             ],
         };
 
@@ -380,7 +380,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 CompParse::R(1e-3, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Gnd, Num(0), Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Gnd, Num(0), Gnd),
             ],
         };
 
@@ -398,7 +398,7 @@ mod tests {
             comps: vec![
                 CompParse::V(1.0, Num(0), Gnd),
                 CompParse::R(1e-3, Num(1), Num(0)),
-                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
             ],
         };
 
@@ -418,7 +418,7 @@ mod tests {
             comps: vec![
                 CompParse::V(-1.0, Num(0), Gnd),
                 CompParse::R(1e-3, Num(1), Num(0)),
-                CompParse::Mos(false, Num(0), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Gnd, Gnd),
             ],
         };
 
@@ -437,8 +437,8 @@ mod tests {
             nodes: 2,
             comps: vec![
                 CompParse::V(1.0, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Num(1), Num(0), Num(0)),
-                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
                 CompParse::R(1e-9, Num(1), Gnd),
             ],
         };
@@ -456,8 +456,8 @@ mod tests {
             nodes: 2,
             comps: vec![
                 CompParse::V(1.0, Num(0), Gnd),
-                CompParse::Mos(false, Gnd, Num(1), Num(0), Num(0)),
-                CompParse::Mos(true, Gnd, Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Gnd, Num(1), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Gnd, Num(1), Gnd, Gnd),
                 CompParse::R(1e-9, Num(1), Num(0)),
             ],
         };
@@ -475,17 +475,17 @@ mod tests {
             nodes: 5,
             comps: vec![
                 CompParse::V(1.0, Num(0), Gnd),
-                CompParse::Mos(false, Num(0), Num(1), Num(0), Num(0)),
-                CompParse::Mos(true, Num(0), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
                 CompParse::R(1e-9, Num(1), Gnd),
-                CompParse::Mos(false, Num(1), Num(2), Num(0), Num(0)),
-                CompParse::Mos(true, Num(1), Num(2), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(1), Num(2), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(1), Num(2), Gnd, Gnd),
                 CompParse::R(1e-9, Num(2), Gnd),
-                CompParse::Mos(false, Num(2), Num(3), Num(0), Num(0)),
-                CompParse::Mos(true, Num(2), Num(3), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(2), Num(3), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(2), Num(3), Gnd, Gnd),
                 CompParse::R(1e-9, Num(3), Gnd),
-                CompParse::Mos(false, Num(3), Num(4), Num(0), Num(0)),
-                CompParse::Mos(true, Num(3), Num(4), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(3), Num(4), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(3), Num(4), Gnd, Gnd),
                 CompParse::R(1e-9, Num(4), Gnd),
             ],
         };
@@ -601,16 +601,16 @@ mod tests {
             comps: vec![
                 CompParse::V(1.0, Num(0), Gnd),
                 CompParse::R(1e-3, Num(0), Gnd),
-                CompParse::Mos(false, Num(3), Num(1), Num(0), Num(0)),
-                CompParse::Mos(true, Num(3), Num(1), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(3), Num(1), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(3), Num(1), Gnd, Gnd),
                 CompParse::R(1e-5, Num(1), Gnd),
                 CompParse::C(c, Num(1), Gnd),
-                CompParse::Mos(false, Num(1), Num(2), Num(0), Num(0)),
-                CompParse::Mos(true, Num(1), Num(2), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(1), Num(2), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(1), Num(2), Gnd, Gnd),
                 CompParse::R(1e-5, Num(2), Gnd),
                 CompParse::C(c, Num(2), Gnd),
-                CompParse::Mos(false, Num(2), Num(3), Num(0), Num(0)),
-                CompParse::Mos(true, Num(2), Num(3), Gnd, Gnd),
+                CompParse::Mos0(MosType::PMOS, Num(2), Num(3), Num(0), Num(0)),
+                CompParse::Mos0(MosType::NMOS, Num(2), Num(3), Gnd, Gnd),
                 CompParse::R(1e-5, Num(3), Gnd),
                 CompParse::C(c, Num(3), Gnd),
             ],

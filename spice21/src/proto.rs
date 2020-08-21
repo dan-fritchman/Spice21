@@ -26,11 +26,12 @@ pub enum NodeRef {
 }
 
 pub enum CompParse {
-    R(f64, NodeRef, NodeRef),
-    I(f64, NodeRef, NodeRef),
     V(f64, NodeRef, NodeRef),
+    I(f64, NodeRef, NodeRef),
+    R(f64, NodeRef, NodeRef),
+    C(f64, NodeRef, NodeRef),
     D(f64, f64, NodeRef, NodeRef),
-    Mos(bool, NodeRef, NodeRef, NodeRef, NodeRef),
+    Mos0(MosType, NodeRef, NodeRef, NodeRef, NodeRef),
     Mos1(
         Mos1Model,
         Mos1InstanceParams,
@@ -39,7 +40,6 @@ pub enum CompParse {
         NodeRef,
         NodeRef,
     ),
-    C(f64, NodeRef, NodeRef),
 }
 
 pub struct CktParse {

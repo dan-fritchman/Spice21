@@ -1,5 +1,4 @@
 use enum_dispatch::enum_dispatch;
-use std::cmp::PartialEq;
 use std::convert::From;
 use std::ops::{Index, IndexMut};
 use num::Complex;
@@ -12,12 +11,12 @@ use super::sparse21::{Eindex, Matrix};
 #[enum_dispatch]
 pub enum ComponentSolver {
     Vsrc,
+    Isrc,
     Capacitor,
     Resistor,
-    Mos1,
-    Mos,
     Diode,
-    Isrc,
+    Mos0,
+    Mos1,
 }
 
 #[enum_dispatch(ComponentSolver)]
@@ -80,6 +79,7 @@ impl Component for Vsrc {
         };
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        // FIXME: always has ACM=1, for now 
         return Stamps {
             g: vec![
                 (self.pi, Complex::new(1.0, 0.0)),
@@ -87,7 +87,9 @@ impl Component for Vsrc {
                 (self.ni, Complex::new(-1.0, 0.0)),
                 (self.in_, Complex::new(-1.0, 0.0)),
             ],
-            b: vec![(Some(self.ivar), Complex::new(self.v, 0.0))],
+            b: vec![
+                (Some(self.ivar), Complex::new(self.v, 0.0))
+            ],
         };
     }
 }
@@ -310,11 +312,8 @@ impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
     }
 }
 
-#[derive(Clone)]
-pub enum MosType {
-    NMOS,
-    PMOS,
-}
+#[derive(Clone, Copy)]
+pub enum MosType { NMOS, PMOS }
 
 // FIXME: should reference instead of cloning, when we can get it to play nicely with `Box<dyn Comp>`
 #[derive(Clone)]
@@ -597,9 +596,9 @@ impl Component for Mos1 {
 
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
-        // e.g. the polarities typically expressed for NMOS
+        // i.e. the polarities typically expressed for NMOS
         let p = match self.model.mos_type {
-            MosType::NMOS => 1.0,
+            MosType::NMOS =>  1.0,
             MosType::PMOS => -1.0,
         };
         let vds1 = p * (vd - vs);
@@ -803,29 +802,44 @@ impl Component for Mos1 {
     }
 }
 
-pub struct Mos {
+pub struct Mos0Params {
+    mos_type: MosType,
     vth: f64,
     beta: f64,
     lam: f64,
-    polarity: bool,
+}
+
+impl Default for Mos0Params {
+    fn default() -> Self {
+        Mos0Params {
+            mos_type: MosType::NMOS,
+            vth: 0.25,
+            beta: 50e-3,
+            lam: 3e-3,
+        }
+    }
+}
+
+pub struct Mos0 {
+    params: Mos0Params,
     ports: MosTerminals,
     matps: MosMatrixPointers,
 }
 
-impl Mos {
-    pub fn new(ports: MosTerminals, vth: f64, beta: f64, lam: f64, polarity: bool) -> Mos {
-        Mos {
-            vth,
-            beta,
-            lam,
-            polarity,
+impl Mos0 {
+    pub fn new(ports: MosTerminals, mos_type: MosType) -> Self {
+        Mos0 {
+            params: Mos0Params {
+                mos_type: mos_type,
+                ..Mos0Params::default()
+            },
             ports,
             matps: MosMatrixPointers([[None; 4]; 4]),
         }
     }
 }
 
-impl Component for Mos {
+impl Component for Mos0 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use MosTerm::{D, G, S};
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
@@ -842,7 +856,10 @@ impl Component for Mos {
         let vb = guess.get(self.ports[B]);
         println!("vg={} vd={} vs={} vb={}", vg, vd, vs, vb);
 
-        let p = if self.polarity { 1.0 } else { -1.0 };
+        let p = match self.params.mos_type {
+            MosType::NMOS => 1.0,
+            MosType::PMOS => -1.0,
+        };    
         let vds1 = p * (vd - vs);
         let reversed = vds1 < 0.0;
         let vgs = if reversed {
@@ -851,31 +868,33 @@ impl Component for Mos {
             p * (vg - vs)
         };
         let vds = if reversed { -vds1 } else { vds1 };
-        let vov = vgs - self.vth;
+        let vov = vgs - self.params.vth;
 
         let mut ids = 0.0;
         let mut gm = 0.0;
         let mut gds = 0.0;
+        let lam = self.params.lam;
+        let beta = self.params.beta;
         if vov <= 0.0 {
             // Cutoff
             // Already set
             println!("CUTOFF: vgs={} vds={}", vgs, vds);
         } else if vds >= vov {
             // Sat
-            ids = self.beta / 2.0 * vov.powi(2) * (1.0 + self.lam * vds);
-            gm = self.beta * vov * (1.0 + self.lam * vds);
-            gds = self.lam * self.beta / 2.0 * vov.powi(2);
+            ids = beta / 2.0 * vov.powi(2) * (1.0 + lam * vds);
+            gm = beta * vov * (1.0 + lam * vds);
+            gds = lam * beta / 2.0 * vov.powi(2);
             println!(
                 "SAT: vgs={} vds={}, ids={}, gm={}, gds={}",
                 vgs, vds, ids, gm, gds
             );
         } else {
             //Triode
-            ids = self.beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + self.lam * vds);
-            gm = self.beta * vds * (1.0 + self.lam * vds);
-            gds = self.beta
-                * ((vov - vds) * (1.0 + self.lam * vds)
-                    + self.lam * ((vov * vds) - vds.powi(2) / 2.0));
+            ids = beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + lam * vds);
+            gm = beta * vds * (1.0 + lam * vds);
+            gds = beta
+                * ((vov - vds) * (1.0 + lam * vds)
+                    + lam * ((vov * vds) - vds.powi(2) / 2.0));
             println!(
                 "LIN: vgs={} vds={}, ids={}, gm={}, gds={}",
                 vgs, vds, ids, gm, gds
