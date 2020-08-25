@@ -170,7 +170,6 @@ impl Component for Capacitor {
         }
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
-        use TwoTerm::{N, P};
         let an_st = match an {
             AnalysisInfo::AC(opts, state) => state,
             _ => panic!("Invalid AC AnalysisInfo")
@@ -450,6 +449,8 @@ struct Mos1InternalParams {
     leff: f64,
     isat_bd: f64,
     isat_bs: f64,
+    grd: f64, 
+    grs: f64, 
 }
 
 /// Mos1 DC & Transient Operating Point
@@ -477,10 +478,10 @@ struct Mos1OpPoint {
     //    rd: f64,
     //    drainconductance: f64,
     //
-    //    gm: f64,
-    //    gds: f64,
+       gm: f64,
+       gds: f64,
     //    gmb: f64,
-    //    gmbs: f64,
+       gmbs: f64,
     //    gbd: f64,
     //    gbs: f64,
 
@@ -509,6 +510,7 @@ struct Mos1OpPoint {
     icgs: f64,
     icgd: f64,
     icgb: f64,
+    reversed: bool,
 }
 
 pub struct Mos1 {
@@ -735,9 +737,6 @@ impl Component for Mos1 {
         let gcbd = 0.0;
         let gcbs = 0.0;
         let gcbg = 0.0;
-        // FIXME: terminal resistances
-        let grd = 0.0;
-        let grs = 0.0;
 
         // Store as our op point for next time
         self.guess = Mos1OpPoint {
@@ -753,6 +752,10 @@ impl Component for Mos1 {
             icgs,
             icgd,
             icgb,
+            gm,
+            gds,
+            gmbs,
+            reversed
         };
 
         // Bulk junction caps RHS adjustment
@@ -761,11 +764,16 @@ impl Component for Mos1 {
         let irhs = ids - gm * vgs - gds * vds;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
+        // FIXME: this also needs the "prime" vs "external" source & drains 
         let (sr, sx, dr, dx) = if !reversed {
             (S, S, D, D)
         } else {
             (D, D, S, S)
         };
+        // Include our terminal resistances
+        let grd = self.intparams.grd;
+        let grs = self.intparams.grs;
+        // And finally send back our matrix contributions 
         return Stamps {
             g: vec![
                 (self.matps[(dr, dr)], gds + grd + gbd + gcgd),
@@ -798,6 +806,72 @@ impl Component for Mos1 {
                 (self.ports[G], -p * (rhsgs + rhsgb + rhsgd)),
                 (self.ports[B], -(ceqbs + ceqbd - p * rhsgb)),
             ],
+        };
+    }
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        // Grab the frequency-variable from our analysis
+        let omega = match an {
+            AnalysisInfo::AC(opts, state) => state.omega,
+            _ => panic!("Invalid AC AnalysisInfo")
+        };
+        use MosTerm::{B, D, G, S};
+
+        // Short-hand the conductances from our op-point. 
+        // (Rustc should be smart enough not to copy these.)
+        let (gm, gds, gmbs) = (self.op.gm, self.op.gds, self.op.gmbs);
+
+        // FIXME: bulk junction diodes
+        let cbs = 0.0;
+        let cbd = 0.0;
+        let gbd = 1e-9;
+        let gbs = 1e-9;
+        let gcbd = 0.0;
+        let gcbs = 0.0;
+        let gcbg = 0.0;
+        
+        // FIXME: cap impedances
+        let gcgs = 0.0;
+        let gcgd = 0.0;
+        let gcgb = 0.0;
+
+        // Sort out which are the "reported" drain and source terminals (sr, dr)
+        // FIXME: this also needs the "prime" vs "external" source & drains 
+        let (sr, sx, dr, dx) = if !self.op.reversed {
+            (S, S, D, D)
+        } else {
+            (D, D, S, S)
+        };
+        // Include our terminal resistances
+        let grd = self.intparams.grd;
+        let grs = self.intparams.grs;
+        // And finally, send back our AC-matrix contributions
+        return Stamps {
+            g: vec![
+                (self.matps[(dr, dr)], Complex::new(0.0, gds + grd + gbd + gcgd)),
+                (self.matps[(sr, sr)], Complex::new(0.0, gm + gds + grs + gbs + gmbs + gcgs)),
+                (self.matps[(dr, sr)], Complex::new(0.0, -gm - gds - gmbs)),
+                (self.matps[(sr, dr)], Complex::new(0.0, -gds)),
+                (self.matps[(dr, G)], Complex::new(0.0, gm - gcgd)),
+                (self.matps[(sr, G)], Complex::new(0.0, -gm - gcgs)),
+                (self.matps[(G, G)], Complex::new(0.0, (gcgd + gcgs + gcgb))),
+                (self.matps[(B, B)], Complex::new(0.0, (gbd + gbs + gcgb))),
+                (self.matps[(G, B)], Complex::new(0.0, -gcgb)),
+                (self.matps[(G, dr)], Complex::new(0.0, -gcgd)),
+                (self.matps[(G, sr)], Complex::new(0.0, -gcgs)),
+                (self.matps[(B, G)], Complex::new(0.0, -gcbg)),
+                (self.matps[(G, dr)], Complex::new(0.0, -gcgd)),
+                (self.matps[(B, dr)], Complex::new(0.0, -gbd)),
+                (self.matps[(B, sr)], Complex::new(0.0, -gbs)),
+                (self.matps[(dr, B)], Complex::new(0.0, -gbd + gmbs)),
+                (self.matps[(sr, B)], Complex::new(0.0, -gbs - gmbs)),
+                (self.matps[(dx, dr)], Complex::new(0.0, -grd)),
+                (self.matps[(dr, dx)], Complex::new(0.0, -grd)),
+                (self.matps[(dx, dx)], Complex::new(0.0, grd)),
+                (self.matps[(sx, sr)], Complex::new(0.0, -grs)),
+                (self.matps[(sr, sx)], Complex::new(0.0, -grs)),
+                (self.matps[(sx, sx)], Complex::new(0.0, grs)),
+            ],
+            b: vec![],
         };
     }
 }
