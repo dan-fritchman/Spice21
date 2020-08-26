@@ -1,19 +1,25 @@
+pub mod analysis;
 pub mod assert;
+pub mod comps;
+pub mod proto;
 pub mod sparse21;
 pub mod spresult;
-pub mod proto;
-pub mod comps;
-pub mod analysis;
 
-use std::fmt;
-use std::cmp::PartialOrd;
-use num::{Num, Float, Zero, One, Complex};
 use num::traits::NumAssignOps;
+use num::{Complex, Float, Num, One, Zero};
+use std::cmp::PartialOrd;
+use std::fmt;
 
 // This long list of traits describes our required behavior for numeric types.
-pub trait SpNum: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug  {}
+pub trait SpNum:
+    Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug
+{
+}
 
-impl<T> SpNum for T where T: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug  {}
+impl<T> SpNum for T where
+    T: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug
+{
+}
 
 /// Absolute Value Trait for numeric types
 pub trait Abs {
@@ -21,24 +27,27 @@ pub trait Abs {
 }
 
 impl Abs for f64 {
-    fn absv(&self) -> f64 { self.abs() }
+    fn absv(&self) -> f64 {
+        self.abs()
+    }
 }
 
 impl Abs for Complex<f64> {
-    fn absv(&self) -> f64 { self.norm() }
+    fn absv(&self) -> f64 {
+        self.norm()
+    }
 }
-
 
 /// "Integration" Tests
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::comps::*;
     use super::analysis::*;
+    use super::assert::*;
+    use super::comps::*;
     use super::proto::*;
     use super::sparse21::*;
     use super::spresult::*;
-    use super::assert::*;
+    use super::*;
 
     /// Create a very basic Circuit
     fn parse_ckt() -> CktParse {
@@ -86,7 +95,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![1.0, ]);
+        assert_eq!(soln, vec![1.0,]);
         Ok(())
     }
 
@@ -772,5 +781,3 @@ mod tests {
         Ok(())
     }
 }
-
-

@@ -1,14 +1,13 @@
-use std::fmt;
 use std::cmp::{max, min};
+use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
-use num::{Num, Float, Zero, One, Complex};
 use num::traits::NumAssignOps;
+use num::{Complex, Float, Num, One, Zero};
 
 use super::assert::assert;
 use super::SpNum;
-
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eindex(usize);
@@ -59,7 +58,12 @@ impl<T> IndexMut<Axis> for AxisPair<T> {
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
-enum MatrixState { CREATED = 0, FACTORING, FACTORED, RESET }
+enum MatrixState {
+    CREATED = 0,
+    FACTORING,
+    FACTORED,
+    RESET,
+}
 
 #[derive(Debug)]
 pub struct Element<T: Num> {
@@ -201,7 +205,6 @@ impl AxisData {
 }
 
 type SpResult<T> = Result<T, &'static str>;
-
 
 struct MarkowitzConfig {
     rel_threshold: f64,
@@ -710,7 +713,9 @@ impl<T: SpNum> Matrix<T> {
         let mut e = self.axes[ax].hdrs[in_loc];
         let off_ax = ax.other();
         while let Some(ei) = e {
-            if self[ei].loc(off_ax) >= after_loc { break; }
+            if self[ei].loc(off_ax) >= after_loc {
+                break;
+            }
             e = self[ei].next(ax);
         }
         let mut best = e?;
@@ -743,17 +748,22 @@ impl<T: SpNum> Matrix<T> {
 
         for k in n..self.diag.len() {
             let d = match self.diag[k] {
-                None => { continue; }
+                None => {
+                    continue;
+                }
                 Some(d) => d,
             };
 
             // Check whether this element meets our threshold criteria
             let max_in_col = match self.max_after_loc(COLS, k, n) {
-                None => { continue; }
+                None => {
+                    continue;
+                }
                 Some(d) => d,
             };
             // FIXME: abs-value criterion for max_in_col
-            let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.absv() + MARKOWITZ_CONFIG.abs_threshold;
+            let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.absv()
+                + MARKOWITZ_CONFIG.abs_threshold;
             if self[d].val.absv() < threshold {
                 continue;
             }
@@ -785,7 +795,7 @@ impl<T: SpNum> Matrix<T> {
         let mut best_elem = None;
         let mut best_mark = MAX; // Actually use usize::MAX!
         let mut best_ratio = 0.0;
-//        let mut num_ties = 0;
+        //        let mut num_ties = 0;
 
         for _k in n..self.axes[COLS].hdrs.len() {
             let mut e = self.hdr(COLS, n);
@@ -797,32 +807,34 @@ impl<T: SpNum> Matrix<T> {
                 e = self[ei].next_in_col;
             }
             let ei = match e {
-                None => { continue; }
+                None => {
+                    continue;
+                }
                 Some(d) => d,
             };
 
             // Check whether this element meets our threshold criteria
             let max_in_col = self.max_after(COLS, ei);
-//            let threshold = MARKOWITZ_CONFIG.rel_threshol * self[max_in_col].val.absv() + MARKOWITZ_CONFIG.abs_threshol;
+            //            let threshold = MARKOWITZ_CONFIG.rel_threshol * self[max_in_col].val.absv() + MARKOWITZ_CONFIG.abs_threshol;
 
             while let Some(ei) = e {
                 // If so, compute and compare its Markowitz product to our best
                 let mark = self.markowitz_product(ei);
                 if mark < best_mark {
-//                    num_ties = 0;
+                    //                    num_ties = 0;
                     best_elem = e;
                     best_mark = mark;
                     best_ratio = (self[ei].val / self[max_in_col].val).absv();
                 } else if mark == best_mark {
-//                    num_ties += 1;
+                    //                    num_ties += 1;
                     let ratio = (self[ei].val / self[max_in_col].val).absv();
                     if ratio > best_ratio {
                         best_elem = e;
                         best_mark = mark;
                         best_ratio = ratio;
                     }
-//                    // FIXME: do we want tie-counting in here?
-//                    if num_ties >= best_mark * MARKOWITZ_CONFIG.ties_mult { return best_elem; }
+                    //                    // FIXME: do we want tie-counting in here?
+                    //                    if num_ties >= best_mark * MARKOWITZ_CONFIG.ties_mult { return best_elem; }
                 }
                 e = self[ei].next_in_col;
             }
@@ -926,7 +938,9 @@ impl<T: SpNum> Matrix<T> {
     ///
     /// Performs LU factorization, forward and backward substitution.
     pub fn solve(&mut self, rhs: Vec<T>) -> SpResult<Vec<T>> {
-        if self.state != MatrixState::FACTORED { self.lu_factorize()?; }
+        if self.state != MatrixState::FACTORED {
+            self.lu_factorize()?;
+        }
         assert(self.state).eq(MatrixState::FACTORED)?;
 
         // Unwind any row-swaps
@@ -936,7 +950,9 @@ impl<T: SpNum> Matrix<T> {
             for k in 0..c.len() {
                 c[k] = rhs[row_mapping.i2e[k]];
             }
-        } else { return Err("Missing Row Mapping"); }
+        } else {
+            return Err("Missing Row Mapping");
+        }
 
         // Forward substitution: Lc=b
         for k in 0..self.diag.len() {
@@ -979,7 +995,9 @@ impl<T: SpNum> Matrix<T> {
             for k in 0..c.len() {
                 soln[k] = c[col_mapping.e2i[k]];
             }
-        } else { return Err("Missing Column Mapping"); }
+        } else {
+            return Err("Missing Column Mapping");
+        }
         return Ok(soln);
     }
     /// Create a row-majory dense matrix representation
@@ -993,9 +1011,15 @@ impl<T: SpNum> Matrix<T> {
     fn hdr(&self, ax: Axis, loc: usize) -> Option<Eindex> {
         self.axes[ax].hdrs[loc]
     }
-    fn set_hdr(&mut self, ax: Axis, loc: usize, ei: Option<Eindex>) { self.axes[ax].hdrs[loc] = ei; }
-    fn num_rows(&self) -> usize { self.axes[ROWS].hdrs.len() }
-    fn num_cols(&self) -> usize { self.axes[COLS].hdrs.len() }
+    fn set_hdr(&mut self, ax: Axis, loc: usize, ei: Option<Eindex>) {
+        self.axes[ax].hdrs[loc] = ei;
+    }
+    fn num_rows(&self) -> usize {
+        self.axes[ROWS].hdrs.len()
+    }
+    fn num_cols(&self) -> usize {
+        self.axes[COLS].hdrs.len()
+    }
 }
 
 impl<T: SpNum + One> Matrix<T> {
@@ -1054,7 +1078,6 @@ impl<T: SpNum> fmt::Debug for Matrix<T> {
         write!(f, "\n")
     }
 }
-
 
 use crate::spresult::TestResult;
 
@@ -1128,11 +1151,11 @@ impl<T: SpNum> Matrix<T> {
                 } else {
                     return Err("FAIL!");
                 }
-                // FIXME: would prefer something like the previous "same element ID" testing
-                // assert_eq!(e, m[self.diag[r]].val);
-                //                    assert_eq!(e.index, self.diag[r]);
-                //                    assert_eq!(e.row, r);
-                //                    assert_eq!(e.col, r);
+            // FIXME: would prefer something like the previous "same element ID" testing
+            // assert_eq!(e, m[self.diag[r]].val);
+            //                    assert_eq!(e.index, self.diag[r]);
+            //                    assert_eq!(e.row, r);
+            //                    assert_eq!(e.col, r);
             } else {
                 assert(self.diag[r]).eq(None)?;
             }
@@ -1152,7 +1175,6 @@ mod tests {
     use super::*;
     use crate::spresult::TestResult;
     use num::Complex;
-
 
     #[test]
     fn test_create_element() -> TestResult {
@@ -1435,17 +1457,16 @@ mod tests {
             (0, 0, 1.0),
         ]);
         m.checkups()?;
-        m.assert_entries(
-            vec![
-                (2, 2, -1.0),
-                (2, 1, 5.0),
-                (2, 0, 2.0),
-                (1, 2, 5.0),
-                (1, 1, 2.0),
-                (0, 2, 1.0),
-                (0, 1, 1.0),
-                (0, 0, 1.0),
-            ])?;
+        m.assert_entries(vec![
+            (2, 2, -1.0),
+            (2, 1, 5.0),
+            (2, 0, 2.0),
+            (1, 2, 5.0),
+            (1, 1, 2.0),
+            (0, 2, 1.0),
+            (0, 1, 1.0),
+            (0, 0, 1.0),
+        ])?;
         m.lu_factorize()?;
         m.checkups()?;
         Ok(())
@@ -1505,19 +1526,13 @@ mod tests {
 
     #[test]
     fn test_create_complex() -> TestResult {
-        let mut m = Matrix::from_entries(vec![
-            (0, 0, Complex::one()),
-            (1, 1, Complex::one()),
-        ]);
+        let mut m = Matrix::from_entries(vec![(0, 0, Complex::one()), (1, 1, Complex::one())]);
         m.lu_factorize()?;
         Ok(())
     }
     #[test]
     fn test_solve_complex_id2() -> TestResult {
-        let mut m = Matrix::from_entries(vec![
-            (0, 0, Complex::one()),
-            (1, 1, Complex::one()),
-        ]);
+        let mut m = Matrix::from_entries(vec![(0, 0, Complex::one()), (1, 1, Complex::one())]);
         let soln = m.solve(vec![Complex::i(); 2])?;
         assert(soln).eq(vec![Complex::i(); 2])?;
         Ok(())
@@ -1536,4 +1551,3 @@ mod tests {
         Ok(())
     }
 }
-

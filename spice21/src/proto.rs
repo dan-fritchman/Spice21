@@ -1,6 +1,5 @@
+use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
 use prost::Message;
-use super::comps::{MosType, Mos1Model, Mos1InstanceParams};
-
 
 // Include the `items` module, which is generated from items.proto.
 pub mod proto {
@@ -17,7 +16,6 @@ pub mod proto {
         };
     }
 }
-
 
 #[derive(Debug, Copy, Clone)]
 pub enum NodeRef {
@@ -47,13 +45,10 @@ pub struct CktParse {
     pub comps: Vec<CompParse>,
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
+    use super::NodeRef::{Gnd, Num};
     use super::*;
-    use super::NodeRef::{Num, Gnd};
     use crate::spresult::TestResult;
 
     /// Create a very basic Circuit

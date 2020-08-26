@@ -3,14 +3,16 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct SpError {
-    desc: String
+    desc: String,
 }
 
 impl Error for SpError {}
 
 impl SpError {
     pub fn throw(s: &'static str) -> Box<SpError> {
-        return Box::new(SpError { desc: String::from(s) });
+        return Box::new(SpError {
+            desc: String::from(s),
+        });
     }
 }
 
@@ -22,16 +24,19 @@ impl fmt::Display for SpError {
 
 impl From<&'static str> for SpError {
     fn from(s: &'static str) -> Self {
-        SpError { desc: String::from(s) }
+        SpError {
+            desc: String::from(s),
+        }
     }
 }
 
 impl From<&'static str> for Box<SpError> {
     fn from(s: &'static str) -> Self {
-        Box::new(SpError { desc: String::from(s) })
+        Box::new(SpError {
+            desc: String::from(s),
+        })
     }
 }
 
 pub type SpResult<T> = Result<T, &'static str>;
 pub type TestResult = SpResult<()>;
-

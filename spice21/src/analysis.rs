@@ -2,17 +2,16 @@ use std::cmp::PartialEq;
 use std::convert::From;
 use std::ops::{Index, IndexMut};
 
-
-use std::fmt;
-use std::cmp::PartialOrd;
-use num::{Num,  Zero, One, Complex, Float};
 use num::traits::NumAssignOps;
+use num::{Complex, Float, Num, One, Zero};
+use std::cmp::PartialOrd;
+use std::fmt;
 
 use crate::comps::{Component, ComponentSolver, Mos1InstanceParams, Mos1Model};
 use crate::proto::{CktParse, CompParse, NodeRef};
 use crate::sparse21::{Eindex, Matrix};
 use crate::spresult::SpResult;
-use crate::{SpNum, Abs};
+use crate::{Abs, SpNum};
 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
@@ -105,7 +104,7 @@ enum AnalysisMode {
     AC,
 }
 
-struct Iteration<NumT:SpNum> {
+struct Iteration<NumT: SpNum> {
     n: usize,
     x: Vec<NumT>,
     dx: Vec<NumT>,
@@ -123,7 +122,7 @@ struct Solver<NumT: SpNum> {
 
 impl Solver<f64> {
     /// Collect and incorporate updates from all components
-    fn update (&mut self, an:&AnalysisInfo) {
+    fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
             let updates = comp.load(&self.vars, an);
             // Make updates for G and b
@@ -179,10 +178,10 @@ impl Solver<f64> {
     }
 }
 
-
-impl Solver<Complex<f64>> { // FIXME: share more of this 
+impl Solver<Complex<f64>> {
+    // FIXME: share more of this
     /// Collect and incorporate updates from all components
-    fn update (&mut self, an:&AnalysisInfo) {
+    fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
             let updates = comp.load_ac(&self.vars, an);
             // Make updates for G and b
@@ -218,7 +217,8 @@ impl Solver<Complex<f64>> { // FIXME: share more of this
             let vtol: Vec<bool> = dx.iter().map(|&v| v.norm() < 1e-3).collect();
             let itol: Vec<bool> = res.iter().map(|&v| v.norm() < 1e-9).collect();
             // Check convergence
-            if vtol.iter().all(|v| *v) && itol.iter().all(|v| *v) { //self.converged(&dx, &res) {
+            if vtol.iter().all(|v| *v) && itol.iter().all(|v| *v) {
+                //self.converged(&dx, &res) {
                 return Ok(self.vars.values.clone());
             }
             // Solve for our update
@@ -248,9 +248,7 @@ impl Solver<Complex<f64>> { // FIXME: share more of this
     }
 }
 
-
 impl<NumT: SpNum> Solver<NumT> {
-
     fn new(ckt: CktParse) -> Solver<NumT> {
         let mut op = Solver {
             comps: vec![],
@@ -441,7 +439,7 @@ impl Tran {
 
             let mut res: Vec<Vec<f64>> = vec![];
 
-            let f = File::create("data.json").unwrap(); // FIXME: name 
+            let f = File::create("data.json").unwrap(); // FIXME: name
             let mut ser = serde_json::Serializer::new(f);
             let mut seq = ser.serialize_seq(None).unwrap();
 
@@ -518,7 +516,6 @@ impl Tran {
     }
 }
 
-
 pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
     return Tran::new(ckt, opts).solve();
 }
@@ -552,7 +549,7 @@ pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
 
 //             let mut res: Vec<Vec<f64>> = vec![];
 
-//             let f = File::create("data.json").unwrap(); // FIXME: name 
+//             let f = File::create("data.json").unwrap(); // FIXME: name
 //             let mut ser = serde_json::Serializer::new(f);
 //             let mut seq = ser.serialize_seq(None).unwrap();
 
@@ -594,28 +591,29 @@ impl Ac {
         return Ac {
             solver: Solver::<Complex<f64>>::new(ckt),
             opts: AcOptions::default(),
-            state: AcState::default()
+            state: AcState::default(),
         };
     }
-    pub fn solve(&mut self)  -> SpResult<Vec<Vec<Complex<f64>>>> {
+    pub fn solve(&mut self) -> SpResult<Vec<Vec<Complex<f64>>>> {
         let mut soln = vec![];
 
         use serde::ser::{SerializeSeq, Serializer};
         use std::fs::File;
 
-        let f = File::create("data.ac.json").unwrap(); // FIXME: name 
+        let f = File::create("data.ac.json").unwrap(); // FIXME: name
         let mut ser = serde_json::Serializer::new(f);
         let mut seq = ser.serialize_seq(None).unwrap();
 
-        for fk in 0..10 { // FIXME: parametrize
+        for fk in 0..10 {
+            // FIXME: parametrize
             let f = (10.0).powi(fk);
             // let f= 1e3 * fk as f64;
             use std::f64::consts::PI;
             self.state.omega = 2.0 * PI * f;
             let an = AnalysisInfo::AC(&self.opts, &self.state);
             let fsoln = self.solver.solve(&an)?;
-            
-            // FIXME: data-storage format is fairly ad-hoc for now, interspersing re/im per signal 
+
+            // FIXME: data-storage format is fairly ad-hoc for now, interspersing re/im per signal
             let mut flat: Vec<f64> = vec![f];
             for pt in fsoln.iter() {
                 flat.push(pt.re);
@@ -633,15 +631,14 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
     return Ac::new(ckt, opts).solve();
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spresult::TestResult;
+    use crate::comps::MosType;
     use crate::proto::{CktParse, CompParse};
-    use crate::comps::{MosType};
-    use CompParse::{R, C, V, Mos0, Mos1};
-    use NodeRef::{Num, Gnd};
+    use crate::spresult::TestResult;
+    use CompParse::{Mos0, Mos1, C, R, V};
+    use NodeRef::{Gnd, Num};
 
     #[test]
     fn test_ac1() -> TestResult {
@@ -649,7 +646,7 @@ mod tests {
             nodes: 1,
             comps: vec![R(1.0, Num(0), Gnd)],
         };
-        let soln = ac(ckt, AcOptions{})?;
+        let soln = ac(ckt, AcOptions {})?;
 
         Ok(())
     }
@@ -664,11 +661,9 @@ mod tests {
                 V(1.0, Num(0), Gnd),
             ],
         };
-        let soln = ac(ckt, AcOptions{})?;
-        
+        let soln = ac(ckt, AcOptions {})?;
         Ok(())
     }
-
 
     #[test]
     fn test_ac3() -> TestResult {
@@ -678,10 +673,10 @@ mod tests {
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
                 V(1.0, Num(0), Gnd),
-                Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd)
+                Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
             ],
         };
-        let soln = ac(ckt, AcOptions{})?;
+        let soln = ac(ckt, AcOptions {})?;
 
         Ok(())
     }

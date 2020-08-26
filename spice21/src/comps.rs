@@ -1,12 +1,12 @@
 use enum_dispatch::enum_dispatch;
+use num::Complex;
 use std::convert::From;
 use std::ops::{Index, IndexMut};
-use num::Complex;
 
-use super::SpNum;
 use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use super::proto::NodeRef;
 use super::sparse21::{Eindex, Matrix};
+use super::SpNum;
 
 #[enum_dispatch]
 pub enum ComponentSolver {
@@ -26,7 +26,13 @@ pub trait Component {
     fn update(&mut self, _val: f64) {}
     // FIXME: prob not for every Component
 
-    fn load_ac(&mut self, guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> { Stamps::<Complex<f64>>::new()}
+    fn load_ac(
+        &mut self,
+        guess: &Variables<Complex<f64>>,
+        an: &AnalysisInfo,
+    ) -> Stamps<Complex<f64>> {
+        Stamps::<Complex<f64>>::new()
+    }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64>;
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>);
 }
@@ -78,8 +84,12 @@ impl Component for Vsrc {
             b: vec![(Some(self.ivar), self.v)],
         };
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
-        // FIXME: always has ACM=1, for now 
+    fn load_ac(
+        &mut self,
+        _guess: &Variables<Complex<f64>>,
+        _an: &AnalysisInfo,
+    ) -> Stamps<Complex<f64>> {
+        // FIXME: always has ACM=1, for now
         return Stamps {
             g: vec![
                 (self.pi, Complex::new(1.0, 0.0)),
@@ -87,9 +97,7 @@ impl Component for Vsrc {
                 (self.ni, Complex::new(-1.0, 0.0)),
                 (self.in_, Complex::new(-1.0, 0.0)),
             ],
-            b: vec![
-                (Some(self.ivar), Complex::new(self.v, 0.0))
-            ],
+            b: vec![(Some(self.ivar), Complex::new(self.v, 0.0))],
         };
     }
 }
@@ -166,13 +174,17 @@ impl Component for Capacitor {
                     b: vec![(self.p, -rhs), (self.n, rhs)],
                 };
             }
-            AnalysisInfo::AC(_o, _s) => panic!("HOW WE GET HERE?!?")
+            AnalysisInfo::AC(_o, _s) => panic!("HOW WE GET HERE?!?"),
         }
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(
+        &mut self,
+        _guess: &Variables<Complex<f64>>,
+        an: &AnalysisInfo,
+    ) -> Stamps<Complex<f64>> {
         let an_st = match an {
             AnalysisInfo::AC(opts, state) => state,
-            _ => panic!("Invalid AC AnalysisInfo")
+            _ => panic!("Invalid AC AnalysisInfo"),
         };
         let c = self.dq_dv(0.0);
         return Stamps {
@@ -257,7 +269,11 @@ impl Component for Resistor {
             b: vec![],
         };
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(
+        &mut self,
+        _guess: &Variables<Complex<f64>>,
+        _an: &AnalysisInfo,
+    ) -> Stamps<Complex<f64>> {
         use TwoTerm::{N, P};
         return Stamps {
             g: vec![
@@ -312,7 +328,10 @@ impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
 }
 
 #[derive(Clone, Copy)]
-pub enum MosType { NMOS, PMOS }
+pub enum MosType {
+    NMOS,
+    PMOS,
+}
 
 // FIXME: should reference instead of cloning, when we can get it to play nicely with `Box<dyn Comp>`
 #[derive(Clone)]
@@ -449,8 +468,8 @@ struct Mos1InternalParams {
     leff: f64,
     isat_bd: f64,
     isat_bs: f64,
-    grd: f64, 
-    grs: f64, 
+    grd: f64,
+    grs: f64,
 }
 
 /// Mos1 DC & Transient Operating Point
@@ -478,10 +497,10 @@ struct Mos1OpPoint {
     //    rd: f64,
     //    drainconductance: f64,
     //
-       gm: f64,
-       gds: f64,
+    gm: f64,
+    gds: f64,
     //    gmb: f64,
-       gmbs: f64,
+    gmbs: f64,
     //    gbd: f64,
     //    gbs: f64,
 
@@ -600,7 +619,7 @@ impl Component for Mos1 {
         // All math after this block uses increasing vgs,vds <=> increasing ids,
         // i.e. the polarities typically expressed for NMOS
         let p = match self.model.mos_type {
-            MosType::NMOS =>  1.0,
+            MosType::NMOS => 1.0,
             MosType::PMOS => -1.0,
         };
         let vds1 = p * (vd - vs);
@@ -755,7 +774,7 @@ impl Component for Mos1 {
             gm,
             gds,
             gmbs,
-            reversed
+            reversed,
         };
 
         // Bulk junction caps RHS adjustment
@@ -764,7 +783,7 @@ impl Component for Mos1 {
         let irhs = ids - gm * vgs - gds * vds;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
-        // FIXME: this also needs the "prime" vs "external" source & drains 
+        // FIXME: this also needs the "prime" vs "external" source & drains
         let (sr, sx, dr, dx) = if !reversed {
             (S, S, D, D)
         } else {
@@ -773,7 +792,7 @@ impl Component for Mos1 {
         // Include our terminal resistances
         let grd = self.intparams.grd;
         let grs = self.intparams.grs;
-        // And finally send back our matrix contributions 
+        // And finally send back our matrix contributions
         return Stamps {
             g: vec![
                 (self.matps[(dr, dr)], gds + grd + gbd + gcgd),
@@ -808,15 +827,19 @@ impl Component for Mos1 {
             ],
         };
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(
+        &mut self,
+        _guess: &Variables<Complex<f64>>,
+        an: &AnalysisInfo,
+    ) -> Stamps<Complex<f64>> {
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(opts, state) => state.omega,
-            _ => panic!("Invalid AC AnalysisInfo")
+            _ => panic!("Invalid AC AnalysisInfo"),
         };
         use MosTerm::{B, D, G, S};
 
-        // Short-hand the conductances from our op-point. 
+        // Short-hand the conductances from our op-point.
         // (Rustc should be smart enough not to copy these.)
         let (gm, gds, gmbs) = (self.op.gm, self.op.gds, self.op.gmbs);
 
@@ -828,14 +851,13 @@ impl Component for Mos1 {
         let gcbd = 0.0;
         let gcbs = 0.0;
         let gcbg = 0.0;
-        
         // FIXME: cap impedances
         let gcgs = 0.0;
         let gcgd = 0.0;
         let gcgb = 0.0;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
-        // FIXME: this also needs the "prime" vs "external" source & drains 
+        // FIXME: this also needs the "prime" vs "external" source & drains
         let (sr, sx, dr, dx) = if !self.op.reversed {
             (S, S, D, D)
         } else {
@@ -847,8 +869,14 @@ impl Component for Mos1 {
         // And finally, send back our AC-matrix contributions
         return Stamps {
             g: vec![
-                (self.matps[(dr, dr)], Complex::new(0.0, gds + grd + gbd + gcgd)),
-                (self.matps[(sr, sr)], Complex::new(0.0, gm + gds + grs + gbs + gmbs + gcgs)),
+                (
+                    self.matps[(dr, dr)],
+                    Complex::new(0.0, gds + grd + gbd + gcgd),
+                ),
+                (
+                    self.matps[(sr, sr)],
+                    Complex::new(0.0, gm + gds + grs + gbs + gmbs + gcgs),
+                ),
                 (self.matps[(dr, sr)], Complex::new(0.0, -gm - gds - gmbs)),
                 (self.matps[(sr, dr)], Complex::new(0.0, -gds)),
                 (self.matps[(dr, G)], Complex::new(0.0, gm - gcgd)),
@@ -933,7 +961,7 @@ impl Component for Mos0 {
         let p = match self.params.mos_type {
             MosType::NMOS => 1.0,
             MosType::PMOS => -1.0,
-        };    
+        };
         let vds1 = p * (vd - vs);
         let reversed = vds1 < 0.0;
         let vgs = if reversed {
@@ -966,9 +994,8 @@ impl Component for Mos0 {
             //Triode
             ids = beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + lam * vds);
             gm = beta * vds * (1.0 + lam * vds);
-            gds = beta
-                * ((vov - vds) * (1.0 + lam * vds)
-                    + lam * ((vov * vds) - vds.powi(2) / 2.0));
+            gds =
+                beta * ((vov - vds) * (1.0 + lam * vds) + lam * ((vov * vds) - vds.powi(2) / 2.0));
             println!(
                 "LIN: vgs={} vds={}, ids={}, gm={}, gds={}",
                 vgs, vds, ids, gm, gds
@@ -1060,7 +1087,7 @@ impl Isrc {
 }
 
 impl Component for Isrc {
-    fn create_matrix_elems<T:SpNum>(&mut self, _mat: &mut Matrix<T>) {}
+    fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
     fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         return Stamps {
             g: vec![],
