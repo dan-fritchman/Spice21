@@ -1,0 +1,7 @@
+
+# All of these highly desirable options require `nightly`. 
+# Skip em for now. 
+
+##empty_item_single_line = true
+##fn_single_line = true
+##struct_lit_single_line = true
