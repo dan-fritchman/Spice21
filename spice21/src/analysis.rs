@@ -1,13 +1,9 @@
 use std::cmp::PartialEq;
 use std::convert::From;
-use std::ops::{Index, IndexMut};
 
-use num::traits::NumAssignOps;
-use num::{Complex, Float, Num, One, Zero};
-use std::cmp::PartialOrd;
-use std::fmt;
+use num::{Complex, Float, Zero};
 
-use crate::comps::{Component, ComponentSolver, Mos1InstanceParams, Mos1Model};
+use crate::comps::{Component, ComponentSolver};
 use crate::proto::{CktParse, CompParse, NodeRef};
 use crate::sparse21::{Eindex, Matrix};
 use crate::spresult::SpResult;
@@ -74,6 +70,14 @@ pub struct Variables<NumT> {
 }
 
 impl<NumT: SpNum> Variables<NumT> {
+    /// Convert Variables<OtherT> to Variables<NumT>
+    /// Keeps all `kinds`, while resetting all values to zero.
+    fn from<OtherT>(other: Variables<OtherT>) -> Self {
+        Variables {
+            kinds: other.kinds,
+            values: vec![NumT::zero(); other.values.len()],
+        }
+    }
     pub fn all_v(len: usize) -> Variables<NumT> {
         Variables {
             kinds: vec![VarKind::V; len],
@@ -154,8 +158,13 @@ impl Solver<f64> {
 
             // Calculate the residual error
             let res: Vec<f64> = self.mat.res(&self.vars.values, &self.rhs)?;
-            // Check convergence
+
             if self.converged(&dx, &res) {
+                // Check convergence
+                // Commit component results
+                for c in self.comps.iter_mut() {
+                    c.commit();
+                }
                 return Ok(self.vars.values.clone());
             }
             // Solve for our update
@@ -178,8 +187,28 @@ impl Solver<f64> {
     }
 }
 
+/// Complex Solver
+/// FIXME: share more of this
 impl Solver<Complex<f64>> {
-    // FIXME: share more of this
+    /// Create a Complex solver from a real-valued one.
+    /// Commonly deployed when moving from DCOP to AC analysis.
+    fn from(re: Solver<f64>) -> Self {
+        let mut op = Solver::<Complex<f64>> {
+            comps: re.comps,
+            vars: Variables::<Complex<f64>>::from(re.vars),
+            mat: Matrix::new(),
+            rhs: vec![],
+            history: vec![],
+            an_mode: AnalysisMode::AC,
+        };
+
+        // Create matrix elements, over-writing each Component's pointers
+        for comp in op.comps.iter_mut() {
+            comp.create_matrix_elems(&mut op.mat);
+        }
+        return op;
+    }
+
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
@@ -218,7 +247,10 @@ impl Solver<Complex<f64>> {
             let itol: Vec<bool> = res.iter().map(|&v| v.norm() < 1e-9).collect();
             // Check convergence
             if vtol.iter().all(|v| *v) && itol.iter().all(|v| *v) {
-                //self.converged(&dx, &res) {
+                // Commit component results
+                for c in self.comps.iter_mut() {
+                    c.commit();
+                }
                 return Ok(self.vars.values.clone());
             }
             // Solve for our update
@@ -294,7 +326,13 @@ impl<NumT: SpNum> Solver<NumT> {
             CompParse::V(v, p, n) => {
                 use crate::comps::Vsrc;
                 let ivar = self.vars.add(VarKind::I);
-                let v = Vsrc::new(*v, p.into(), n.into(), ivar);
+                let v = Vsrc::new(*v, 0.0, p.into(), n.into(), ivar);
+                self.comps.push(v.into());
+            }
+            CompParse::Vb(vs) => {
+                use crate::comps::Vsrc;
+                let ivar = self.vars.add(VarKind::I);
+                let v = Vsrc::new((*vs).vdc, (*vs).acm, (*vs).p.into(), (*vs).n.into(), ivar);
                 self.comps.push(v.into());
             }
             CompParse::Mos0(pol, g, d, s, b) => {
@@ -397,9 +435,7 @@ impl Tran {
         return Tran {
             solver: Solver::new(ckt),
             opts,
-            state: TranState {
-                ..Default::default()
-            },
+            state: TranState::default(),
         };
     }
     /// Create and set an initial condition on Node `n`, value `val`.
@@ -413,7 +449,7 @@ impl Tran {
         r.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);
-        let mut v = Vsrc::new(val, Some(fnode), None, ivar);
+        let mut v = Vsrc::new(val, 0.0, Some(fnode), None, ivar);
         v.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(v.into());
         self.state.vic.push(self.solver.comps.len() - 1);
@@ -457,6 +493,7 @@ impl Tran {
                 };
             }
         });
+        // Solve for our initial condition
         let tsoln = self.solver.solve(&AnalysisInfo::OP);
         let tdata = match tsoln {
             Ok(x) => x,
@@ -465,6 +502,11 @@ impl Tran {
                 return Err(e);
             }
         };
+        // // Commit component results
+        // for c in self.solver.comps.iter_mut() {
+        //     c.commit();
+        // }
+        tx.send(IoWriterMessage::DATA(tdata)).unwrap();
         // Update initial-condition sources and resistances
         for c in self.state.vic.iter() {
             self.solver.comps[*c].update(0.0);
@@ -472,10 +514,6 @@ impl Tran {
         for c in self.state.ric.iter() {
             self.solver.comps[*c].update(1e-9);
         }
-        for c in self.solver.comps.iter_mut() {
-            c.tstep(&tdata);
-        }
-        tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
         self.solver.an_mode = AnalysisMode::TRAN;
         let mut tpoint: usize = 0;
@@ -491,9 +529,9 @@ impl Tran {
                     return Err(e);
                 }
             };
-            for c in self.solver.comps.iter_mut() {
-                c.tstep(&tdata);
-            }
+            // for c in self.solver.comps.iter_mut() {
+            //     c.commit();
+            // }
             tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
             self.state.ni = NumericalIntegration::TRAP;
@@ -580,55 +618,44 @@ pub struct AcState {
 #[derive(Default)]
 pub struct AcOptions {}
 
-pub struct Ac {
-    solver: Solver<Complex<f64>>,
-    state: AcState,
-    pub opts: AcOptions,
-}
-
-impl Ac {
-    pub fn new(ckt: CktParse, opts: AcOptions) -> Ac {
-        return Ac {
-            solver: Solver::<Complex<f64>>::new(ckt),
-            opts: AcOptions::default(),
-            state: AcState::default(),
-        };
-    }
-    pub fn solve(&mut self) -> SpResult<Vec<Vec<Complex<f64>>>> {
-        let mut soln = vec![];
-
-        use serde::ser::{SerializeSeq, Serializer};
-        use std::fs::File;
-
-        let f = File::create("data.ac.json").unwrap(); // FIXME: name
-        let mut ser = serde_json::Serializer::new(f);
-        let mut seq = ser.serialize_seq(None).unwrap();
-
-        for fk in 0..10 {
-            // FIXME: parametrize
-            let f = (10.0).powi(fk);
-            // let f= 1e3 * fk as f64;
-            use std::f64::consts::PI;
-            self.state.omega = 2.0 * PI * f;
-            let an = AnalysisInfo::AC(&self.opts, &self.state);
-            let fsoln = self.solver.solve(&an)?;
-
-            // FIXME: data-storage format is fairly ad-hoc for now, interspersing re/im per signal
-            let mut flat: Vec<f64> = vec![f];
-            for pt in fsoln.iter() {
-                flat.push(pt.re);
-                flat.push(pt.im);
-            }
-            seq.serialize_element(&flat).unwrap();
-            soln.push(fsoln);
-        }
-        seq.end().unwrap();
-        return Ok(soln);
-    }
-}
-
+/// AC Analysis
 pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
-    return Ac::new(ckt, opts).solve();
+    // Initial DCOP solver and solution
+    let mut solver = Solver::<f64>::new(ckt);
+    let dc_soln = solver.solve(&AnalysisInfo::OP)?;
+
+    // Convert to an AC solver
+    let mut solver = Solver::<Complex<f64>>::from(solver);
+    let mut state = AcState::default();
+    let mut soln = vec![];
+
+    use serde::ser::{SerializeSeq, Serializer};
+    use std::fs::File;
+
+    let f = File::create("data.ac.json").unwrap(); // FIXME: name
+    let mut ser = serde_json::Serializer::new(f);
+    let mut seq = ser.serialize_seq(None).unwrap();
+
+    for fk in 0..15 {
+        // FIXME: parametrize
+        let f = (10.0).powi(fk);
+        // let f= 1e3 * fk as f64;
+        use std::f64::consts::PI;
+        state.omega = 2.0 * PI * f;
+        let an = AnalysisInfo::AC(&opts, &state);
+        let fsoln = solver.solve(&an)?;
+
+        // FIXME: data-storage format is fairly ad-hoc for now, interspersing re/im per signal
+        let mut flat: Vec<f64> = vec![f];
+        for pt in fsoln.iter() {
+            flat.push(pt.re);
+            flat.push(pt.im);
+        }
+        seq.serialize_element(&flat).unwrap();
+        soln.push(fsoln);
+    }
+    seq.end().unwrap();
+    return Ok(soln);
 }
 
 #[cfg(test)]
@@ -653,12 +680,20 @@ mod tests {
 
     #[test]
     fn test_ac2() -> TestResult {
+        use crate::proto::Vs;
+        use CompParse::{Mos1, Vb, C, R, V};
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
-                V(1.0, Num(0), Gnd),
+                Vb(Vs {
+                    vdc: 1.0,
+                    acm: 1.0,
+                    p: Num(0),
+                    n: Gnd,
+                }),
+                // V(1.0, Num(0), Gnd),
             ],
         };
         let soln = ac(ckt, AcOptions {})?;
@@ -674,6 +709,70 @@ mod tests {
                 C(1e-9, Num(1), Gnd),
                 V(1.0, Num(0), Gnd),
                 Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
+            ],
+        };
+        let soln = ac(ckt, AcOptions {})?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ac4() -> TestResult {
+        use crate::comps::{Mos1InstanceParams, Mos1Model};
+        use crate::proto::Vs;
+        use CompParse::{Mos1, Vb, C, R, V};
+
+        let ckt = CktParse {
+            nodes: 3,
+            comps: vec![
+                R(1e-3, Num(2), Num(1)),
+                C(1e-9, Num(1), Gnd),
+                V(1.0, Num(2), Gnd),
+                Vb(Vs {
+                    vdc: 1.0,
+                    acm: 1.0,
+                    p: Num(0),
+                    n: Gnd,
+                }),
+                Mos1(
+                    Mos1Model::default(),
+                    Mos1InstanceParams::default(),
+                    Num(0),
+                    Num(1),
+                    Gnd,
+                    Gnd,
+                ),
+            ],
+        };
+        let soln = ac(ckt, AcOptions {})?;
+
+        Ok(())
+    }
+
+    /// Diode-Connected NMOS AC
+    #[test]
+    fn test_ac5() -> TestResult {
+        use crate::comps::{Mos1InstanceParams, Mos1Model};
+        use crate::proto::Vs;
+        use CompParse::{Mos1, Vb, C, R, V};
+
+        let ckt = CktParse {
+            nodes: 1,
+            comps: vec![
+                Vb(Vs {
+                    vdc: 1.0,
+                    acm: 1.0,
+                    p: Num(0),
+                    n: Gnd,
+                }),
+                Mos1(
+                    Mos1Model::default(),
+                    Mos1InstanceParams::default(),
+                    Num(0),
+                    Num(0),
+                    Gnd,
+                    Gnd,
+                ),
             ],
         };
         let soln = ac(ckt, AcOptions {})?;

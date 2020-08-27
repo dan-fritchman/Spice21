@@ -23,7 +23,15 @@ pub enum NodeRef {
     Num(usize),
 }
 
+pub struct Vs {
+    pub vdc: f64,
+    pub acm: f64,
+    pub p: NodeRef,
+    pub n: NodeRef,
+}
+
 pub enum CompParse {
+    Vb(Vs),
     V(f64, NodeRef, NodeRef),
     I(f64, NodeRef, NodeRef),
     R(f64, NodeRef, NodeRef),

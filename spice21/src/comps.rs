@@ -21,10 +21,12 @@ pub enum ComponentSolver {
 
 #[enum_dispatch(ComponentSolver)]
 pub trait Component {
-    fn tstep(&mut self, _guess: &Vec<f64>) {}
+    /// Commit operating-point guesses to internal state
+    fn commit(&mut self) {}
 
+    /// Update values of single-valued components
+    /// FIXME: prob not for every Component
     fn update(&mut self, _val: f64) {}
-    // FIXME: prob not for every Component
 
     fn load_ac(
         &mut self,
@@ -39,6 +41,7 @@ pub trait Component {
 
 pub struct Vsrc {
     v: f64,
+    acm: f64,
     p: Option<VarIndex>,
     n: Option<VarIndex>,
     ivar: VarIndex,
@@ -49,9 +52,16 @@ pub struct Vsrc {
 }
 
 impl Vsrc {
-    pub fn new(v: f64, p: Option<VarIndex>, n: Option<VarIndex>, ivar: VarIndex) -> Vsrc {
+    pub fn new(
+        vdc: f64,
+        acm: f64,
+        p: Option<VarIndex>,
+        n: Option<VarIndex>,
+        ivar: VarIndex,
+    ) -> Vsrc {
         Vsrc {
-            v,
+            v: vdc,
+            acm,
             p,
             n,
             ivar,
@@ -89,7 +99,6 @@ impl Component for Vsrc {
         _guess: &Variables<Complex<f64>>,
         _an: &AnalysisInfo,
     ) -> Stamps<Complex<f64>> {
-        // FIXME: always has ACM=1, for now
         return Stamps {
             g: vec![
                 (self.pi, Complex::new(1.0, 0.0)),
@@ -97,7 +106,7 @@ impl Component for Vsrc {
                 (self.ni, Complex::new(-1.0, 0.0)),
                 (self.in_, Complex::new(-1.0, 0.0)),
             ],
-            b: vec![(Some(self.ivar), Complex::new(self.v, 0.0))],
+            b: vec![(Some(self.ivar), Complex::new(self.acm, 0.0))],
         };
     }
 }
@@ -147,7 +156,7 @@ impl Component for Capacitor {
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
     /// Load our last guess as the new operating point
-    fn tstep(&mut self, _x: &Vec<f64>) {
+    fn commit(&mut self) {
         self.op = self.guess;
     }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
@@ -604,7 +613,7 @@ impl Component for Mos1 {
         }
     }
     /// Load our last guess as the new operating point
-    fn tstep(&mut self, _x: &Vec<f64>) {
+    fn commit(&mut self) {
         self.op = self.guess.clone();
     }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
@@ -832,16 +841,22 @@ impl Component for Mos1 {
         _guess: &Variables<Complex<f64>>,
         an: &AnalysisInfo,
     ) -> Stamps<Complex<f64>> {
+        use MosTerm::{B, D, G, S};
+
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(opts, state) => state.omega,
             _ => panic!("Invalid AC AnalysisInfo"),
         };
-        use MosTerm::{B, D, G, S};
 
         // Short-hand the conductances from our op-point.
         // (Rustc should be smart enough not to copy these.)
         let (gm, gds, gmbs) = (self.op.gm, self.op.gds, self.op.gmbs);
+
+        // Cap admittances
+        let gcgs = omega * self.op.cgs;
+        let gcgd = omega * self.op.cgd;
+        let gcgb = omega * self.op.cgb;
 
         // FIXME: bulk junction diodes
         let cbs = 0.0;
@@ -851,10 +866,6 @@ impl Component for Mos1 {
         let gcbd = 0.0;
         let gcbs = 0.0;
         let gcbg = 0.0;
-        // FIXME: cap impedances
-        let gcgs = 0.0;
-        let gcgd = 0.0;
-        let gcgb = 0.0;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
         // FIXME: this also needs the "prime" vs "external" source & drains
@@ -863,41 +874,40 @@ impl Component for Mos1 {
         } else {
             (D, D, S, S)
         };
+
         // Include our terminal resistances
         let grd = self.intparams.grd;
         let grs = self.intparams.grs;
+
         // And finally, send back our AC-matrix contributions
         return Stamps {
             g: vec![
-                (
-                    self.matps[(dr, dr)],
-                    Complex::new(0.0, gds + grd + gbd + gcgd),
-                ),
+                (self.matps[(dr, dr)], Complex::new(gds + grd + gbd, gcgd)),
                 (
                     self.matps[(sr, sr)],
-                    Complex::new(0.0, gm + gds + grs + gbs + gmbs + gcgs),
+                    Complex::new(gm + gds + grs + gbs + gmbs, gcgs),
                 ),
-                (self.matps[(dr, sr)], Complex::new(0.0, -gm - gds - gmbs)),
-                (self.matps[(sr, dr)], Complex::new(0.0, -gds)),
-                (self.matps[(dr, G)], Complex::new(0.0, gm - gcgd)),
-                (self.matps[(sr, G)], Complex::new(0.0, -gm - gcgs)),
-                (self.matps[(G, G)], Complex::new(0.0, (gcgd + gcgs + gcgb))),
-                (self.matps[(B, B)], Complex::new(0.0, (gbd + gbs + gcgb))),
+                (self.matps[(dr, sr)], Complex::new(-gm - gds - gmbs, 0.0)),
+                (self.matps[(sr, dr)], Complex::new(-gds, 0.0)),
+                (self.matps[(dr, G)], Complex::new(gm, -gcgd)),
+                (self.matps[(sr, G)], Complex::new(-gm, -gcgs)),
+                (self.matps[(G, G)], Complex::new(0.0, gcgd + gcgs + gcgb)),
+                (self.matps[(B, B)], Complex::new(gbd + gbs, gcgb)),
                 (self.matps[(G, B)], Complex::new(0.0, -gcgb)),
                 (self.matps[(G, dr)], Complex::new(0.0, -gcgd)),
                 (self.matps[(G, sr)], Complex::new(0.0, -gcgs)),
                 (self.matps[(B, G)], Complex::new(0.0, -gcbg)),
                 (self.matps[(G, dr)], Complex::new(0.0, -gcgd)),
-                (self.matps[(B, dr)], Complex::new(0.0, -gbd)),
-                (self.matps[(B, sr)], Complex::new(0.0, -gbs)),
-                (self.matps[(dr, B)], Complex::new(0.0, -gbd + gmbs)),
-                (self.matps[(sr, B)], Complex::new(0.0, -gbs - gmbs)),
-                (self.matps[(dx, dr)], Complex::new(0.0, -grd)),
-                (self.matps[(dr, dx)], Complex::new(0.0, -grd)),
-                (self.matps[(dx, dx)], Complex::new(0.0, grd)),
-                (self.matps[(sx, sr)], Complex::new(0.0, -grs)),
-                (self.matps[(sr, sx)], Complex::new(0.0, -grs)),
-                (self.matps[(sx, sx)], Complex::new(0.0, grs)),
+                (self.matps[(B, dr)], Complex::new(-gbd, 0.0)),
+                (self.matps[(B, sr)], Complex::new(-gbs, 0.0)),
+                (self.matps[(dr, B)], Complex::new(-gbd + gmbs, 0.0)),
+                (self.matps[(sr, B)], Complex::new(-gbs - gmbs, 0.0)),
+                (self.matps[(dx, dr)], Complex::new(-grd, 0.0)),
+                (self.matps[(dr, dx)], Complex::new(-grd, 0.0)),
+                (self.matps[(dx, dx)], Complex::new(grd, 0.0)),
+                (self.matps[(sx, sr)], Complex::new(-grs, 0.0)),
+                (self.matps[(sr, sx)], Complex::new(-grs, 0.0)),
+                (self.matps[(sx, sx)], Complex::new(grs, 0.0)),
             ],
             b: vec![],
         };

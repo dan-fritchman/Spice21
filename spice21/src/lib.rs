@@ -6,8 +6,7 @@ pub mod sparse21;
 pub mod spresult;
 
 use num::traits::NumAssignOps;
-use num::{Complex, Float, Num, One, Zero};
-use std::cmp::PartialOrd;
+use num::{Complex, Float, Num, Zero};
 use std::fmt;
 
 // This long list of traits describes our required behavior for numeric types.
@@ -240,7 +239,6 @@ mod tests {
                 CompParse::R(1e-12, Num(0), Gnd), // "gmin"
             ],
         };
-
         let opts = TranOptions {
             tstep: 1e-12,
             tstop: 100e-12,
