@@ -1,21 +1,23 @@
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
 use prost::Message;
 
-// Include the `items` module, which is generated from items.proto.
 pub mod proto {
+    // Include the prost-expanded proto-file content
     include!(concat!(env!("OUT_DIR"), "/spice21.proto.rs"));
-    fn some() -> Circuit {
-        return Circuit {
-            name: String::from("tbd"),
-            statements: vec![Statement {
-                // aint look great
-                statement: Some(statement::Statement::Instance(Instance {
-                    name: String::from("???"),
-                })),
-            }],
-        };
-    }
+
+    // fn some() -> Circuit {
+    //     return Circuit {
+    //         name: String::from("tbd"),
+    //         statements: vec![Statement {
+    //             // aint look great
+    //             statement: Some(statement::Statement::Instance(Instance {
+    //                 name: String::from("???"),
+    //             })),
+    //         }],
+    //     };
+    // }
 }
+
 
 #[derive(Debug, Copy, Clone)]
 pub enum NodeRef {

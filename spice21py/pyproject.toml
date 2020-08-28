@@ -1,0 +1,16 @@
+[project]
+name = "spice21"
+version = "0.1.0"
+description = "SPICE for the 21st Century"
+authors = [
+    "HW21 <hw21@hw21.io>"
+]
+license = "MIT"
+readme = "readme.md"
+python = "^3.6"
+homepage = "https://github.com/HW21/Spice21"
+repository = "https://github.com/HW21/Spice21"
+documentation = "https://github.com/HW21/Spice21"
+
+[dependencies]
+protobuf = "^3.13.0"

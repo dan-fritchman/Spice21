@@ -12,9 +12,45 @@ message Resistor {
     float g = 3;
 }
 
+message Capacitor {
+    Node p = 1;
+    Node n = 2;
+    float c = 3;
+}
+
+message Mos {
+    Node g = 1;
+    Node d = 2;
+    Node s = 3;
+    Node b = 4;
+}
+
+message Isrc {
+    Node p = 1;
+    Node n = 2;
+    float dc = 3;
+}
+
+message Vsrc {
+    Node p = 1;
+    Node n = 2;
+    float dc = 3;
+    float acm = 4;
+}
+
+message Component {
+    oneof comp {
+        Resistor r = 1;
+        Capacitor c = 2;
+        Mos mos = 3;
+        Isrc i = 4;
+        Vsrc v = 5;
+    }
+}
+
 message Circuit {
     string name = 1;
-    repeated Statement statements = 2;
+    repeated Component comps = 2;
 }
 
 message Sim {
@@ -23,6 +59,10 @@ message Sim {
 
 message Instance {
     string name = 1;
+    oneof  of {
+        Circuit circuit = 2;
+        Component comp = 3;
+    }
 }
 
 message Statement {
