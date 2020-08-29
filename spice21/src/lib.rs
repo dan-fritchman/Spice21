@@ -116,20 +116,21 @@ mod tests {
         Ok(())
     }
 
+    /// V - R - R divider
     #[test]
     fn test_dcop4() -> TestResult {
-        // V - R - R divider
+        use CompParse::{R, V};
+        use NodeRef::Gnd;
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
-                CompParse::R(2e-3, NodeRef::Num(1), NodeRef::Num(0)),
-                CompParse::R(2e-3, NodeRef::Num(0), NodeRef::Gnd),
+                V(1.0, n("vdd"), Gnd),
+                R(2e-3, n("vdd"), n("div")),
+                R(2e-3, n("div"), Gnd),
             ],
         };
-
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![0.5, 1.0, -1e-3]);
+        assert(soln).eq(vec![-1e-3, 1.0, 0.5]);
         Ok(())
     }
 
@@ -174,9 +175,9 @@ mod tests {
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
+                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
                 CompParse::V(1.0, NodeRef::Num(0), NodeRef::Gnd),
                 CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
-                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
             ],
         };
 
@@ -195,9 +196,9 @@ mod tests {
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
+                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Gnd, Gnd),
                 CompParse::V(-1.0, NodeRef::Num(0), NodeRef::Gnd),
                 CompParse::V(-1.0, NodeRef::Num(1), NodeRef::Gnd),
-                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Gnd, Gnd),
             ],
         };
 
@@ -396,16 +397,17 @@ mod tests {
         Ok(())
     }
 
+    /// NMOS-R Inverter
     #[test]
     fn test_dcop10() -> TestResult {
-        // NMOS-R Inverter
-        use NodeRef::{Gnd, Num};
+        use CompParse::{Mos0, R, V};
+        use NodeRef::Gnd;
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
-                CompParse::R(1e-3, Num(1), Num(0)),
-                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
+                Mos0(MosType::NMOS, n("vdd"), n("d"), Gnd, Gnd),
+                R(1e-3, n("d"), n("vdd")),
+                V(1.0, n("vdd"), Gnd),
             ],
         };
 
@@ -416,16 +418,18 @@ mod tests {
         Ok(())
     }
 
+    /// PMOS-R Inverter
     #[test]
     fn test_dcop10b() -> TestResult {
-        // PMOS-R Inverter
-        use NodeRef::{Gnd, Num};
+        use CompParse::{Mos0, R, V};
+        use NodeRef::Gnd;
+
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(-1.0, Num(0), Gnd),
-                CompParse::R(1e-3, Num(1), Num(0)),
-                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Gnd, Gnd),
+                Mos0(MosType::PMOS, n("g"), n("d"), Gnd, Gnd),
+                R(1e-3, n("g"), n("d")),
+                V(-1.0, n("g"), Gnd),
             ],
         };
 
@@ -436,41 +440,47 @@ mod tests {
         Ok(())
     }
 
+    /// Mos0 CMOS Inverter DC-Op, Vin=Vdd
     #[test]
     fn test_dcop11() -> TestResult {
-        // CMOS Inverter
+        use CompParse::{Mos0, R, V};
+        use MosType::{NMOS, PMOS};
         use NodeRef::{Gnd, Num};
+
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
-                CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Num(0), Num(0)),
-                CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
-                CompParse::R(1e-9, Num(1), Gnd),
+                Mos0(PMOS, n("vdd"), n("d"), n("vdd"), n("vdd")),
+                Mos0(NMOS, n("vdd"), n("d"), Gnd, Gnd),
+                V(1.0, n("vdd"), Gnd),
+                R(1e-9, n("d"), Gnd), // "gmin"
             ],
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![1.0, 0.0, 0.0]);
+        assert(soln).eq(vec![1.0, 0.0, 0.0])?;
         Ok(())
     }
 
+    /// Mos0 CMOS Inverter DC-Op, Vin=Vss
     #[test]
     fn test_dcop11b() -> TestResult {
-        // CMOS Inverter
-        use NodeRef::{Gnd, Num};
+        use CompParse::{Mos0, R, V};
+        use MosType::{NMOS, PMOS};
+        use NodeRef::{Gnd};
+
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
-                CompParse::Mos0(MosType::PMOS, Gnd, Num(1), Num(0), Num(0)),
-                CompParse::Mos0(MosType::NMOS, Gnd, Num(1), Gnd, Gnd),
-                CompParse::R(1e-9, Num(1), Num(0)),
+                Mos0(PMOS, Gnd, n("d"), n("vdd"), n("vdd")),
+                Mos0(NMOS, Gnd, n("d"), Gnd, Gnd),
+                V(1.0, n("vdd"), Gnd),
+                R(1e-9, n("d"), n("vdd")), // "gmin"
             ],
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![1.0, 1.0, 0.0]);
+        assert(soln).eq(vec![1.0, 1.0, 0.0])?;
         Ok(())
     }
 
@@ -481,7 +491,6 @@ mod tests {
         let ckt = CktParse {
             nodes: 5,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
                 CompParse::Mos0(MosType::PMOS, Num(0), Num(1), Num(0), Num(0)),
                 CompParse::Mos0(MosType::NMOS, Num(0), Num(1), Gnd, Gnd),
                 CompParse::R(1e-9, Num(1), Gnd),
@@ -494,6 +503,7 @@ mod tests {
                 CompParse::Mos0(MosType::PMOS, Num(3), Num(4), Num(0), Num(0)),
                 CompParse::Mos0(MosType::NMOS, Num(3), Num(4), Gnd, Gnd),
                 CompParse::R(1e-9, Num(4), Gnd),
+                CompParse::V(1.0, Num(0), Gnd),
             ],
         };
 
@@ -507,16 +517,17 @@ mod tests {
         Ok(())
     }
 
+    /// RC Low-Pass Filter DcOp
     #[test]
     fn test_dcop13() -> TestResult {
-        // RC Low-Pass Filter
         use NodeRef::{Gnd, Num};
+
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
                 CompParse::R(1e-3, Num(1), Num(0)),
                 CompParse::C(1e-9, Num(1), Gnd),
+                CompParse::V(1.0, Num(0), Gnd),
             ],
         };
 
@@ -525,16 +536,16 @@ mod tests {
         Ok(())
     }
 
+    // RC High-Pass Filter DcOp
     #[test]
     fn test_dcop13b() -> TestResult {
-        // RC High-Pass Filter
         use NodeRef::{Gnd, Num};
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
-                CompParse::R(1e-3, Num(1), Gnd),
-                CompParse::C(1e-9, Num(1), Num(0)),
+                CompParse::C(1e-9, n("i"), n("o")),
+                CompParse::R(1e-3, n("o"), Gnd),
+                CompParse::V(1.0, n("i"), Gnd),
             ],
         };
 
@@ -543,16 +554,16 @@ mod tests {
         Ok(())
     }
 
+    /// RC Low-Pass Filter Tran
     #[test]
     fn test_tran1() -> TestResult {
-        // RC Low-Pass Filter
         use NodeRef::{Gnd, Num};
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
-                CompParse::R(1e-3, Num(1), Num(0)),
+                CompParse::R(1e-3, Num(0), Num(1)),
                 CompParse::C(1e-9, Num(1), Gnd),
+                CompParse::V(1.0, Num(0), Gnd),
             ],
         };
 
@@ -704,9 +715,9 @@ mod tests {
         Ok(())
     }
 
+    /// Mos1 Ring Oscillator Dc Op
     #[test]
     fn test_mos1_ro_dcop() -> TestResult {
-        // Mos1 Ring Oscillator Dc Op
 
         let nmos = Mos1Model::default();
         let pmos = Mos1Model {
@@ -718,13 +729,14 @@ mod tests {
         let ckt = CktParse {
             nodes: 4,
             comps: vec![
-                CompParse::V(1.0, Num(0), Gnd),
-                CompParse::Mos1(pmos.clone(), params, Num(3), Num(1), Num(0), Num(0)),
-                CompParse::Mos1(nmos.clone(), params, Num(3), Num(1), Gnd, Gnd),
+                CompParse::R(1e-9, Num(0), Gnd), // "gmin"-ish
                 CompParse::Mos1(pmos.clone(), params, Num(1), Num(2), Num(0), Num(0)),
                 CompParse::Mos1(nmos.clone(), params, Num(1), Num(2), Gnd, Gnd),
                 CompParse::Mos1(pmos.clone(), params, Num(2), Num(3), Num(0), Num(0)),
                 CompParse::Mos1(nmos.clone(), params, Num(2), Num(3), Gnd, Gnd),
+                CompParse::Mos1(pmos.clone(), params, Num(3), Num(1), Num(0), Num(0)),
+                CompParse::Mos1(nmos.clone(), params, Num(3), Num(1), Gnd, Gnd),
+                CompParse::V(1.0, Num(0), Gnd),
             ],
         };
 

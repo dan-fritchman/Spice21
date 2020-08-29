@@ -19,10 +19,16 @@ pub mod proto {
 }
 
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum NodeRef {
     Gnd,
     Num(usize),
+    Name(String)
+}
+
+/// Create a Node from anything convertible into String
+pub fn n<S: Into<String>>(name: S) -> NodeRef {
+    NodeRef::Name(name.into())
 }
 
 pub struct Vs {

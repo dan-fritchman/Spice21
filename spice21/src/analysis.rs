@@ -37,22 +37,6 @@ enum VarKind {
 #[derive(Debug, Clone, Copy)]
 pub struct VarIndex(pub usize);
 
-/// Conversions from Nodes and their references
-impl From<NodeRef> for Option<VarIndex> {
-    fn from(node: NodeRef) -> Self {
-        match node {
-            NodeRef::Gnd => None,
-            NodeRef::Num(i) => Some(VarIndex(i)),
-        }
-    }
-}
-
-impl From<&NodeRef> for Option<VarIndex> {
-    fn from(node: &NodeRef) -> Self {
-        (*node).into()
-    }
-}
-
 // This kinda thing doesn't quite work for arrays; maybe it can some day
 //impl From<[NodeRef; 4]> for [Option<VarIndex>; 4] {
 //    fn from(noderefs: [NodeRef; 4]) -> [Option<VarIndex>; 4] {
@@ -67,25 +51,35 @@ impl From<&NodeRef> for Option<VarIndex> {
 pub struct Variables<NumT> {
     kinds: Vec<VarKind>,
     values: Vec<NumT>,
+    names: Vec<String>,
 }
 
 impl<NumT: SpNum> Variables<NumT> {
+    fn new() -> Self {
+        Variables {
+            kinds: vec![],
+            values: vec![],
+            names: vec![],
+        }
+    }
     /// Convert Variables<OtherT> to Variables<NumT>
     /// Keeps all `kinds`, while resetting all values to zero.
     fn from<OtherT>(other: Variables<OtherT>) -> Self {
         Variables {
             kinds: other.kinds,
+            names: other.names,
             values: vec![NumT::zero(); other.values.len()],
         }
     }
-    pub fn all_v(len: usize) -> Variables<NumT> {
-        Variables {
-            kinds: vec![VarKind::V; len],
-            values: vec![NumT::zero(); len],
-        }
-    }
-    fn add(&mut self, kind: VarKind) -> VarIndex {
+    // pub fn all_v(len: usize) -> Variables<NumT> {
+    //     Variables {
+    //         kinds: vec![VarKind::V; len],
+    //         values: vec![NumT::zero(); len],
+    //     }
+    // }
+    fn add(&mut self, name: String, kind: VarKind) -> VarIndex {
         self.kinds.push(kind);
+        self.names.push(name);
         self.values.push(NumT::zero());
         return VarIndex(self.kinds.len() - 1);
     }
@@ -108,6 +102,8 @@ enum AnalysisMode {
     AC,
 }
 
+/// Solver Iteration Struct
+/// Largely for debug of convergence and progress
 struct Iteration<NumT: SpNum> {
     n: usize,
     x: Vec<NumT>,
@@ -115,6 +111,10 @@ struct Iteration<NumT: SpNum> {
     vtol: Vec<bool>,
     itol: Vec<bool>,
 }
+
+/// Newton-Style Iterative Solver
+/// Owns each of its circuit's ComponentSolvers,
+/// its SparseMatrix, and Variables.
 struct Solver<NumT: SpNum> {
     comps: Vec<ComponentSolver>,
     vars: Variables<NumT>,
@@ -124,6 +124,8 @@ struct Solver<NumT: SpNum> {
     an_mode: AnalysisMode,
 }
 
+/// Real-valued Solver specifics
+/// FIXME: nearly all of this *should* eventually be share-able with the Complex Solver
 impl Solver<f64> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
@@ -187,8 +189,8 @@ impl Solver<f64> {
     }
 }
 
-/// Complex Solver
-/// FIXME: share more of this
+/// Complex-Valued Solver Specifics
+/// FIXME: nearly all of this *should* eventually be share-able with the Real Solver
 impl Solver<Complex<f64>> {
     /// Create a Complex solver from a real-valued one.
     /// Commonly deployed when moving from DCOP to AC analysis.
@@ -284,7 +286,7 @@ impl<NumT: SpNum> Solver<NumT> {
     fn new(ckt: CktParse) -> Solver<NumT> {
         let mut op = Solver {
             comps: vec![],
-            vars: Variables::all_v(ckt.nodes),
+            vars: Variables::new(),
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
@@ -292,7 +294,7 @@ impl<NumT: SpNum> Solver<NumT> {
         };
 
         // Convert each circuit-parser component into a corresponding component-solver
-        for comp in ckt.comps.iter() {
+        for comp in ckt.comps.into_iter() {
             op.add_comp(comp);
         }
         // Create the corresponding matrix-elements
@@ -301,53 +303,98 @@ impl<NumT: SpNum> Solver<NumT> {
         }
         return op;
     }
-    fn add_comp(&mut self, comp: &CompParse) {
-        match comp {
+    /// Retrieve the Variable corresponding to Node `node`,
+    /// creating it if necessary.
+    fn node_var(&mut self, node: NodeRef) -> Option<VarIndex> {
+        match node {
+            NodeRef::Gnd => None,
+            NodeRef::Name(name) => {
+                // FIXME: shouldn't have to clone all the names here
+                match self.vars.names.iter().cloned().position(|x| x == name) {
+                    Some(i) => Some(VarIndex(i)),
+                    None => Some(self.vars.add(name.clone(), VarKind::V)),
+                }
+            }
+            NodeRef::Num(num) => {
+                let name = num.to_string();
+                // FIXME: shouldn't have to clone all the names here
+                match self.vars.names.iter().cloned().position(|x| x == name) {
+                    Some(i) => Some(VarIndex(i)),
+                    None => Some(self.vars.add(name.clone(), VarKind::V)),
+                }
+            }
+        }
+    }
+    /// Add parser Component `comp`, and any related Variables
+    fn add_comp(&mut self, comp: CompParse) {
+        // Convert `comp` to a corresponding `ComponentSolver`
+        let c: ComponentSolver = match comp {
             CompParse::R(g, p, n) => {
                 use crate::comps::Resistor;
-                let comp = Resistor::new(*g, p.into(), n.into());
-                self.comps.push(comp.into());
+                let pvar = self.node_var(p.clone());
+                let nvar = self.node_var(n.clone());
+                Resistor::new(g, pvar, nvar).into()
             }
             CompParse::C(c, p, n) => {
                 use crate::comps::Capacitor;
-                let comp = Capacitor::new(*c, p.into(), n.into());
-                self.comps.push(comp.into());
+                let pvar = self.node_var(p.clone());
+                let nvar = self.node_var(n.clone());
+                Capacitor::new(c, pvar, nvar).into()
             }
             CompParse::I(i, p, n) => {
                 use crate::comps::Isrc;
-                let comp = Isrc::new(*i, *p, *n);
-                self.comps.push(comp.into());
+                let pvar = self.node_var(p.clone());
+                let nvar = self.node_var(n.clone());
+                Isrc::new(i, pvar, nvar).into()
             }
             CompParse::D(isat, vt, p, n) => {
                 use crate::comps::Diode;
-                let comp = Diode::new(*isat, *vt, *p, *n);
-                self.comps.push(comp.into());
+                let p = self.node_var(p.clone());
+                let n = self.node_var(n.clone());
+                Diode::new(isat, vt, p, n).into()
             }
             CompParse::V(v, p, n) => {
                 use crate::comps::Vsrc;
-                let ivar = self.vars.add(VarKind::I);
-                let v = Vsrc::new(*v, 0.0, p.into(), n.into(), ivar);
-                self.comps.push(v.into());
+                let ivar = self.vars.add("vsomething".to_string(), VarKind::I); // FIXME: name
+                let p = self.node_var(p.clone());
+                let n = self.node_var(n.clone());
+                Vsrc::new(v, 0.0, p, n, ivar).into()
             }
             CompParse::Vb(vs) => {
                 use crate::comps::Vsrc;
-                let ivar = self.vars.add(VarKind::I);
-                let v = Vsrc::new((*vs).vdc, (*vs).acm, (*vs).p.into(), (*vs).n.into(), ivar);
-                self.comps.push(v.into());
+                let ivar = self.vars.add("vbsomething".to_string(), VarKind::I);
+                let vc = vs;
+                let p = self.node_var(vc.p.clone());
+                let n = self.node_var(vc.n.clone());
+                Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
             }
             CompParse::Mos0(pol, g, d, s, b) => {
                 use crate::comps::Mos0;
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
-                let comp = Mos0::new([g, d, s, b].into(), *pol);
-                self.comps.push(comp.into());
+                let ports = [
+                    self.node_var(g.clone()),
+                    self.node_var(d.clone()),
+                    self.node_var(s.clone()),
+                    self.node_var(b.clone()),
+                ];
+                Mos0::new(ports.into(), pol).into()
             }
             CompParse::Mos1(model, params, g, d, s, b) => {
                 use crate::comps::Mos1;
-                let comp = Mos1::new(model.clone(), params.clone(), [g, d, s, b].into());
-                self.comps.push(comp.into());
+                let ports = [
+                    self.node_var(g.clone()),
+                    self.node_var(d.clone()),
+                    self.node_var(s.clone()),
+                    self.node_var(b.clone()),
+                ];
+                Mos1::new(model.clone(), params.clone(), ports.into()).into()
             }
-        }
+            _ => panic!(),
+        };
+
+        // And add to our Component vector
+        self.comps.push(c);
     }
     fn converged(&self, dx: &Vec<NumT>, res: &Vec<NumT>) -> bool {
         // Inter-step Newton convergence
@@ -442,10 +489,10 @@ impl Tran {
     pub fn ic(&mut self, n: NodeRef, val: f64) {
         use crate::comps::{Resistor, Vsrc};
 
-        let fnode = self.solver.vars.add(VarKind::V);
-        let ivar = self.solver.vars.add(VarKind::I);
+        let fnode = self.solver.vars.add("vfnode".to_string(), VarKind::V); // FIXME: names
+        let ivar = self.solver.vars.add("ifsrc".to_string(), VarKind::I); // FIXME: names
 
-        let mut r = Resistor::new(1.0, Some(fnode), n.into());
+        let mut r = Resistor::new(1.0, Some(fnode), self.solver.node_var(n));
         r.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);

@@ -314,9 +314,9 @@ impl Index<MosTerm> for MosTerminals {
     }
 }
 
-impl From<[&NodeRef; 4]> for MosTerminals {
-    fn from(n: [&NodeRef; 4]) -> Self {
-        return MosTerminals([n[0].into(), n[1].into(), n[2].into(), n[3].into()]);
+impl From<[Option<VarIndex>; 4]> for MosTerminals {
+    fn from(n: [Option<VarIndex>; 4]) -> Self {
+        return MosTerminals(n);
     }
 }
 
@@ -342,7 +342,17 @@ pub enum MosType {
     PMOS,
 }
 
-// FIXME: should reference instead of cloning, when we can get it to play nicely with `Box<dyn Comp>`
+impl MosType {
+    /// Polarity Function
+    /// The very common need to negate values for PMOS, and leave NMOS unchanged.
+    pub fn p(&self) -> f64 {
+        match self {
+            MosType::PMOS => -1.0,
+            MosType::NMOS => 1.0,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Mos1Model {
     pub mos_type: MosType,
@@ -1041,12 +1051,12 @@ pub struct Diode {
 }
 
 impl Diode {
-    pub fn new(isat: f64, vt: f64, p: NodeRef, n: NodeRef) -> Diode {
+    pub fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode {
         Diode {
-            isat: isat,
-            vt: vt,
-            p: p.into(),
-            n: n.into(),
+            isat,
+            vt,
+            p,
+            n,
             ..Default::default()
         }
     }
@@ -1087,12 +1097,8 @@ pub struct Isrc {
 }
 
 impl Isrc {
-    pub fn new(i: f64, p: NodeRef, n: NodeRef) -> Isrc {
-        Isrc {
-            i: i,
-            p: p.into(),
-            n: n.into(),
-        }
+    pub fn new(i: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Isrc {
+        Isrc { i, p, n }
     }
 }
 
