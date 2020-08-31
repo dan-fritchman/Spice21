@@ -130,7 +130,7 @@ mod tests {
             ],
         };
         let soln = dcop(ckt)?;
-        assert(soln).eq(vec![-1e-3, 1.0, 0.5]);
+        assert(soln).eq(vec![-1e-3, 1.0, 0.5])?;
         Ok(())
     }
 

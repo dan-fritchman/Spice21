@@ -4,7 +4,6 @@ use std::convert::From;
 use std::ops::{Index, IndexMut};
 
 use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
-use super::proto::NodeRef;
 use super::sparse21::{Eindex, Matrix};
 use super::SpNum;
 
@@ -260,8 +259,8 @@ impl Component for Resistor {
     }
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use TwoTerm::{N, P};
-        for l in [P, N].into_iter() {
-            for r in [P, N].into_iter() {
+        for l in [P, N].iter() {
+            for r in [P, N].iter() {
                 self.matps[(*l, *r)] = make_matrix_elem(mat, self.terms[*l], self.terms[*r]);
             }
         }
@@ -494,6 +493,7 @@ struct Mos1InternalParams {
 /// Mos1 DC & Transient Operating Point
 #[derive(Default, Clone)]
 struct Mos1OpPoint {
+    ids: f64,
     //    id: f64,
     //    is: f64,
     //    ig: f64,
@@ -778,6 +778,7 @@ impl Component for Mos1 {
 
         // Store as our op point for next time
         self.guess = Mos1OpPoint {
+            ids,
             vgs,
             vgd,
             vgb,

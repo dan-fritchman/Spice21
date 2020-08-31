@@ -71,12 +71,6 @@ impl<NumT: SpNum> Variables<NumT> {
             values: vec![NumT::zero(); other.values.len()],
         }
     }
-    // pub fn all_v(len: usize) -> Variables<NumT> {
-    //     Variables {
-    //         kinds: vec![VarKind::V; len],
-    //         values: vec![NumT::zero(); len],
-    //     }
-    // }
     fn add(&mut self, name: String, kind: VarKind) -> VarIndex {
         self.kinds.push(kind);
         self.names.push(name);
@@ -390,7 +384,6 @@ impl<NumT: SpNum> Solver<NumT> {
                 ];
                 Mos1::new(model.clone(), params.clone(), ports.into()).into()
             }
-            _ => panic!(),
         };
 
         // And add to our Component vector
@@ -549,10 +542,6 @@ impl Tran {
                 return Err(e);
             }
         };
-        // // Commit component results
-        // for c in self.solver.comps.iter_mut() {
-        //     c.commit();
-        // }
         tx.send(IoWriterMessage::DATA(tdata)).unwrap();
         // Update initial-condition sources and resistances
         for c in self.state.vic.iter() {
@@ -576,9 +565,6 @@ impl Tran {
                     return Err(e);
                 }
             };
-            // for c in self.solver.comps.iter_mut() {
-            //     c.commit();
-            // }
             tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
             self.state.ni = NumericalIntegration::TRAP;
@@ -662,11 +648,60 @@ pub struct AcState {
     pub omega: f64,
 }
 
-#[derive(Default)]
-pub struct AcOptions {}
+/// AC Analysis Options
+pub struct AcOptions {
+    pub fstart: usize,
+    pub fstop: usize,
+    pub npts: usize, // Total, not "per decade"
+}
+
+impl Default for AcOptions {
+    fn default() -> Self {
+        Self {
+            fstart: 1,
+            fstop: 1e15 as usize,
+            npts: 1000,
+        }
+    }
+}
+
+use serde::{Deserialize, Serialize};
+
+/// AcResult
+/// In-Memory Store for Complex-Valued AC Data
+#[derive(Default, Serialize, Deserialize)]
+struct AcResult {
+    signals: Vec<String>,
+    freq: Vec<f64>,
+    data: Vec<Vec<Complex<f64>>>,
+}
+
+impl AcResult {
+    fn new() -> Self {
+        Self::default()
+    }
+    fn signals<T>(&mut self, vars: &Variables<T>) {
+        for name in vars.names.iter() {
+            self.signals.push(name.to_string());
+        }
+    }
+    fn push(&mut self, f: f64, vals: &Vec<Complex<f64>>) {
+        self.freq.push(f);
+        self.data.push(vals.clone());
+        // FIXME: filter out un-saved and internal variables
+    }
+}
 
 /// AC Analysis
+/// FIXME: result saving is in flux, and essentially on three tracks:
+/// * The in-memory format used by unit-tests returns vectors of complex numbers
+/// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
+/// * The AcResult struct holds all relevant data (in memory), and can serialize it to JSON (or any other serde format).
+///
 pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+    use serde::ser::{SerializeSeq, Serializer};
+    use std::fs::File;
+
     // Initial DCOP solver and solution
     let mut solver = Solver::<f64>::new(ckt);
     let dc_soln = solver.solve(&AnalysisInfo::OP)?;
@@ -676,32 +711,54 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
     let mut state = AcState::default();
     let mut soln = vec![];
 
-    use serde::ser::{SerializeSeq, Serializer};
-    use std::fs::File;
-
-    let f = File::create("data.ac.json").unwrap(); // FIXME: name
-    let mut ser = serde_json::Serializer::new(f);
+    // Set up streaming writer
+    let rf = File::create("stream.ac.json").unwrap(); // FIXME: name
+    let mut ser = serde_json::Serializer::new(rf);
     let mut seq = ser.serialize_seq(None).unwrap();
 
-    for fk in 0..15 {
-        // FIXME: parametrize
-        let f = (10.0).powi(fk);
-        // let f= 1e3 * fk as f64;
+    // Initialize results
+    let mut results = AcResult::new();
+    results.signals(&solver.vars);
+
+    // Set up frequency sweep
+    let mut f = opts.fstart as f64;
+    let fstop = opts.fstop as f64;
+    let fstep = (10.0).powf(f64::log10(fstop / f) / opts.npts as f64);
+
+    // Main Frequency Loop
+    while f <= fstop {
         use std::f64::consts::PI;
         state.omega = 2.0 * PI * f;
         let an = AnalysisInfo::AC(&opts, &state);
         let fsoln = solver.solve(&an)?;
 
-        // FIXME: data-storage format is fairly ad-hoc for now, interspersing re/im per signal
+        // Push to our in-mem data
+        results.push(f, &fsoln);
+        // AND push to the flattened, streaming data
         let mut flat: Vec<f64> = vec![f];
         for pt in fsoln.iter() {
             flat.push(pt.re);
             flat.push(pt.im);
         }
         seq.serialize_element(&flat).unwrap();
+        // AND push to our simple vector-data
         soln.push(fsoln);
+        // Last-iteration handling
+        if f == fstop {
+            break;
+        }
+        f = f64::min(f * fstep, fstop);
     }
-    seq.end().unwrap();
+    // Close up streaming results
+    SerializeSeq::end(seq).unwrap();
+
+    // Write the full-batch JSON result
+    use std::io::prelude::*;
+    let mut rfj = File::create("ac.json").unwrap(); // FIXME: name
+    let s = serde_json::to_string(&results).unwrap();
+    rfj.write_all(s.as_bytes()).unwrap();
+
+    // And return the flattened results
     return Ok(soln);
 }
 
@@ -709,7 +766,7 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 mod tests {
     use super::*;
     use crate::comps::MosType;
-    use crate::proto::{CktParse, CompParse};
+    use crate::proto::{n, CktParse, CompParse};
     use crate::spresult::TestResult;
     use CompParse::{Mos0, Mos1, C, R, V};
     use NodeRef::{Gnd, Num};
@@ -720,7 +777,7 @@ mod tests {
             nodes: 1,
             comps: vec![R(1.0, Num(0), Gnd)],
         };
-        let soln = ac(ckt, AcOptions {})?;
+        let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
     }
@@ -728,7 +785,7 @@ mod tests {
     #[test]
     fn test_ac2() -> TestResult {
         use crate::proto::Vs;
-        use CompParse::{Mos1, Vb, C, R, V};
+        use CompParse::{Vb, C, R};
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
@@ -740,10 +797,9 @@ mod tests {
                     p: Num(0),
                     n: Gnd,
                 }),
-                // V(1.0, Num(0), Gnd),
             ],
         };
-        let soln = ac(ckt, AcOptions {})?;
+        let soln = ac(ckt, AcOptions::default())?;
         Ok(())
     }
 
@@ -758,11 +814,12 @@ mod tests {
                 Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
             ],
         };
-        let soln = ac(ckt, AcOptions {})?;
+        let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
     }
 
+    // NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
         use crate::comps::{Mos1InstanceParams, Mos1Model};
@@ -772,26 +829,26 @@ mod tests {
         let ckt = CktParse {
             nodes: 3,
             comps: vec![
-                R(1e-3, Num(2), Num(1)),
-                C(1e-9, Num(1), Gnd),
-                V(1.0, Num(2), Gnd),
-                Vb(Vs {
-                    vdc: 1.0,
-                    acm: 1.0,
-                    p: Num(0),
-                    n: Gnd,
-                }),
+                R(1e-5, n("vdd"), n("d")),
+                C(1e-9, n("d"), Gnd),
                 Mos1(
                     Mos1Model::default(),
                     Mos1InstanceParams::default(),
-                    Num(0),
-                    Num(1),
+                    n("g"),
+                    n("d"),
                     Gnd,
                     Gnd,
                 ),
+                V(1.0, n("vdd"), Gnd),
+                Vb(Vs {
+                    vdc: 0.7,
+                    acm: 1.0,
+                    p: n("g"),
+                    n: Gnd,
+                }),
             ],
         };
-        let soln = ac(ckt, AcOptions {})?;
+        let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
     }
@@ -801,13 +858,13 @@ mod tests {
     fn test_ac5() -> TestResult {
         use crate::comps::{Mos1InstanceParams, Mos1Model};
         use crate::proto::Vs;
-        use CompParse::{Mos1, Vb, C, R, V};
+        use CompParse::{Mos1, Vb};
 
         let ckt = CktParse {
             nodes: 1,
             comps: vec![
                 Vb(Vs {
-                    vdc: 1.0,
+                    vdc: 0.5,
                     acm: 1.0,
                     p: Num(0),
                     n: Gnd,
@@ -822,7 +879,7 @@ mod tests {
                 ),
             ],
         };
-        let soln = ac(ckt, AcOptions {})?;
+        let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
     }
