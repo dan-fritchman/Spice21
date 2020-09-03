@@ -597,8 +597,8 @@ impl Mos1 {
         let kp_t = model.u0 * cox_per_area * 1e-4;
         let beta = kp_t * inst.w / leff;
 
-        let isat_bd = 0.0;
-        let isat_bs = 0.0;
+        let isat_bd = 1e-15; // FIXME!
+        let isat_bs = 1e-15; // FIXME!
 
         Mos1InternalParams {
             temp,
@@ -637,12 +637,10 @@ impl Component for Mos1 {
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
         // i.e. the polarities typically expressed for NMOS
-        let p = match self.model.mos_type {
-            MosType::NMOS => 1.0,
-            MosType::PMOS => -1.0,
-        };
+        let p = self.model.mos_type.p();
         let vds1 = p * (vd - vs);
         let reversed = vds1 < 0.0;
+        // FIXME: add inter-step limiting
         let vgs = if reversed {
             p * (vg - vd)
         } else {
@@ -663,13 +661,12 @@ impl Component for Mos1 {
         let vov = vgs - von;
         let vdsat = vov.max(0.0);
 
+        // Cutoff values
         let mut ids = 0.0;
         let mut gm = 0.0;
         let mut gds = 0.0;
         let mut gmbs = 0.0;
-        if vov <= 0.0 { // Cutoff
-             // Already set
-        } else {
+        if vov > 0.0 {
             if vds >= vov {
                 // Sat
                 ids = self.intparams.beta / 2.0 * vov.powi(2) * (1.0 + self.model.lambda * vds);

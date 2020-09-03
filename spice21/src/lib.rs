@@ -119,12 +119,12 @@ mod tests {
     /// V - R - R divider
     #[test]
     fn test_dcop4() -> TestResult {
-        use CompParse::{R, V};
+        use CompParse::{R};
         use NodeRef::Gnd;
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
-                V(1.0, n("vdd"), Gnd),
+                CompParse::V(1.0, n("vdd"), Gnd),
                 R(2e-3, n("vdd"), n("div")),
                 R(2e-3, n("div"), Gnd),
             ],
@@ -400,14 +400,14 @@ mod tests {
     /// NMOS-R Inverter
     #[test]
     fn test_dcop10() -> TestResult {
-        use CompParse::{Mos0, R, V};
+        use CompParse::{Mos0, R};
         use NodeRef::Gnd;
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
                 Mos0(MosType::NMOS, n("vdd"), n("d"), Gnd, Gnd),
                 R(1e-3, n("d"), n("vdd")),
-                V(1.0, n("vdd"), Gnd),
+                CompParse::V(1.0, n("vdd"), Gnd),
             ],
         };
 
@@ -421,7 +421,7 @@ mod tests {
     /// PMOS-R Inverter
     #[test]
     fn test_dcop10b() -> TestResult {
-        use CompParse::{Mos0, R, V};
+        use CompParse::{Mos0, R};
         use NodeRef::Gnd;
 
         let ckt = CktParse {
@@ -429,7 +429,7 @@ mod tests {
             comps: vec![
                 Mos0(MosType::PMOS, n("g"), n("d"), Gnd, Gnd),
                 R(1e-3, n("g"), n("d")),
-                V(-1.0, n("g"), Gnd),
+                CompParse::V(-1.0, n("g"), Gnd),
             ],
         };
 
@@ -443,16 +443,16 @@ mod tests {
     /// Mos0 CMOS Inverter DC-Op, Vin=Vdd
     #[test]
     fn test_dcop11() -> TestResult {
-        use CompParse::{Mos0, R, V};
+        use CompParse::{Mos0, R};
         use MosType::{NMOS, PMOS};
-        use NodeRef::{Gnd, Num};
+        use NodeRef::{Gnd};
 
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
                 Mos0(PMOS, n("vdd"), n("d"), n("vdd"), n("vdd")),
                 Mos0(NMOS, n("vdd"), n("d"), Gnd, Gnd),
-                V(1.0, n("vdd"), Gnd),
+                CompParse::V(1.0, n("vdd"), Gnd),
                 R(1e-9, n("d"), Gnd), // "gmin"
             ],
         };
@@ -465,16 +465,16 @@ mod tests {
     /// Mos0 CMOS Inverter DC-Op, Vin=Vss
     #[test]
     fn test_dcop11b() -> TestResult {
-        use CompParse::{Mos0, R, V};
+        use CompParse::{Mos0, R};
         use MosType::{NMOS, PMOS};
-        use NodeRef::{Gnd};
+        use NodeRef::Gnd;
 
         let ckt = CktParse {
             nodes: 2,
             comps: vec![
                 Mos0(PMOS, Gnd, n("d"), n("vdd"), n("vdd")),
                 Mos0(NMOS, Gnd, n("d"), Gnd, Gnd),
-                V(1.0, n("vdd"), Gnd),
+                CompParse::V(1.0, n("vdd"), Gnd),
                 R(1e-9, n("d"), n("vdd")), // "gmin"
             ],
         };
@@ -718,7 +718,6 @@ mod tests {
     /// Mos1 Ring Oscillator Dc Op
     #[test]
     fn test_mos1_ro_dcop() -> TestResult {
-
         let nmos = Mos1Model::default();
         let pmos = Mos1Model {
             mos_type: MosType::PMOS,

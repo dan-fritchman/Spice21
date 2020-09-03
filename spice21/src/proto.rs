@@ -18,12 +18,11 @@ pub mod proto {
     // }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum NodeRef {
     Gnd,
     Num(usize),
-    Name(String)
+    Name(String),
 }
 
 /// Create a Node from anything convertible into String
@@ -31,7 +30,13 @@ pub fn n<S: Into<String>>(name: S) -> NodeRef {
     NodeRef::Name(name.into())
 }
 
+/// Convert anything convertible into String
+pub fn s<S: Into<String>>(from: S) -> String {
+    from.into()
+}
+
 pub struct Vs {
+    pub name: String,
     pub vdc: f64,
     pub acm: f64,
     pub p: NodeRef,
@@ -40,7 +45,6 @@ pub struct Vs {
 
 pub enum CompParse {
     Vb(Vs),
-    V(f64, NodeRef, NodeRef),
     I(f64, NodeRef, NodeRef),
     R(f64, NodeRef, NodeRef),
     C(f64, NodeRef, NodeRef),
@@ -54,6 +58,19 @@ pub enum CompParse {
         NodeRef,
         NodeRef,
     ),
+}
+
+impl CompParse {
+    /// Replacement for deprecated `V` enum variant 
+    pub fn V(vdc: f64, p: NodeRef, n: NodeRef) -> CompParse {
+        CompParse::Vb(Vs {
+            name: s("tbd"),
+            vdc,
+            acm: 0.0,
+            p,
+            n,
+        })
+    }
 }
 
 pub struct CktParse {

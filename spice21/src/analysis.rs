@@ -347,16 +347,9 @@ impl<NumT: SpNum> Solver<NumT> {
                 let n = self.node_var(n.clone());
                 Diode::new(isat, vt, p, n).into()
             }
-            CompParse::V(v, p, n) => {
-                use crate::comps::Vsrc;
-                let ivar = self.vars.add("vsomething".to_string(), VarKind::I); // FIXME: name
-                let p = self.node_var(p.clone());
-                let n = self.node_var(n.clone());
-                Vsrc::new(v, 0.0, p, n, ivar).into()
-            }
             CompParse::Vb(vs) => {
                 use crate::comps::Vsrc;
-                let ivar = self.vars.add("vbsomething".to_string(), VarKind::I);
+                let ivar = self.vars.add(vs.name.clone(), VarKind::I);
                 let vc = vs;
                 let p = self.node_var(vc.p.clone());
                 let n = self.node_var(vc.n.clone());
@@ -766,9 +759,9 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 mod tests {
     use super::*;
     use crate::comps::MosType;
-    use crate::proto::{n, CktParse, CompParse};
+    use crate::proto::{s, n, CktParse, CompParse};
     use crate::spresult::TestResult;
-    use CompParse::{Mos0, Mos1, C, R, V};
+    use CompParse::{Mos0, C, R};
     use NodeRef::{Gnd, Num};
 
     #[test]
@@ -792,6 +785,7 @@ mod tests {
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
                 Vb(Vs {
+                    name: s("vi"),
                     vdc: 1.0,
                     acm: 1.0,
                     p: Num(0),
@@ -810,7 +804,7 @@ mod tests {
             comps: vec![
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
-                V(1.0, Num(0), Gnd),
+                CompParse::V(1.0, Num(0), Gnd),
                 Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
             ],
         };
@@ -824,7 +818,7 @@ mod tests {
     fn test_ac4() -> TestResult {
         use crate::comps::{Mos1InstanceParams, Mos1Model};
         use crate::proto::Vs;
-        use CompParse::{Mos1, Vb, C, R, V};
+        use CompParse::{Mos1, Vb, C, R};
 
         let ckt = CktParse {
             nodes: 3,
@@ -839,8 +833,9 @@ mod tests {
                     Gnd,
                     Gnd,
                 ),
-                V(1.0, n("vdd"), Gnd),
+                CompParse::V(1.0, n("vdd"), Gnd),
                 Vb(Vs {
+                    name: s("vg"),
                     vdc: 0.7,
                     acm: 1.0,
                     p: n("g"),
@@ -864,6 +859,7 @@ mod tests {
             nodes: 1,
             comps: vec![
                 Vb(Vs {
+                    name: s("vd"),
                     vdc: 0.5,
                     acm: 1.0,
                     p: Num(0),
