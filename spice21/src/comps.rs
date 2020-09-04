@@ -5,6 +5,7 @@ use std::ops::{Index, IndexMut};
 
 use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use super::sparse21::{Eindex, Matrix};
+use super::spresult::SpResult;
 use super::SpNum;
 
 #[enum_dispatch]
@@ -26,6 +27,11 @@ pub trait Component {
     /// Update values of single-valued components
     /// FIXME: prob not for every Component
     fn update(&mut self, _val: f64) {}
+
+    /// Validation - Parameter Values etc.
+    fn validate(&self) -> SpResult<()> {
+        Ok(())
+    }
 
     fn load_ac(
         &mut self,
@@ -475,6 +481,7 @@ impl Default for Mos1InstanceParams {
 #[derive(Default)]
 struct Mos1InternalParams {
     temp: f64,
+    vtherm: f64,
     vt_t: f64,
     kp_t: f64,
     phi_t: f64,
@@ -589,7 +596,7 @@ impl Mos1 {
         // FIXME: all temperature dependences
         let phi_t = model.phi;
 
-        let leff = inst.l - model.ld * 2.;
+        let leff = inst.l - 2.0 * model.ld;
 
         let cox_per_area = SIO2_PERMITTIVITY / model.tox;
         let cox = cox_per_area * leff * inst.w;
@@ -602,6 +609,7 @@ impl Mos1 {
 
         Mos1InternalParams {
             temp,
+            vtherm,
             leff,
             cox,
             beta,
@@ -689,11 +697,37 @@ impl Component for Mos1 {
             };
         }
 
+        // Bulk Junction Diodes
+        let gmin_temp = 1e-9; // FIXME: get from the circuit
+        let (isat_bs, isat_bd, vtherm) = (
+            self.intparams.isat_bs,
+            self.intparams.isat_bd,
+            self.intparams.vtherm,
+        );
+        // Source-Bulk
+        let ibs = isat_bs * ((-vsb / vtherm).exp() - 1.0);
+        let gbs = (isat_bs / vtherm) * (-vsb / vtherm).exp() + gmin_temp;
+        let ibs_rhs = ibs + vsb * gbs;
+        // Drain-Bulk
+        let ibd = isat_bd * ((-vdb / vtherm).exp() - 1.0);
+        let gbd = (isat_bd / vtherm) * (-vdb / vtherm).exp() + gmin_temp;
+        let ibd_rhs = ibd + vdb * gbd;
+
+        // let (gsb, isb) = if vsb > 0.0 {
+        //     // Reverse Bias
+        //     // Not buying this "linear reverse bias" shortcut from SPICE yet.
+        //     let (isat, vtherm) = (self.intparams.isat_bs, self.intparams.vtherm);
+        //     let gsb1 = isat / vterm;
+        //     (gsb1 + gmin_temp, -1.0 * gsb1 * vsb)
+        // } else {
+        //     // Forward bias
+        // };
+
+        // Capacitance Calculations
+        let cox = self.intparams.cox;
         let mut cgs1: f64;
         let mut cgd1: f64;
         let mut cgb1: f64;
-        let cox = self.intparams.cox;
-
         if vov <= -self.intparams.phi_t {
             cgb1 = cox / 2.0;
             cgs1 = 0.0;
@@ -767,8 +801,8 @@ impl Component for Mos1 {
         // FIXME: bulk junction diodes
         let cbs = 0.0;
         let cbd = 0.0;
-        let gbd = 1e-9;
-        let gbs = 1e-9;
+        // let gbd = 1e-9;
+        // let gbs = 1e-9;
         let gcbd = 0.0;
         let gcbs = 0.0;
         let gcbg = 0.0;
@@ -837,10 +871,10 @@ impl Component for Mos1 {
                 (self.matps[(sx, sx)], grs),
             ],
             b: vec![
-                (self.ports[dr], -p * irhs + ceqbd + p * rhsgd),
-                (self.ports[sr], p * irhs + ceqbs + p * rhsgs),
+                (self.ports[dr], -p * irhs + ibd_rhs + p * rhsgd),
+                (self.ports[sr], p * irhs + ibs_rhs + p * rhsgs),
                 (self.ports[G], -p * (rhsgs + rhsgb + rhsgd)),
-                (self.ports[B], -(ceqbs + ceqbd - p * rhsgb)),
+                (self.ports[B], -(ibd_rhs + ibs_rhs - p * rhsgb)),
             ],
         };
     }
