@@ -1,5 +1,5 @@
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
-use prost::Message;
+// use prost::Message;
 
 pub mod proto {
     // Include the prost-expanded proto-file content
@@ -79,25 +79,13 @@ pub struct CktParse {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::NodeRef::{Gnd, Num};
+mod tests { 
     use super::*;
     use crate::spresult::TestResult;
 
-    /// Create a very basic Circuit
-    fn parse_ckt() -> CktParse {
-        CktParse {
-            nodes: 1,
-            comps: vec![
-                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            ],
-        }
-    }
-
     #[test]
     fn test_ckt_parse() -> TestResult {
-        let ckt = CktParse {
+        CktParse {
             nodes: 1,
             comps: vec![
                 CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),

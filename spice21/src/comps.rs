@@ -35,8 +35,8 @@ pub trait Component {
 
     fn load_ac(
         &mut self,
-        guess: &Variables<Complex<f64>>,
-        an: &AnalysisInfo,
+        _guess: &Variables<Complex<f64>>,
+        _an: &AnalysisInfo,
     ) -> Stamps<Complex<f64>> {
         Stamps::<Complex<f64>>::new()
     }
@@ -179,7 +179,7 @@ impl Component for Capacitor {
                 };
                 return Stamps::new();
             }
-            AnalysisInfo::TRAN(opts, state) => {
+            AnalysisInfo::TRAN(_, state) => {
                 let (g, i, rhs) = state.integrate(q - self.op.q, self.dq_dv(vd), vd, self.op.i);
                 self.guess = CapOpPoint { v: vd, q: q, i: i };
 
@@ -197,7 +197,7 @@ impl Component for Capacitor {
         an: &AnalysisInfo,
     ) -> Stamps<Complex<f64>> {
         let an_st = match an {
-            AnalysisInfo::AC(opts, state) => state,
+            AnalysisInfo::AC(_, state) => state,
             _ => panic!("Invalid AC AnalysisInfo"),
         };
         let c = self.dq_dv(0.0);
@@ -698,7 +698,7 @@ impl Component for Mos1 {
         }
 
         // Bulk Junction Diodes
-        let gmin_temp = 1e-9; // FIXME: get from the circuit
+        let gmin_temp = 1e-9; // FIXME: get from the circuit. Also failing for smaller values.
         let (isat_bs, isat_bd, vtherm) = (
             self.intparams.isat_bs,
             self.intparams.isat_bd,
@@ -1001,19 +1001,14 @@ impl Component for Mos0 {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        use MosTerm::{B, D, G, S};
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+        use MosTerm::{D, G, S};
 
         let vg = guess.get(self.ports[G]);
         let vd = guess.get(self.ports[D]);
         let vs = guess.get(self.ports[S]);
-        let vb = guess.get(self.ports[B]);
-        println!("vg={} vd={} vs={} vb={}", vg, vd, vs, vb);
 
-        let p = match self.params.mos_type {
-            MosType::NMOS => 1.0,
-            MosType::PMOS => -1.0,
-        };
+        let p = self.params.mos_type.p();
         let vds1 = p * (vd - vs);
         let reversed = vds1 < 0.0;
         let vgs = if reversed {
@@ -1024,34 +1019,25 @@ impl Component for Mos0 {
         let vds = if reversed { -vds1 } else { vds1 };
         let vov = vgs - self.params.vth;
 
+        // Cutoff conditions
         let mut ids = 0.0;
         let mut gm = 0.0;
         let mut gds = 0.0;
-        let lam = self.params.lam;
-        let beta = self.params.beta;
-        if vov <= 0.0 {
-            // Cutoff
-            // Already set
-            println!("CUTOFF: vgs={} vds={}", vgs, vds);
-        } else if vds >= vov {
-            // Sat
-            ids = beta / 2.0 * vov.powi(2) * (1.0 + lam * vds);
-            gm = beta * vov * (1.0 + lam * vds);
-            gds = lam * beta / 2.0 * vov.powi(2);
-            println!(
-                "SAT: vgs={} vds={}, ids={}, gm={}, gds={}",
-                vgs, vds, ids, gm, gds
-            );
-        } else {
-            //Triode
-            ids = beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + lam * vds);
-            gm = beta * vds * (1.0 + lam * vds);
-            gds =
-                beta * ((vov - vds) * (1.0 + lam * vds) + lam * ((vov * vds) - vds.powi(2) / 2.0));
-            println!(
-                "LIN: vgs={} vds={}, ids={}, gm={}, gds={}",
-                vgs, vds, ids, gm, gds
-            );
+        if vov > 0.0 {
+            let lam = self.params.lam;
+            let beta = self.params.beta;
+            if vds >= vov {
+                // Saturation
+                ids = beta / 2.0 * vov.powi(2) * (1.0 + lam * vds);
+                gm = beta * vov * (1.0 + lam * vds);
+                gds = lam * beta / 2.0 * vov.powi(2);
+            } else {
+                // Triode
+                ids = beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + lam * vds);
+                gm = beta * vds * (1.0 + lam * vds);
+                gds = beta
+                    * ((vov - vds) * (1.0 + lam * vds) + lam * ((vov * vds) - vds.powi(2) / 2.0));
+            }
         }
         // Sort out which are the "reported" drain and source terminals (sr, dr)
         let (sr, dr) = if !reversed { (S, D) } else { (D, S) };
@@ -1081,6 +1067,47 @@ pub struct Diode {
     pn: Option<Eindex>,
     np: Option<Eindex>,
 }
+
+use crate::attr;
+
+attr!(
+    DiodeModel,
+    [
+        (is, f64, "Saturation current"),
+        (tnom, f64, "Parameter measurement temperature"),
+        (rs, f64, "Ohmic resistance"),
+        (n, f64, "Emission Coefficient"),
+        (tt, f64, "Transit Time"),
+        (cjo, f64, "Junction capacitance"),
+        (cj0, f64, "Junction capacitance"),
+        (vj, f64, "Junction potential"),
+        (m, f64, "Grading coefficient"),
+        (eg, f64, "Activation energy"),
+        (xti, f64, "Saturation current temperature exp."),
+        (kf, f64, "flicker noise coefficient"),
+        (af, f64, "flicker noise exponent"),
+        (fc, f64, "Forward bias junction fit parameter"),
+        (bv, f64, "Reverse breakdown voltage"),
+        (ibv, f64, "Current at reverse breakdown voltage"),
+        (cond, f64, "Ohmic conductance"),
+    ]
+);
+
+attr!(
+    DiodeOpPoint,
+    [
+        (temp, f64, "Instance temperature"),
+        (ic, f64, "Initial device voltage"),
+        (area, f64, "Area factor"),
+        (vd, f64, "Diode voltage"),
+        (id, f64, "Diode current"),
+        (gd, f64, "Diode conductance"),
+        (cd, f64, "Diode capacitance"),
+        (charge, f64, "Diode capacitor charge"),
+        (capcur, f64, "Diode capacitor current"),
+        (p, f64, "Diode power"),
+    ]
+);
 
 impl Diode {
     pub fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode {

@@ -1,41 +1,87 @@
-pub mod analysis;
+#[macro_use]
+pub mod macros {
+    /// Spice21 Macros
+    ///
+    /// Note: this module's unusual location, inline in lib.rs,
+    /// is the best way we've found to import it
+    /// to the rest of Spice21.
+    /// Note: this must be defined *before* any uses of it.
+    ///
+    //
+    /// GetAttr-enabled struct builder
+    /// Creates structs from a list of field-definitions,
+    /// adding a `getattr` method enabling by-string access.
+    #[macro_export]
+    macro_rules! attr {
+    ( $src_name:ident, [
+        $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
+    ]) => {
+        struct $src_name {
+            $( $attr_name : $attr_type ),*
+        }
+
+        impl $src_name {
+            fn getattr<S: Into<String>>(&self, key: S) -> Option<f64> {
+                let k: String = key.into();
+                match &k as &str {
+                    $( stringify!($attr_name) => Some(self.$attr_name)),*,
+                    _ => None,
+                }
+            }
+        }
+    }
+}
+
+    #[cfg(test)]
+    mod tests {
+        use crate::assert::*;
+        use crate::spresult::TestResult;
+
+        attr!(
+            SampleModel,
+            [
+                (param1, f64, "First Param"),
+                (param22, f64, "Parameter #2"),
+                (par33, f64, "3param"),
+            ]
+        );
+
+        #[test]
+        fn test1() -> TestResult {
+            // Instantiate a generated struct
+            let s = SampleModel {
+                param1: 1.1,
+                param22: 22.22,
+                par33: 333.333,
+            };
+
+            // Test fields
+            assert(s.param1).eq(1.1)?;
+            assert(s.param22).eq(22.22)?;
+            assert(s.par33).eq(333.333)?;
+
+            // Test getattr
+            assert(s.getattr("param1")).eq(Some(s.param1))?;
+            assert(s.getattr("param22")).eq(Some(s.param22))?;
+            assert(s.getattr("par33")).eq(Some(s.par33))?;
+            assert(s.getattr("fizzbuzz")).eq(None)?;
+
+            Ok(())
+        }
+    }
+}
+
 pub mod assert;
+pub mod spnum;
+pub mod spresult;
+
+pub mod analysis;
 pub mod comps;
 pub mod proto;
 pub mod sparse21;
-pub mod spresult;
 
-use num::traits::NumAssignOps;
-use num::{Complex, Float, Num, Zero};
-use std::fmt;
-
-// This long list of traits describes our required behavior for numeric types.
-pub trait SpNum:
-    Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug
-{
-}
-
-impl<T> SpNum for T where
-    T: Clone + Copy + NumAssignOps + Zero + Num + Abs + fmt::Display + fmt::Debug
-{
-}
-
-/// Absolute Value Trait for numeric types
-pub trait Abs {
-    fn absv(&self) -> f64;
-}
-
-impl Abs for f64 {
-    fn absv(&self) -> f64 {
-        self.abs()
-    }
-}
-
-impl Abs for Complex<f64> {
-    fn absv(&self) -> f64 {
-        self.norm()
-    }
-}
+pub use assert::*;
+pub use spnum::*;
 
 /// "Integration" Tests
 #[cfg(test)]
@@ -44,21 +90,8 @@ mod tests {
     use super::assert::*;
     use super::comps::*;
     use super::proto::*;
-    use super::sparse21::*;
     use super::spresult::*;
-    use super::*;
-
     /// Create a very basic Circuit
-    fn parse_ckt() -> CktParse {
-        CktParse {
-            nodes: 1,
-            comps: vec![
-                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            ],
-        }
-    }
-
     #[test]
     fn test_ckt_parse() -> TestResult {
         let ckt = CktParse {
@@ -119,7 +152,7 @@ mod tests {
     /// V - R - R divider
     #[test]
     fn test_dcop4() -> TestResult {
-        use CompParse::{R};
+        use CompParse::R;
         use NodeRef::Gnd;
         let ckt = CktParse {
             nodes: 2,
@@ -445,7 +478,7 @@ mod tests {
     fn test_dcop11() -> TestResult {
         use CompParse::{Mos0, R};
         use MosType::{NMOS, PMOS};
-        use NodeRef::{Gnd};
+        use NodeRef::Gnd;
 
         let ckt = CktParse {
             nodes: 2,

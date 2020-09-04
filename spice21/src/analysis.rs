@@ -1,5 +1,5 @@
 use std::cmp::PartialEq;
-use std::convert::From;
+// use std::convert::From;
 
 use num::{Complex, Float, Zero};
 
@@ -7,7 +7,7 @@ use crate::comps::{Component, ComponentSolver};
 use crate::proto::{CktParse, CompParse, NodeRef};
 use crate::sparse21::{Eindex, Matrix};
 use crate::spresult::SpResult;
-use crate::{Abs, SpNum};
+use crate::{SpNum};
 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
@@ -697,7 +697,7 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 
     // Initial DCOP solver and solution
     let mut solver = Solver::<f64>::new(ckt);
-    let dc_soln = solver.solve(&AnalysisInfo::OP)?;
+    let _dc_soln = solver.solve(&AnalysisInfo::OP)?;
 
     // Convert to an AC solver
     let mut solver = Solver::<Complex<f64>>::from(solver);
@@ -759,7 +759,7 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 mod tests {
     use super::*;
     use crate::comps::MosType;
-    use crate::proto::{s, n, CktParse, CompParse};
+    use crate::proto::{n, s, CktParse, CompParse};
     use crate::spresult::TestResult;
     use CompParse::{Mos0, C, R};
     use NodeRef::{Gnd, Num};

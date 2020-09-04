@@ -3,8 +3,7 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
-use num::traits::NumAssignOps;
-use num::{Complex, Float, Num, One, Zero};
+use num::{Num, One, Zero};
 
 use super::assert::assert;
 use super::SpNum;
@@ -1083,17 +1082,17 @@ use crate::spresult::TestResult;
 
 #[cfg(test)]
 impl<T: SpNum> Matrix<T> {
-    fn swap_rows(&mut self, x: usize, y: usize) {
+    pub fn swap_rows(&mut self, x: usize, y: usize) {
         self.swap(ROWS, x, y)
     }
-    fn swap_cols(&mut self, x: usize, y: usize) {
+    pub fn swap_cols(&mut self, x: usize, y: usize) {
         self.swap(COLS, x, y)
     }
-    fn size(&self) -> (usize, usize) {
+    pub fn size(&self) -> (usize, usize) {
         (self.num_rows(), self.num_cols())
     }
 
-    fn checkups(&self) -> TestResult {
+    pub fn checkups(&self) -> TestResult {
         // Internal consistency tests.  Probably pretty slow.
 
         self.check_diagonal()?;
