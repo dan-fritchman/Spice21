@@ -14,9 +14,10 @@ pub mod macros {
     #[macro_export]
     macro_rules! attr {
     ( $src_name:ident, [
-        $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
+        $( ($attr_name:ident, $attr_type:ty, $default:literal, $desc:literal) ),* $(,)?
     ]) => {
-        struct $src_name {
+        #[derive(Clone, Copy)]
+        pub struct $src_name {
             $( $attr_name : $attr_type ),*
         }
 
@@ -26,6 +27,14 @@ pub mod macros {
                 match &k as &str {
                     $( stringify!($attr_name) => Some(self.$attr_name)),*,
                     _ => None,
+                }
+            }
+        }
+
+        impl Default for $src_name {
+            fn default() -> Self {
+                Self {
+                    $($attr_name : $default),*,
                 }
             }
         }
@@ -40,9 +49,9 @@ pub mod macros {
         attr!(
             SampleModel,
             [
-                (param1, f64, "First Param"),
-                (param22, f64, "Parameter #2"),
-                (par33, f64, "3param"),
+                (param1, f64, 1.1, "First Param"),
+                (param22, f64, 2.2, "Parameter #2"),
+                (par33, f64, 3.3, "3param"),
             ]
         );
 
@@ -167,37 +176,36 @@ mod tests {
         Ok(())
     }
 
+    /// Diode DcOp Tests
+    /// Voltage & Current-Biased
     #[test]
     fn test_dcop5() -> TestResult {
         // I - R - Diode
+        use CompParse::{D, I, R};
+        use NodeRef::{Gnd, Num};
+
+        // Voltage-biased Diode
+        let v = 0.700;
         let ckt = CktParse {
             nodes: 1,
-            comps: vec![
-                CompParse::D(2e-16, 25e-3, NodeRef::Num(0), NodeRef::Gnd),
-                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                CompParse::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            ],
+            comps: vec![D(0.0, 0.0, Num(0), Gnd), CompParse::V(v, Num(0), Gnd)],
         };
-
         let soln = dcop(ckt)?;
-        assert!((soln[0] - 0.7).abs() < 1e-3);
-        Ok(())
-    }
+        let i = soln[1].abs();
+        // Some broad bounds checks
+        assert(i).gt(10e-3)?;
+        assert(i).lt(100e-3)?;
 
-    #[test]
-    fn test_dcop5b() -> TestResult {
-        // V - R - Diode
+        // Current-biased Diode
+        // with the measured current
         let ckt = CktParse {
-            nodes: 2,
-            comps: vec![
-                CompParse::D(2e-16, 25e-3, NodeRef::Num(0), NodeRef::Gnd),
-                CompParse::R(1e-3, NodeRef::Num(0), NodeRef::Num(1)),
-                CompParse::V(1.0, NodeRef::Num(1), NodeRef::Gnd),
-            ],
+            nodes: 1,
+            comps: vec![D(0.0, 0.0, Num(0), Gnd), I(i, Num(0), Gnd)],
         };
-
+        // Check the voltage matches our initial v-bias
         let soln = dcop(ckt)?;
-        assert!((soln[0] - 0.7).abs() < 1e-3);
+        assert(soln[0]).isclose(v, 1e-3)?;
+        assert(soln[0] - v).abs().lt(1e-3)?; // (same thing really)
         Ok(())
     }
 

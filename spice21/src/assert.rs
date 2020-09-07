@@ -66,6 +66,21 @@ impl<T: PartialOrd> Assert<T> {
     }
 }
 
+impl Assert<f64> {
+    pub fn abs(self) -> Assert<f64> {
+        Assert {
+            val: self.val.abs()
+        }
+    }
+    pub fn isclose(&self, other: f64, tol: f64) -> TestResult {
+        if (self.val - other).abs() > tol {
+            self.raise()
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

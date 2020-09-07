@@ -7,7 +7,7 @@ use crate::comps::{Component, ComponentSolver};
 use crate::proto::{CktParse, CompParse, NodeRef};
 use crate::sparse21::{Eindex, Matrix};
 use crate::spresult::SpResult;
-use crate::{SpNum};
+use crate::SpNum;
 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
@@ -342,10 +342,16 @@ impl<NumT: SpNum> Solver<NumT> {
                 Isrc::new(i, pvar, nvar).into()
             }
             CompParse::D(isat, vt, p, n) => {
-                use crate::comps::Diode;
+                // FIXME: incorporate new parameters
+                // FIXME: add internal resistance detection/ node insertion
+                use crate::comps::{Diode1, DiodePorts};
                 let p = self.node_var(p.clone());
                 let n = self.node_var(n.clone());
-                Diode::new(isat, vt, p, n).into()
+                let d = Diode1 {
+                    ports: DiodePorts { p, n, r: p },
+                    ..Diode1::default()
+                };
+                d.into()
             }
             CompParse::Vb(vs) => {
                 use crate::comps::Vsrc;
