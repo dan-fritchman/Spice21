@@ -43,12 +43,35 @@ pub struct Vs {
     pub n: NodeRef,
 }
 
+use super::comps::{DiodeInstParams, DiodeModel};
+
+pub struct D1 {
+    pub name: String,
+    pub model: DiodeModel,
+    pub inst: DiodeInstParams,
+    pub p: NodeRef,
+    pub n: NodeRef,
+}
+
+impl D1 {
+    pub fn new<S: Into<String>>(name: S, p: NodeRef, n: NodeRef) -> Self {
+        D1 {
+            p,
+            n,
+            name: name.into(),
+            inst: DiodeInstParams::default(),
+            model: DiodeModel::default(),
+        }
+    }
+}
+
 pub enum CompParse {
     Vb(Vs),
     I(f64, NodeRef, NodeRef),
     R(f64, NodeRef, NodeRef),
     C(f64, NodeRef, NodeRef),
-    D(f64, f64, NodeRef, NodeRef),
+    // D(f64, f64, NodeRef, NodeRef),
+    D1(D1),
     Mos0(MosType, NodeRef, NodeRef, NodeRef, NodeRef),
     Mos1(
         Mos1Model,
@@ -61,7 +84,7 @@ pub enum CompParse {
 }
 
 impl CompParse {
-    /// Replacement for deprecated `V` enum variant 
+    /// Replacement for deprecated `V` enum variant
     pub fn V(vdc: f64, p: NodeRef, n: NodeRef) -> CompParse {
         CompParse::Vb(Vs {
             name: s("tbd"),
@@ -73,13 +96,19 @@ impl CompParse {
     }
 }
 
+impl From<D1> for CompParse {
+    fn from(d: D1) -> Self {
+        CompParse::D1(d)
+    }
+}
+
 pub struct CktParse {
     pub nodes: usize,
     pub comps: Vec<CompParse>,
 }
 
 #[cfg(test)]
-mod tests { 
+mod tests {
     use super::*;
     use crate::spresult::TestResult;
 

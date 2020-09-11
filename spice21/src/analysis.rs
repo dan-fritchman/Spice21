@@ -29,7 +29,7 @@ impl<NumT: SpNum> Stamps<NumT> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum VarKind {
+pub enum VarKind {
     V = 0,
     I,
 }
@@ -55,7 +55,7 @@ pub struct Variables<NumT> {
 }
 
 impl<NumT: SpNum> Variables<NumT> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Variables {
             kinds: vec![],
             values: vec![],
@@ -71,7 +71,7 @@ impl<NumT: SpNum> Variables<NumT> {
             values: vec![NumT::zero(); other.values.len()],
         }
     }
-    fn add(&mut self, name: String, kind: VarKind) -> VarIndex {
+    pub fn add(&mut self, name: String, kind: VarKind) -> VarIndex {
         self.kinds.push(kind);
         self.names.push(name);
         self.values.push(NumT::zero());
@@ -109,13 +109,13 @@ struct Iteration<NumT: SpNum> {
 /// Newton-Style Iterative Solver
 /// Owns each of its circuit's ComponentSolvers,
 /// its SparseMatrix, and Variables.
-struct Solver<NumT: SpNum> {
-    comps: Vec<ComponentSolver>,
-    vars: Variables<NumT>,
-    mat: Matrix<NumT>,
-    rhs: Vec<NumT>,
-    history: Vec<Vec<NumT>>,
-    an_mode: AnalysisMode,
+pub struct Solver<NumT: SpNum> {
+    pub comps: Vec<ComponentSolver>,
+    pub vars: Variables<NumT>,
+    pub mat: Matrix<NumT>,
+    pub rhs: Vec<NumT>,
+    pub history: Vec<Vec<NumT>>,
+    pub opts: Options,
 }
 
 /// Real-valued Solver specifics
@@ -141,7 +141,7 @@ impl Solver<f64> {
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<f64>> {
         let mut dx = vec![0.0; self.vars.len()];
 
-        for _k in 0..20 {
+        for _k in 0..100 {
             // FIXME: number of iterations
             // Make a copy of state for tracking
             self.history.push(self.vars.values.clone());
@@ -163,7 +163,7 @@ impl Solver<f64> {
                 }
                 return Ok(self.vars.values.clone());
             }
-            // Solve for our update
+            // Haven't Converged. Solve for our update.
             dx = self.mat.solve(res)?;
             let max_step = 1000e-3;
             let max_abs = dx
@@ -195,7 +195,7 @@ impl Solver<Complex<f64>> {
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
-            an_mode: AnalysisMode::AC,
+            opts: re.opts,
         };
 
         // Create matrix elements, over-writing each Component's pointers
@@ -277,14 +277,15 @@ impl Solver<Complex<f64>> {
 }
 
 impl<NumT: SpNum> Solver<NumT> {
-    fn new(ckt: CktParse) -> Solver<NumT> {
+    /// Create a new Solver, translate `CktParse` Components into its `ComponentSolvers`.
+    fn new(ckt: CktParse, opts:Options) -> Solver<NumT> {
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
-            an_mode: AnalysisMode::OP,
+            opts,
         };
 
         // Convert each circuit-parser component into a corresponding component-solver
@@ -299,7 +300,7 @@ impl<NumT: SpNum> Solver<NumT> {
     }
     /// Retrieve the Variable corresponding to Node `node`,
     /// creating it if necessary.
-    fn node_var(&mut self, node: NodeRef) -> Option<VarIndex> {
+    pub fn node_var(&mut self, node: NodeRef) -> Option<VarIndex> {
         match node {
             NodeRef::Gnd => None,
             NodeRef::Name(name) => {
@@ -341,17 +342,25 @@ impl<NumT: SpNum> Solver<NumT> {
                 let nvar = self.node_var(n.clone());
                 Isrc::new(i, pvar, nvar).into()
             }
-            CompParse::D(isat, vt, p, n) => {
-                // FIXME: incorporate new parameters
-                // FIXME: add internal resistance detection/ node insertion
-                use crate::comps::{Diode1, DiodePorts};
-                let p = self.node_var(p.clone());
-                let n = self.node_var(n.clone());
-                let d = Diode1 {
-                    ports: DiodePorts { p, n, r: p },
-                    ..Diode1::default()
-                };
-                d.into()
+            // CompParse::D(isat, vt, p, n) => {
+            //     // FIXME: incorporate new parameters
+            //     // FIXME: add internal resistance detection/ node insertion
+            //     use crate::comps::{Diode1, DiodeInstParams, DiodeModel, DiodePorts};
+            //     let p = self.node_var(p.clone());
+            //     let n = self.node_var(n.clone());
+            //     let model = DiodeModel::default();
+            //     // Internal resistance node addition
+            //     let r = if model.has_rs() {
+            //         Some(self.vars.add("diode_r".to_string(), VarKind::V)) // FIXME: name
+            //     } else {
+            //         p
+            //     };
+            //     let inst = DiodeInstParams::default();
+            //     Diode1::new(DiodePorts { p, n, r }, model, inst).into()
+            // }
+            CompParse::D1(d) => {
+                use crate::comps::Diode1;
+                Diode1::from(d, self).into()
             }
             CompParse::Vb(vs) => {
                 use crate::comps::Vsrc;
@@ -406,7 +415,7 @@ impl<NumT: SpNum> Solver<NumT> {
 }
 
 pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
-    let mut s = Solver::<f64>::new(ckt);
+    let mut s = Solver::<f64>::new(ckt, Options::default());
     return s.solve(&AnalysisInfo::OP);
 }
 
@@ -416,7 +425,7 @@ pub enum AnalysisInfo<'a> {
     AC(&'a AcOptions, &'a AcState),
 }
 
-enum NumericalIntegration {
+pub enum NumericalIntegration {
     BE,
     TRAP,
 }
@@ -472,7 +481,7 @@ pub struct Tran {
 impl Tran {
     pub fn new(ckt: CktParse, opts: TranOptions) -> Tran {
         return Tran {
-            solver: Solver::new(ckt),
+            solver: Solver::new(ckt, Options::default()),
             opts,
             state: TranState::default(),
         };
@@ -550,7 +559,6 @@ impl Tran {
             self.solver.comps[*c].update(1e-9);
         }
 
-        self.solver.an_mode = AnalysisMode::TRAN;
         let mut tpoint: usize = 0;
         let max_tpoints: usize = 10000;
         self.state.dt = self.opts.tstep;
@@ -588,6 +596,53 @@ impl Tran {
 
 pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
     return Tran::new(ckt, opts).solve();
+}
+
+/// Simulation Options
+pub struct Options {
+    pub temp: f64,
+    pub nomTemp: f64,
+    pub gmin: f64,
+    pub abstol: f64,
+    pub reltol: f64,
+    pub chgtol: f64,
+    pub voltTol: f64,
+    pub trtol: usize,
+    pub tranMaxIter: usize,
+    pub dcMaxIter: usize,
+    pub dcTrcvMaxIter: usize,
+    pub integrateMethod: NumericalIntegration,
+    pub order: usize,
+    pub maxOrder: usize,
+    pub pivotAbsTol: f64,
+    pub pivotRelTol: f64,
+    pub srcFactor: f64,
+    pub diagGmin: f64,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            temp: 300.15,
+            nomTemp: 300.15,
+            gmin: 1e-12,
+            abstol: 1e-12,
+            reltol: 1e-3,
+            chgtol: 1e-14,
+            voltTol: 1e-6,
+            trtol: 7,
+            tranMaxIter: 10,
+            dcMaxIter: 100,
+            dcTrcvMaxIter: 50,
+            integrateMethod: NumericalIntegration::TRAP,
+            order: 1,
+            maxOrder: 2,
+            pivotAbsTol: 1e-13,
+            pivotRelTol: 1e-3,
+            srcFactor: 1.0,
+            diagGmin: 0.0,
+        }
+    }
 }
 
 // struct IoWriter {
@@ -702,7 +757,7 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
     use std::fs::File;
 
     // Initial DCOP solver and solution
-    let mut solver = Solver::<f64>::new(ckt);
+    let mut solver = Solver::<f64>::new(ckt, Options::default());
     let _dc_soln = solver.solve(&AnalysisInfo::OP)?;
 
     // Convert to an AC solver

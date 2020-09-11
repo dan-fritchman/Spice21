@@ -1,3 +1,9 @@
+///
+/// Spice21 Component Solvers
+///
+/// Primary trait and basic component implementations
+///
+///
 use enum_dispatch::enum_dispatch;
 use num::Complex;
 use std::convert::From;
@@ -8,13 +14,32 @@ use super::sparse21::{Eindex, Matrix};
 use super::spresult::SpResult;
 use super::SpNum;
 
+pub mod diode;
+pub use diode::{Diode0, Diode1, DiodeInstParams, DiodeModel, DiodePorts};
+
+/// Constants
+pub mod consts {
+    pub const KB: f64 = 1.3806226e-23;
+    pub const Q: f64 = 1.6021918e-19;
+    pub const KB_OVER_Q: f64 = KB / Q;
+    pub const KELVIN_TO_C: f64 = 273.15;
+    pub const TEMP_REF: f64 = KELVIN_TO_C + 27.0;
+    pub const SIO2_PERMITTIVITY: f64 = 3.9 * 8.854214871e-12;
+}
+
+/// Spice21 ComponentSolver
+/// The primary enumeration of component-types supported in simulation.
+///
+/// Shout-out `enum_dispatch` for "dynamic" dispatching the methods of
+/// the `Component` trait to each of these types.
+///
 #[enum_dispatch]
 pub enum ComponentSolver {
     Vsrc,
     Isrc,
     Capacitor,
     Resistor,
-    Diode,
+    Diode0,
     Diode1,
     Mos0,
     Mos1,
@@ -465,7 +490,7 @@ impl Default for Mos1InstanceParams {
             ps: 1e-6,
             nrd: 1.0,
             nrs: 1.0,
-            temp: TEMP_REF,
+            temp: consts::TEMP_REF,
             // FIXME: explicitly ignore these
             off: false,
             dtemp: 0.0,
@@ -569,13 +594,6 @@ pub struct Mos1 {
     matps: MosMatrixPointers,
 }
 
-const KB: f64 = 1.3806226e-23;
-const Q: f64 = 1.6021918e-19;
-const KB_OVER_Q: f64 = KB / Q;
-const TEMP_REF: f64 = 300.15;
-const KELVIN_TO_C: f64 = 273.15;
-const SIO2_PERMITTIVITY: f64 = 3.9 * 8.854214871e-12;
-
 /// Mosfet Level 1 Instance
 impl Mos1 {
     pub fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosTerminals) -> Mos1 {
@@ -593,13 +611,13 @@ impl Mos1 {
     /// Calculate derived parameters from instance parameters
     fn derive(model: &Mos1Model, inst: &Mos1InstanceParams) -> Mos1InternalParams {
         let temp = inst.temp;
-        let vtherm = temp * KB_OVER_Q;
+        let vtherm = temp * consts::KB_OVER_Q;
         // FIXME: all temperature dependences
         let phi_t = model.phi;
 
         let leff = inst.l - 2.0 * model.ld;
 
-        let cox_per_area = SIO2_PERMITTIVITY / model.tox;
+        let cox_per_area = consts::SIO2_PERMITTIVITY / model.tox;
         let cox = cox_per_area * leff * inst.w;
 
         let kp_t = model.u0 * cox_per_area * 1e-4;
@@ -1053,250 +1071,6 @@ impl Component for Mos0 {
                 (self.matps[(sr, G)], -gm),
             ],
             b: vec![(self.ports[dr], -p * irhs), (self.ports[sr], p * irhs)],
-        };
-    }
-}
-
-#[derive(Default)]
-pub struct Diode {
-    isat: f64,
-    vt: f64,
-    p: Option<VarIndex>,
-    n: Option<VarIndex>,
-    pp: Option<Eindex>,
-    nn: Option<Eindex>,
-    pn: Option<Eindex>,
-    np: Option<Eindex>,
-}
-
-use crate::attr;
-
-attr!(
-    DiodeModel,
-    [
-        (tnom, f64, 273.15, "Parameter measurement temperature"), // FIXME:default
-        (is, f64, 1e-14, "Saturation current"),
-        (n, f64, 1.0, "Emission Coefficient"),   //
-        (tt, f64, 0.0, "Transit Time"),          //
-        (cj0, f64, 0.0, "Junction capacitance"), //
-        (cjo, f64, 0.0, "Junction capacitance"), // FIXME: disallow
-        (vj, f64, 1.0, "Junction potential"),    //
-        (m, f64, 0.5, "Grading coefficient"),    //
-        (eg, f64, 1.11, "Activation energy"),    //
-        (xti, f64, 3.0, "Saturation current temperature exp."), //
-        (kf, f64, 0.0, "flicker noise coefficient"), //
-        (af, f64, 1.0, "flicker noise exponent"), //
-        (fc, f64, 0.5, "Forward bias junction fit parameter"), //
-        (bv, f64, 100.0, "Reverse breakdown voltage"), // FIXME: Optional, default effectively -inf, default val
-        (ibv, f64, 1e-3, "Current at reverse breakdown voltage"), //
-        (rs, f64, 0.0, "Ohmic resistance"),            //
-        (cond, f64, 0.0, "Ohmic conductance"),         // probably move this to internal
-    ]
-);
-
-attr!(
-    DiodeInstParams,
-    [
-        (temp, f64, 273.15, "Instance temperature"), // FIXME: default
-        (ic, f64, 0.0, "Initial device voltage"),    // FIXME: default
-        (area, f64, 1.0, "Area factor"),             //
-    ]
-);
-
-#[derive(Clone, Copy, Default)]
-pub struct DiodeOpPoint {
-    pub vd: f64,     // "Diode voltage"),
-    pub id: f64,     // "Diode current"),
-    pub gd: f64,     // "Diode conductance"),
-    pub cd: f64,     // "Diode capacitance"),
-    pub charge: f64, // "Diode capacitor charge"),
-    pub capcur: f64, // "Diode capacitor current"),
-    pub p: f64,      // "Diode power"),
-}
-
-/// Diode Ports (or Variables)
-/// Includes internal "r" node for terminal resistance,
-/// on the "p" (cathode) side.
-#[derive(Default)]
-pub struct DiodePorts {
-    pub p: Option<VarIndex>,
-    pub n: Option<VarIndex>,
-    pub r: Option<VarIndex>,
-}
-
-/// Diode Matrix-Pointers
-/// Includes internal "r" node-pointers on "p" (cathode) side.
-/// Total of seven matrix elements for the D+R series combo.
-#[derive(Default)]
-pub struct DiodeMatps {
-    pp: Option<Eindex>,
-    pr: Option<Eindex>,
-    rp: Option<Eindex>,
-    rr: Option<Eindex>,
-    nr: Option<Eindex>,
-    rn: Option<Eindex>,
-    nn: Option<Eindex>,
-}
-
-/// Diode Solver
-#[derive(Default)]
-pub struct Diode1 {
-    pub ports: DiodePorts,
-    pub matps: DiodeMatps,
-    pub model: DiodeModel,
-    pub inst: DiodeInstParams,
-    pub op: DiodeOpPoint,
-    pub guess: DiodeOpPoint,
-}
-
-impl Diode1 {
-    /// Voltage-range limiting
-    fn limit(&self, vd: f64) -> f64 {
-        vd.max(-1.5).min(1.5)
-    }
-}
-impl Component for Diode1 {
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        self.matps.pp = make_matrix_elem(mat, self.ports.p, self.ports.p);
-        self.matps.pr = make_matrix_elem(mat, self.ports.p, self.ports.r);
-        self.matps.rp = make_matrix_elem(mat, self.ports.r, self.ports.p);
-        self.matps.rr = make_matrix_elem(mat, self.ports.r, self.ports.r);
-        self.matps.nr = make_matrix_elem(mat, self.ports.n, self.ports.r);
-        self.matps.rn = make_matrix_elem(mat, self.ports.r, self.ports.n);
-        self.matps.nn = make_matrix_elem(mat, self.ports.n, self.ports.n);
-    }
-    /// Load our last guess as the new operating point
-    fn commit(&mut self) {
-        self.op = self.guess;
-    }
-    /// DC & Transient Stamp Loading
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        // FIXME: move these to one-time-derived area
-        let vt = KB_OVER_Q * self.inst.temp;
-        let vte = self.model.n * vt;
-        let isat = self.model.is * self.inst.area;
-        let gspr = self.model.cond * self.inst.area; // FIXME: zero-R-handling
-
-        use TwoTerm::{N, P};
-        let mut vd = guess.get(self.ports.p) - guess.get(self.ports.n);
-        if vd < -self.model.bv {
-            // FIXME!
-            panic!("BROKE DOWN!!!");
-        } else {
-            vd = self.limit(vd);
-        }
-
-        let gmin_temp = 1e-15; // FIXME: from ckt
-        let gmin = gmin_temp;
-
-        // Calculate diode current and its derivative, conductance
-        let (mut id, mut gd) = if vd >= -self.model.bv {
-            // Regular (non-breakdown) operation
-            let e = (vd / vte).exp();
-            (isat * (e - 1.0) + gmin * vd, isat * e / vte + gmin)
-        } else {
-            // Breakdown - vd < BV
-            let e = ((vd - self.model.bv) / vte).exp();
-            (-isat * e + gmin * vd, isat * e / vte + gmin)
-        };
-        // } else if self.model.bv == 0.0 || vd > self.model.bv {
-        //     // Reverse bias
-        //     // SPICE includes a more-linear, presumbaly faster method
-        //     // Skipping at least for now
-        //     // if vd >= -3.0*vte { // Forward/low-reverse
-
-        // Charge Storage Calculations
-        // FIXME: more internal params
-        let cz = self.model.cj0 * self.inst.area;
-        let dep_threshold = self.model.fc * self.model.vj;
-        let (qd, cd) = if vd < dep_threshold {
-            let a = 1.0 - vd / self.model.vj;
-            let s = -self.model.m * a.ln();
-            let qd = self.model.tt * self.model.vj * cz * (1.0 - a * s) / (1.0 - self.model.m);
-            let cd = self.model.tt * gd + cz * s;
-            (qd, cd)
-        } else {
-            // Forward-bias model, adapted from Spice's polynomial approach
-            let f1 = 1.0; // FIXME!
-            let f2 = 1.0; // FIXME!
-            let f3 = 0.0; // FIXME!
-            let cz2 = cz / f2;
-            let qd = self.model.tt * id
-                + cz * f1
-                + cz2
-                    * (f3 * (vd - dep_threshold)
-                        + self.model.m / 2.0 / self.model.vj
-                            * (vd * vd - dep_threshold * dep_threshold));
-            let cd = self.model.tt + cz2 * f3 + self.model.m * vd / self.model.vj;
-            (qd, cd)
-        };
-
-        let (gc, ic, _) = if let AnalysisInfo::TRAN(_, state) = an {
-            state.integrate(qd - self.op.charge, cd, vd, self.op.capcur)
-        } else {
-            (0.0, 0.0, 0.0)
-        };
-
-        // Incorporate the cap current and conductance
-        id += ic;
-        gd += gc;
-
-        // Update our op-point guess
-        self.guess = DiodeOpPoint {
-            vd,
-            id,
-            gd,
-            cd,
-            charge: qd,
-            capcur: ic,
-            p: vd * id,
-        };
-        let irhs = id - vd * gd;
-        let gspr = 0.0; // FIXME: terminal resistance
-        return Stamps {
-            g: vec![
-                (self.matps.nn, gd),
-                (self.matps.rn, -gd),
-                (self.matps.nr, -gd),
-                (self.matps.rr, gd + gspr),
-                (self.matps.pp, gspr),
-                (self.matps.pr, -gspr),
-                (self.matps.rp, -gspr),
-            ],
-            b: vec![(self.ports.r, -irhs), (self.ports.n, irhs)],
-        };
-    }
-}
-impl Diode {
-    pub fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode {
-        Diode {
-            isat,
-            vt,
-            p,
-            n,
-            ..Default::default()
-        }
-    }
-}
-
-impl Component for Diode {
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        self.pp = make_matrix_elem(mat, self.p, self.p);
-        self.pn = make_matrix_elem(mat, self.p, self.n);
-        self.np = make_matrix_elem(mat, self.n, self.p);
-        self.nn = make_matrix_elem(mat, self.n, self.n);
-    }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        let vp = guess.get(self.p);
-        let vn = guess.get(self.n);
-        let vd = (vp - vn).max(-1.5).min(1.5);
-        let i = self.isat * ((vd / self.vt).exp() - 1.0);
-        let gd = (self.isat / self.vt) * (vd / self.vt).exp();
-        let irhs = i - vd * gd;
-
-        return Stamps {
-            g: vec![(self.pp, gd), (self.nn, gd), (self.pn, -gd), (self.np, -gd)],
-            b: vec![(self.p, -irhs), (self.n, irhs)],
         };
     }
 }

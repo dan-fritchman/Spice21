@@ -91,6 +91,7 @@ pub mod sparse21;
 
 pub use assert::*;
 pub use spnum::*;
+pub use spresult::*;
 
 /// "Integration" Tests
 #[cfg(test)]
@@ -181,26 +182,29 @@ mod tests {
     #[test]
     fn test_dcop5() -> TestResult {
         // I - R - Diode
-        use CompParse::{D, I, R};
+        use crate::proto::D1;
+        use CompParse::{D1 as DE, I};
         use NodeRef::{Gnd, Num};
 
         // Voltage-biased Diode
-        let v = 0.700;
+        let v = 0.70;
+        let d = D1::new("dd", Num(0), Gnd);
         let ckt = CktParse {
             nodes: 1,
-            comps: vec![D(0.0, 0.0, Num(0), Gnd), CompParse::V(v, Num(0), Gnd)],
+            comps: vec![DE(d), CompParse::V(v, Num(0), Gnd)],
         };
         let soln = dcop(ckt)?;
-        let i = soln[1].abs();
-        // Some broad bounds checks
-        assert(i).gt(10e-3)?;
+        let i = soln.last().copied().unwrap().abs(); // FIXME: error type
+                                                     // Some broad bounds checks
+        assert(i).gt(1e-3)?;
         assert(i).lt(100e-3)?;
 
         // Current-biased Diode
         // with the measured current
+        let d = D1::new("dd", Num(0), Gnd);
         let ckt = CktParse {
             nodes: 1,
-            comps: vec![D(0.0, 0.0, Num(0), Gnd), I(i, Num(0), Gnd)],
+            comps: vec![d.into(), I(i, Num(0), Gnd)],
         };
         // Check the voltage matches our initial v-bias
         let soln = dcop(ckt)?;
