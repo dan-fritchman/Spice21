@@ -1,19 +1,25 @@
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
-// use prost::Message;
+use prost::Message;
 
 pub mod proto {
     // Include the prost-expanded proto-file content
     include!(concat!(env!("OUT_DIR"), "/spice21.proto.rs"));
 
     // fn some() -> Circuit {
+    //     use super::s;
+    //     use instance::Comp::{Mos, C, D, I, R, V};
     //     return Circuit {
     //         name: String::from("tbd"),
-    //         statements: vec![Statement {
-    //             // aint look great
-    //             statement: Some(statement::Statement::Instance(Instance {
-    //                 name: String::from("???"),
+    //         comps: vec![Instance {
+    //             comp: Some(D(Diode {
+    //                 name: Some(s("???")),
+    //                 p: Some(s("p")),
+    //                 n: Some(s("N")),
+    //                 model: Some(DiodeModel::default()),
+    //                 params: Some(DiodeInstParams::default()),
     //             })),
     //         }],
+    //         defs: vec![],
     //     };
     // }
 }
@@ -26,8 +32,14 @@ pub enum NodeRef {
 }
 
 /// Create a Node from anything convertible into String
+/// Empty string is a cardinal value for creating Gnd 
 pub fn n<S: Into<String>>(name: S) -> NodeRef {
-    NodeRef::Name(name.into())
+    let s: String = name.into();
+    if s.len() == 0 {
+        NodeRef::Gnd
+    } else {
+        NodeRef::Name(s)
+    }
 }
 
 /// Convert anything convertible into String
@@ -105,6 +117,29 @@ impl From<D1> for CompParse {
 pub struct CktParse {
     pub nodes: usize,
     pub comps: Vec<CompParse>,
+}
+
+impl CktParse {
+    pub fn from(c: proto::Circuit) -> Self {
+        use proto::instance::Comp;
+        use proto::Circuit; //::{Mos, C, D, I, R, V};
+        let Circuit { name, comps, .. } = c;
+        let mut cs: Vec<CompParse> = vec![];
+        for opt in comps.into_iter() {
+            if let Some(c) = opt.comp {
+                let cp: CompParse = match c {
+                    Comp::I(i) => CompParse::I(i.dc, n(i.p), n(i.n)),
+                    Comp::V(i) => CompParse::I(i.dc, n(i.p), n(i.n)),
+                    _ => CompParse::I(0.0, NodeRef::Gnd, NodeRef::Gnd),
+                };
+                cs.push(cp);
+            }
+        }
+        Self {
+            nodes: 0,
+            comps: vec![],
+        }
+    }
 }
 
 #[cfg(test)]

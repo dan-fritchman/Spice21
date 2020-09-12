@@ -5,6 +5,8 @@ use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
 use crate::proto::D1;
+use crate::proto::proto::Circuit;
+use crate::proto::proto::instance::Comp;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
@@ -28,8 +30,8 @@ attr!(
         (rs, f64, 0.0, "Ohmic resistance"),          
         (cj0, f64, 0.0, "Junction capacitance"),     
         // Removed: 
-        // (cjo, f64, 0.0, "Junction capacitance"), // FIXME: disallow                                             
-        // (cond, f64, 0.0, "Ohmic conductance"),       // probably move this to internal
+        // (cjo, f64, 0.0, "Junction capacitance"), 
+        // (cond, f64, 0.0, "Ohmic conductance"), 
     ]
 );
 

@@ -2,72 +2,116 @@ syntax = "proto3";
 
 package spice21.proto;
 
+import "google/protobuf/any.proto";
+import "google/protobuf/api.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/source_context.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/type.proto";
+import "google/protobuf/wrappers.proto";
+
+
 message Node {
     string name = 1;
 }
 
 message Resistor {
-    Node p = 1;
-    Node n = 2;
-    float g = 3;
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double g = 4;
 }
 
 message Capacitor {
-    Node p = 1;
-    Node n = 2;
-    float c = 3;
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double c = 4;
 }
 
 message Mos {
-    Node g = 1;
-    Node d = 2;
-    Node s = 3;
-    Node b = 4;
+    string name = 1;
+    string g = 2;
+    string d = 3;
+    string s = 4;
+    string b = 5;
 }
 
 message Isrc {
-    Node p = 1;
-    Node n = 2;
-    float dc = 3;
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double dc = 4;
 }
 
 message Vsrc {
-    Node p = 1;
-    Node n = 2;
-    float dc = 3;
-    float acm = 4;
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double dc = 4;
+    double acm = 5;
 }
 
-message Component {
+message DiodeModel {
+    string name = 1;
+    double tnom = 2;
+    double is = 3;
+    double n = 4;
+    double tt = 5;
+    double vj = 6;
+    double m = 7;
+    double eg = 8;
+    double xti = 9;
+    double kf = 10;
+    double af = 11;
+    double fc = 12;
+    double bv = 13;
+    double ibv = 14;
+    double rs = 15;
+    double cj0 = 16;
+}
+
+message Diode {
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double area = 4;
+    double temp = 5;
+}
+
+message Instance {
     oneof comp {
         Resistor r = 1;
         Capacitor c = 2;
         Mos mos = 3;
         Isrc i = 4;
         Vsrc v = 5;
+        Diode d = 6;
     }
 }
 
 message Circuit {
     string name = 1;
-    repeated Component comps = 2;
+    repeated Instance comps = 2;
+    repeated Def defs = 3;
 }
 
-message Sim {
-    Circuit ckt = 1;
-}
-
-message Instance {
-    string name = 1;
-    oneof  of {
-        Circuit circuit = 2;
-        Component comp = 3;
+message Def {
+    oneof defines {
+        DiodeModel diodemodel = 1;
     }
 }
 
 message Statement {
-    oneof statement {
-        Node node = 1;
-        Instance instance = 2;
+    oneof s {
+        Instance inst = 1;
+        Def def = 2;
     }
+}
+
+message Sim {
+    Circuit ckt = 1;
 }
