@@ -112,6 +112,15 @@ message Statement {
     }
 }
 
+message TranOptions {
+    double tstop = 1;
+    double tstep = 2;
+}
+
 message Sim {
     Circuit ckt = 1;
+}
+
+message OpResult {
+    map<string, double> data = 2;
 }

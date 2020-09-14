@@ -5,9 +5,16 @@ Python interface for the Spice21 simulator.
 
 ## Installation 
 
-Spice21 is implemented in Rust, and designed to work with the PyO3 binding generator. 
+Spice21 is implemented in Rust. 
+Spice21py interfaces to Spice21 via two primary tools: 
 
-From the [PyO3 guide](https://pyo3.rs/v0.5.3/print.html):
+* Protobuf. Spice21's primary types are generated, both in Python and in Rust, 
+from their Protobuf-schema definitions.   
+* The [PyO3](https://github.com/PyO3) binding-generation ecosystem, 
+including its build and publishing tool [Maturin](https://github.com/PyO3/maturin).
+
+Developing without Maturin is more difficult, especially on MacOS. 
+From the [PyO3 guide](https://pyo3.rs/v0.5.3/print.html): 
 
 ```
 On Mac Os, you need to set additional linker arguments. One option is to compile with cargo rustc --release -- -C link-arg=-undefined -C link-arg=dynamic_lookup, the other is to create a .cargo/config with the following content:

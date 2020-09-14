@@ -4,9 +4,9 @@
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
-use crate::proto::D1;
-use crate::proto::proto::Circuit;
 use crate::proto::proto::instance::Comp;
+use crate::proto::proto::Circuit;
+use crate::proto::D1;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
@@ -27,11 +27,11 @@ attr!(
         (fc, f64, 0.5, "Forward bias junction fit parameter"), //
         (bv, f64, 0.0, "Reverse breakdown voltage"), // FIXME: Optional, default effectively -inf, default val
         (ibv, f64, 1e-3, "Current at reverse breakdown voltage"), //
-        (rs, f64, 0.0, "Ohmic resistance"),          
-        (cj0, f64, 0.0, "Junction capacitance"),     
-        // Removed: 
-        // (cjo, f64, 0.0, "Junction capacitance"), 
-        // (cond, f64, 0.0, "Ohmic conductance"), 
+        (rs, f64, 0.0, "Ohmic resistance"),
+        (cj0, f64, 0.0, "Junction capacitance"),
+        // Removed:
+        // (cjo, f64, 0.0, "Junction capacitance"),
+        // (cond, f64, 0.0, "Ohmic conductance"),
     ]
 );
 
@@ -155,7 +155,7 @@ impl DiodeIntParams {
         if model.has_bv() {
             // Fun part: iteratively update breakdown (voltage,current) for temperature
             // SPICE models this as `ibv` being constant across temperature, and `bv` changing to meet it.
-            // We skip any convergence check here, and just get as close as we can in N iterations. 
+            // We skip any convergence check here, and just get as close as we can in N iterations.
             let ibv = model.ibv;
             for i in 0..25 {
                 bv = model.bv - vt * (ibv / isat + 1.0 - bv / vt).ln();

@@ -1,4 +1,5 @@
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
+use crate::SpResult;
 use prost::Message;
 
 pub mod proto {
@@ -32,7 +33,7 @@ pub enum NodeRef {
 }
 
 /// Create a Node from anything convertible into String
-/// Empty string is a cardinal value for creating Gnd 
+/// Empty string is a cardinal value for creating Gnd
 pub fn n<S: Into<String>>(name: S) -> NodeRef {
     let s: String = name.into();
     if s.len() == 0 {
@@ -53,6 +54,12 @@ pub struct Vs {
     pub acm: f64,
     pub p: NodeRef,
     pub n: NodeRef,
+}
+
+impl From<Vs> for CompParse {
+    fn from(x: Vs) -> Self {
+        CompParse::Vb(x)
+    }
 }
 
 use super::comps::{DiodeInstParams, DiodeModel};
@@ -82,7 +89,6 @@ pub enum CompParse {
     I(f64, NodeRef, NodeRef),
     R(f64, NodeRef, NodeRef),
     C(f64, NodeRef, NodeRef),
-    // D(f64, f64, NodeRef, NodeRef),
     D1(D1),
     Mos0(MosType, NodeRef, NodeRef, NodeRef, NodeRef),
     Mos1(
@@ -95,6 +101,8 @@ pub enum CompParse {
     ),
 }
 
+use proto::instance::Comp;
+
 impl CompParse {
     /// Replacement for deprecated `V` enum variant
     pub fn V(vdc: f64, p: NodeRef, n: NodeRef) -> CompParse {
@@ -105,6 +113,36 @@ impl CompParse {
             p,
             n,
         })
+    }
+    // Convert from protobuf-generated classes
+    pub fn from(c: Comp) -> Self {
+        match c {
+            Comp::I(i) => CompParse::I(i.dc, n(i.p), n(i.n)),
+            Comp::R(r) => CompParse::R(r.g, n(r.p), n(r.n)),
+            Comp::D(d) => {
+                let d1 = D1::new(d.name, n(d.p), n(d.n));
+                CompParse::D1(d1)
+            }
+            Comp::V(v) => {
+                let vs = Vs {
+                    name: v.name,
+                    p: n(v.p),
+                    n: n(v.n),
+                    vdc: v.dc,
+                    acm: v.acm,
+                };
+                CompParse::Vb(vs)
+            }
+            Comp::C(c) => CompParse::C(c.c, n(c.p), n(c.n)),
+            Comp::Mos(m) => CompParse::Mos1(
+                Mos1Model::default(),
+                Mos1InstanceParams::default(),
+                n(m.g),
+                n(m.d),
+                n(m.s),
+                n(m.b),
+            ),
+        }
     }
 }
 
@@ -120,25 +158,46 @@ pub struct CktParse {
 }
 
 impl CktParse {
-    pub fn from(c: proto::Circuit) -> Self {
-        use proto::instance::Comp;
-        use proto::Circuit; //::{Mos, C, D, I, R, V};
-        let Circuit { name, comps, .. } = c;
-        let mut cs: Vec<CompParse> = vec![];
-        for opt in comps.into_iter() {
-            if let Some(c) = opt.comp {
-                let cp: CompParse = match c {
-                    Comp::I(i) => CompParse::I(i.dc, n(i.p), n(i.n)),
-                    Comp::V(i) => CompParse::I(i.dc, n(i.p), n(i.n)),
-                    _ => CompParse::I(0.0, NodeRef::Gnd, NodeRef::Gnd),
-                };
-                cs.push(cp);
-            }
-        }
+    pub fn new() -> Self {
         Self {
             nodes: 0,
             comps: vec![],
         }
+    }
+    // Create from a protobuf-generated circuit
+    pub fn from(c: proto::Circuit) -> Self {
+        let proto::Circuit { name, comps, .. } = c;
+
+        let mut cs: Vec<CompParse> = vec![];
+        for opt in comps.into_iter() {
+            if let Some(c) = opt.comp {
+                cs.push(CompParse::from(c));
+            }
+        }
+        Self {
+            nodes: 0,
+            comps: cs,
+        }
+    }
+    /// Decode from bytes
+    pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
+        use proto::Circuit;
+        use std::io::Cursor;
+
+        let c = Circuit::decode(&mut Cursor::new(bytes_));
+        // Unfortunately these conversion errors don't convert to our Result
+        let ckt_proto = match c {
+            Ok(ckt) => ckt,
+            Err(e) => panic!("Circuit Decode Failed"),
+        };
+        // Create the circuit-parse analysis needs
+        let c = Self::from(ckt_proto);
+        Ok(c)
+    }
+    /// Add anything convertible into `CompParse`,
+    /// typically the enum-associated structs `Vsrc` et al.
+    pub fn add<C: Into<CompParse>>(&mut self, comp: C) {
+        self.comps.push(comp.into());
     }
 }
 

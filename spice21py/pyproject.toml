@@ -3,9 +3,10 @@ name = "spice21"
 version = "0.1.0"
 description = "SPICE for the 21st Century"
 authors = [
+    "Dan Fritchman <dan@fritch.mn>",
     "HW21 <hw21@hw21.io>"
 ]
-license = "MIT"
+license = "BSD-3-Clause"
 readme = "readme.md"
 python = "^3.6"
 homepage = "https://github.com/HW21/Spice21"
@@ -19,3 +20,5 @@ protobuf = "^3.13.0"
 requires = ["maturin"]
 build-backend = "maturin"
 
+[pytest]
+testpaths = "tests"

@@ -122,7 +122,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![0.0]);
+        assert_eq!(soln.values, vec![0.0]);
         Ok(())
     }
 
@@ -137,7 +137,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![1.0,]);
+        assert_eq!(soln.values, vec![1.0,]);
         Ok(())
     }
 
@@ -173,7 +173,7 @@ mod tests {
             ],
         };
         let soln = dcop(ckt)?;
-        assert(soln).eq(vec![-1e-3, 1.0, 0.5])?;
+        assert(soln.values).eq(vec![-1e-3, 1.0, 0.5])?;
         Ok(())
     }
 
@@ -182,30 +182,35 @@ mod tests {
     #[test]
     fn test_dcop5() -> TestResult {
         // I - R - Diode
-        use crate::proto::D1;
+        use crate::proto::{Vs, D1};
         use CompParse::{D1 as DE, I};
-        use NodeRef::{Gnd, Num};
+        use NodeRef::Gnd;
 
         // Voltage-biased Diode
         let v = 0.70;
-        let d = D1::new("dd", Num(0), Gnd);
-        let ckt = CktParse {
-            nodes: 1,
-            comps: vec![DE(d), CompParse::V(v, Num(0), Gnd)],
-        };
+        let mut ckt = CktParse::new();
+        ckt.add(D1::new("dd", n("p"), Gnd));
+        ckt.add(Vs {
+            name: s("vin"),
+            p: n("p"),
+            n: Gnd,
+            vdc: v,
+            acm: 0.0,
+        });
+        // let ckt = CktParse {
+        //     nodes: 1,
+        //     comps: vec![DE(d), CompParse::V(v, n("p"), Gnd)],
+        // };
         let soln = dcop(ckt)?;
-        let i = soln.last().copied().unwrap().abs(); // FIXME: error type
-                                                     // Some broad bounds checks
+        let i = soln.map.get(&s("vin")).ok_or("Failed to measure current")?.abs();
+        // Some broad bounds checks
         assert(i).gt(1e-3)?;
         assert(i).lt(100e-3)?;
 
-        // Current-biased Diode
-        // with the measured current
-        let d = D1::new("dd", Num(0), Gnd);
-        let ckt = CktParse {
-            nodes: 1,
-            comps: vec![d.into(), I(i, Num(0), Gnd)],
-        };
+        // Current-biased Diode, with the measured current
+        let mut ckt = CktParse::new();
+        ckt.add(D1::new("dd", n("p"), Gnd));
+        ckt.add(I(i, n("p"), Gnd));
         // Check the voltage matches our initial v-bias
         let soln = dcop(ckt)?;
         assert(soln[0]).isclose(v, 1e-3)?;
@@ -503,7 +508,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert(soln).eq(vec![1.0, 0.0, 0.0])?;
+        assert(soln.values).eq(vec![1.0, 0.0, 0.0])?;
         Ok(())
     }
 
@@ -525,7 +530,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert(soln).eq(vec![1.0, 1.0, 0.0])?;
+        assert(soln.values).eq(vec![1.0, 1.0, 0.0])?;
         Ok(())
     }
 
@@ -577,7 +582,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![1.0, 1.0, 0.0]);
+        assert_eq!(soln.values, vec![1.0, 1.0, 0.0]);
         Ok(())
     }
 
@@ -595,7 +600,7 @@ mod tests {
         };
 
         let soln = dcop(ckt)?;
-        assert_eq!(soln, vec![1.0, 0.0, 0.0]);
+        assert_eq!(soln.values, vec![1.0, 0.0, 0.0]);
         Ok(())
     }
 

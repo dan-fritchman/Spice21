@@ -278,7 +278,7 @@ impl Solver<Complex<f64>> {
 
 impl<NumT: SpNum> Solver<NumT> {
     /// Create a new Solver, translate `CktParse` Components into its `ComponentSolvers`.
-    fn new(ckt: CktParse, opts:Options) -> Solver<NumT> {
+    fn new(ckt: CktParse, opts: Options) -> Solver<NumT> {
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
@@ -342,22 +342,6 @@ impl<NumT: SpNum> Solver<NumT> {
                 let nvar = self.node_var(n.clone());
                 Isrc::new(i, pvar, nvar).into()
             }
-            // CompParse::D(isat, vt, p, n) => {
-            //     // FIXME: incorporate new parameters
-            //     // FIXME: add internal resistance detection/ node insertion
-            //     use crate::comps::{Diode1, DiodeInstParams, DiodeModel, DiodePorts};
-            //     let p = self.node_var(p.clone());
-            //     let n = self.node_var(n.clone());
-            //     let model = DiodeModel::default();
-            //     // Internal resistance node addition
-            //     let r = if model.has_rs() {
-            //         Some(self.vars.add("diode_r".to_string(), VarKind::V)) // FIXME: name
-            //     } else {
-            //         p
-            //     };
-            //     let inst = DiodeInstParams::default();
-            //     Diode1::new(DiodePorts { p, n, r }, model, inst).into()
-            // }
             CompParse::D1(d) => {
                 use crate::comps::Diode1;
                 Diode1::from(d, self).into()
@@ -413,10 +397,41 @@ impl<NumT: SpNum> Solver<NumT> {
         return true;
     }
 }
+use std::collections::HashMap;
+use std::ops::Index;
 
-pub fn dcop(ckt: CktParse) -> SpResult<Vec<f64>> {
+#[derive(Debug)]
+pub struct OpResult {
+    pub names: Vec<String>,
+    pub values: Vec<f64>,
+    pub map: HashMap<String, f64>,
+}
+
+impl OpResult {
+    /// Create an OpResult from a (typically final) set of `Variables`. 
+    fn from(vars: Variables<f64>) -> Self {
+        let mut map: HashMap<String, f64> = HashMap::new();
+        for i in 0..vars.names.len() {
+            map.insert(vars.names[i].clone(), vars.values[i]);
+        }
+        let Variables { names, values, .. } = vars;
+        OpResult { names, values, map }
+    }
+}
+/// Maintain much (most?) of our original vector-result-format
+/// via enabling integer indexing
+impl Index<usize> for OpResult {
+    type Output = f64;
+    fn index(&self, t: usize) -> &f64 {
+        &self.values[t]
+    }
+}
+
+/// Dc Operating Point Analysis 
+pub fn dcop(ckt: CktParse) -> SpResult<OpResult> {
     let mut s = Solver::<f64>::new(ckt, Options::default());
-    return s.solve(&AnalysisInfo::OP);
+    let _r = s.solve(&AnalysisInfo::OP)?;
+    return Ok(OpResult::from(s.vars));
 }
 
 pub enum AnalysisInfo<'a> {
@@ -466,10 +481,18 @@ impl TranState {
     }
 }
 
-#[derive(Default)]
 pub struct TranOptions {
     pub tstep: f64,
     pub tstop: f64,
+}
+
+impl Default for TranOptions {
+    fn default() -> TranOptions {
+        TranOptions {
+            tstep: 1e-6,
+            tstop: 1e-3,
+        }
+    }
 }
 
 pub struct Tran {
@@ -644,58 +667,6 @@ impl Default for Options {
         }
     }
 }
-
-// struct IoWriter {
-
-// }
-
-// enum IoWriterMessage {
-//     STOP,
-//     DATA(Vec<f64>),
-// }
-// enum IoWriterResponse {
-//     OK,
-//     RESULT(Vec<Vec<f64>>),
-// }
-
-// use mpsc::channel;
-
-// impl IoWriter {
-//     fn new(rx: channel::<IoWriterMessage>, tx:channel::<IoWriterResponse>) -> IoWriter {
-//         use std::sync::mpsc;
-//         use std::thread;
-
-//         let (tx, rx) = mpsc::channel::<IoWriterMessage>();
-//         let (tx2, rx2) = mpsc::channel::<IoWriterResponse>();
-
-//         let t = thread::spawn(move || {
-//             use serde::ser::{SerializeSeq, Serializer};
-//             use std::fs::File;
-
-//             let mut res: Vec<Vec<f64>> = vec![];
-
-//             let f = File::create("data.json").unwrap(); // FIXME: name
-//             let mut ser = serde_json::Serializer::new(f);
-//             let mut seq = ser.serialize_seq(None).unwrap();
-
-//             for msg in rx {
-//                 match msg {
-//                     IoWriterMessage::DATA(d) => {
-//                         seq.serialize_element(&d).unwrap();
-//                         res.push(d);
-//                     }
-//                     IoWriterMessage::STOP => {
-//                         seq.end().unwrap();
-//                         tx2.send(IoWriterResponse::RESULT(res)).unwrap();
-//                         return;
-//                     }
-//                 };
-//             }
-//         });
-
-//         IoWriter { }
-//     }
-// }
 
 #[derive(Default)]
 pub struct AcState {

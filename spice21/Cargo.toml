@@ -1,7 +1,10 @@
 [package]
 name = "spice21"
 version = "0.1.0"
-authors = ["Dan Fritchman <dan@fritch.mn>"]
+authors = [
+    "Dan Fritchman <dan@fritch.mn>",
+    "HW21 <hw21@hw21.io>"
+]
 edition = "2018"
 license = "BSD-3-Clause"
 description = "Coming Soon"
