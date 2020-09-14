@@ -1,9 +1,0 @@
-[package]
-name = "spice21s"
-version = "0.1.0"
-authors = ["Dan Fritchman <dan@fritch.mn>"]
-edition = "2018"
-license = "BSD-3-Clause"
-description = "Coming Soon"
-
-[dependencies]
