@@ -1,4 +1,6 @@
 
+*.ipynb
+.ipynb_checkpoints/
 *.json
 data*
 .vscode
