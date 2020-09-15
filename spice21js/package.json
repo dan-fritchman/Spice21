@@ -5,6 +5,6 @@
     "main": "index.js",
     "repository": "https://github.com/HW21/Spice21",
     "author": "Dan Fritchman <dan@fritch.mn>",
-    "license": "MIT",
+    "license" : "BSD-3-Clause",
     "private": false
 }
