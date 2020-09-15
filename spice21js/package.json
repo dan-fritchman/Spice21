@@ -1,0 +1,10 @@
+{
+    "name": "spice21js",
+    "version": "0.1.1",
+    "description": "SPICE for the 21st Century",
+    "main": "index.js",
+    "repository": "https://github.com/HW21/Spice21",
+    "author": "Dan Fritchman <dan@fritch.mn>",
+    "license": "MIT",
+    "private": false
+}

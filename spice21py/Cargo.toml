@@ -1,6 +1,6 @@
 [package]
 name = "spice21py"
-version = "0.1.1"
+version = "0.1.3"
 authors = [
     "Dan Fritchman <dan@fritch.mn>",
     "HW21 <hw21@hw21.io>"
@@ -14,8 +14,14 @@ name = "spice21py"
 crate-type = ["cdylib"]
 
 [dependencies]
-spice21 = "0.1.1"
+spice21 = "0.1.3"
 pyo3 = {version = "0.11.1", features = ["extension-module"]}
 
+# Local dev path 
 # [patch.crates-io]
 # spice21 = { path = "../spice21" }
+
+# Note this is really what sets Python install-dependencies
+# for Maturin-built projects (not pyproject.toml)! 
+[package.metadata.maturin]
+requires-dist = ["protobuf>=3.13.0"]

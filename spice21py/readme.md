@@ -1,7 +1,7 @@
 
 # Spice21 Python 
 
-Python interface for the Spice21 simulator. 
+Python interface to the Spice21 simulator. 
 
 ## Installation 
 
