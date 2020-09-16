@@ -25,12 +25,26 @@ and uses Google's [Protocol Buffers](https://developers.google.com/protocol-buff
 for most input and output data. 
 A set of thin wrappers provide bindings to just about any language that supports Protobuf. 
 
-### Don't Do Stupid Shit (Especially Stupid File Formats) 
+### Don't Do Stupid (Old) Shit 
 
+Spice was born a generation ago, and had a lifetime to accumulate mistakes. 
+Throw them out. Spice21 includes no: 
+
+**Stupid file formats**. 
 Spice21 has no custom netlist, output, or any other dreamt-up file-formats 
 that will require anyone to parse anything, ever. 
 Circuits are defined in the Protobuf schema language. 
 All output lives in open, popular data formats. 
+
+**Outdated device models and analyses.** 
+Transistor models will come in two flavors: the simplest, and the newest and most relevant. 
+To date no open-source SPICE supports [BSIM-CMG](http://bsim.berkeley.edu/models/bsimcmg/), 
+the industry-standard model for now-industry-standard FinFETs. 
+Remedying this is a near-term concern. 
+
+**Intractable options nobody ever uses.** 
+Careers-worth of circuit design and simulation experience have taught us how to set these things. 
+We're throwing out all the lessons un-learned along the way. 
 
 ### No Shortcuts
 

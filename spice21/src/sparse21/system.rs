@@ -1,9 +1,8 @@
-/// Sparse Matrix System
-///
-/// Represents a linear system of the form `Ax=b`
-///
-
-
+//!
+//! # Sparse Matrix System
+//!
+//! Represents a linear system of the form `Ax=b`
+//!
 use std::error::Error;
 
 #[derive(Debug, Clone)]
@@ -19,7 +18,6 @@ impl Error for NonRealNumError {
     fn description(&self) -> &str {
         "invalid first item to double"
     }
-
     fn cause(&self) -> Option<&Error> {
         // Generic error, underlying cause isn't tracked.
         None
