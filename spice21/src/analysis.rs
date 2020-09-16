@@ -1,24 +1,21 @@
-use std::cmp::PartialEq;
-// use std::convert::From;
+//! # Spice21 Analyses
+//!
 
-use num::{Complex, Float, Zero};
-
+use crate::circuit::{Ckt, Comp, NodeRef};
 use crate::comps::{Component, ComponentSolver};
-use crate::proto::{CktParse, CompParse, NodeRef};
 use crate::sparse21::{Eindex, Matrix};
-use crate::spresult::SpResult;
-use crate::SpNum;
+use crate::{SpNum, SpResult};
+use num::{Complex, Float, Zero};
 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.g`
 /// and its RHS contributions in `Stamps.b`.
 #[derive(Debug)]
-pub struct Stamps<NumT> {
-    pub g: Vec<(Option<Eindex>, NumT)>,
-    pub b: Vec<(Option<VarIndex>, NumT)>,
+pub(crate) struct Stamps<NumT> {
+    pub(crate) g: Vec<(Option<Eindex>, NumT)>,
+    pub(crate) b: Vec<(Option<VarIndex>, NumT)>,
 }
-
 impl<NumT: SpNum> Stamps<NumT> {
     pub fn new() -> Stamps<NumT> {
         Stamps {
@@ -29,7 +26,7 @@ impl<NumT: SpNum> Stamps<NumT> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum VarKind {
+pub(crate) enum VarKind {
     V = 0,
     I,
 }
@@ -37,18 +34,7 @@ pub enum VarKind {
 #[derive(Debug, Clone, Copy)]
 pub struct VarIndex(pub usize);
 
-// This kinda thing doesn't quite work for arrays; maybe it can some day
-//impl From<[NodeRef; 4]> for [Option<VarIndex>; 4] {
-//    fn from(noderefs: [NodeRef; 4]) -> [Option<VarIndex>; 4] {
-//        let mut opts: [Option<VarIndex>; 4] = [None, None, None, None];
-//        for k in 0..noderefs.len() {
-//            opts[k] = noderefs[k].into();
-//        }
-//        return opts;
-//    }
-//}
-
-pub struct Variables<NumT> {
+pub(crate) struct Variables<NumT> {
     kinds: Vec<VarKind>,
     values: Vec<NumT>,
     names: Vec<String>,
@@ -71,12 +57,15 @@ impl<NumT: SpNum> Variables<NumT> {
             values: vec![NumT::zero(); other.values.len()],
         }
     }
+    /// Add a new Variable with attributes `name` and `kind`.
     pub fn add(&mut self, name: String, kind: VarKind) -> VarIndex {
         self.kinds.push(kind);
         self.names.push(name);
         self.values.push(NumT::zero());
         return VarIndex(self.kinds.len() - 1);
     }
+    /// Retrieve a Variable value.
+    /// `None` represents "ground" and always has value zero.
     pub fn get(&self, i: Option<VarIndex>) -> NumT {
         match i {
             None => NumT::zero(),
@@ -86,14 +75,6 @@ impl<NumT: SpNum> Variables<NumT> {
     fn len(&self) -> usize {
         self.kinds.len()
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum AnalysisMode {
-    OP,
-    DC,
-    TRAN,
-    AC,
 }
 
 /// Solver Iteration Struct
@@ -109,13 +90,13 @@ struct Iteration<NumT: SpNum> {
 /// Newton-Style Iterative Solver
 /// Owns each of its circuit's ComponentSolvers,
 /// its SparseMatrix, and Variables.
-pub struct Solver<NumT: SpNum> {
-    pub comps: Vec<ComponentSolver>,
-    pub vars: Variables<NumT>,
-    pub mat: Matrix<NumT>,
-    pub rhs: Vec<NumT>,
-    pub history: Vec<Vec<NumT>>,
-    pub opts: Options,
+pub(crate) struct Solver<NumT: SpNum> {
+    pub(crate) comps: Vec<ComponentSolver>,
+    pub(crate) vars: Variables<NumT>,
+    pub(crate) mat: Matrix<NumT>,
+    pub(crate) rhs: Vec<NumT>,
+    pub(crate) history: Vec<Vec<NumT>>,
+    pub(crate) opts: Options,
 }
 
 /// Real-valued Solver specifics
@@ -277,8 +258,8 @@ impl Solver<Complex<f64>> {
 }
 
 impl<NumT: SpNum> Solver<NumT> {
-    /// Create a new Solver, translate `CktParse` Components into its `ComponentSolvers`.
-    fn new(ckt: CktParse, opts: Options) -> Solver<NumT> {
+    /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
+    fn new(ckt: Ckt, opts: Options) -> Solver<NumT> {
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
@@ -321,32 +302,32 @@ impl<NumT: SpNum> Solver<NumT> {
         }
     }
     /// Add parser Component `comp`, and any related Variables
-    fn add_comp(&mut self, comp: CompParse) {
+    fn add_comp(&mut self, comp: Comp) {
         // Convert `comp` to a corresponding `ComponentSolver`
         let c: ComponentSolver = match comp {
-            CompParse::R(g, p, n) => {
+            Comp::R(g, p, n) => {
                 use crate::comps::Resistor;
                 let pvar = self.node_var(p.clone());
                 let nvar = self.node_var(n.clone());
                 Resistor::new(g, pvar, nvar).into()
             }
-            CompParse::C(c, p, n) => {
+            Comp::C(c, p, n) => {
                 use crate::comps::Capacitor;
                 let pvar = self.node_var(p.clone());
                 let nvar = self.node_var(n.clone());
                 Capacitor::new(c, pvar, nvar).into()
             }
-            CompParse::I(i, p, n) => {
+            Comp::I(i, p, n) => {
                 use crate::comps::Isrc;
                 let pvar = self.node_var(p.clone());
                 let nvar = self.node_var(n.clone());
                 Isrc::new(i, pvar, nvar).into()
             }
-            CompParse::D1(d) => {
-                use crate::comps::Diode1;
-                Diode1::from(d, self).into()
+            Comp::D(d) => {
+                use crate::comps::Diode;
+                Diode::from(d, self).into()
             }
-            CompParse::Vb(vs) => {
+            Comp::V(vs) => {
                 use crate::comps::Vsrc;
                 let ivar = self.vars.add(vs.name.clone(), VarKind::I);
                 let vc = vs;
@@ -354,7 +335,7 @@ impl<NumT: SpNum> Solver<NumT> {
                 let n = self.node_var(vc.n.clone());
                 Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
             }
-            CompParse::Mos0(pol, g, d, s, b) => {
+            Comp::Mos0(pol, g, d, s, b) => {
                 use crate::comps::Mos0;
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
@@ -366,7 +347,7 @@ impl<NumT: SpNum> Solver<NumT> {
                 ];
                 Mos0::new(ports.into(), pol).into()
             }
-            CompParse::Mos1(model, params, g, d, s, b) => {
+            Comp::Mos1(model, params, g, d, s, b) => {
                 use crate::comps::Mos1;
                 let ports = [
                     self.node_var(g.clone()),
@@ -400,6 +381,7 @@ impl<NumT: SpNum> Solver<NumT> {
 use std::collections::HashMap;
 use std::ops::Index;
 
+/// Operating Point Result
 #[derive(Debug)]
 pub struct OpResult {
     pub names: Vec<String>,
@@ -408,7 +390,7 @@ pub struct OpResult {
 }
 
 impl OpResult {
-    /// Create an OpResult from a (typically final) set of `Variables`. 
+    /// Create an OpResult from a (typically final) set of `Variables`.
     fn from(vars: Variables<f64>) -> Self {
         let mut map: HashMap<String, f64> = HashMap::new();
         for i in 0..vars.names.len() {
@@ -427,20 +409,20 @@ impl Index<usize> for OpResult {
     }
 }
 
-/// Dc Operating Point Analysis 
-pub fn dcop(ckt: CktParse) -> SpResult<OpResult> {
+/// Dc Operating Point Analysis
+pub fn dcop(ckt: Ckt) -> SpResult<OpResult> {
     let mut s = Solver::<f64>::new(ckt, Options::default());
     let _r = s.solve(&AnalysisInfo::OP)?;
     return Ok(OpResult::from(s.vars));
 }
 
-pub enum AnalysisInfo<'a> {
+pub(crate) enum AnalysisInfo<'a> {
     OP,
     TRAN(&'a TranOptions, &'a TranState),
     AC(&'a AcOptions, &'a AcState),
 }
 
-pub enum NumericalIntegration {
+pub(crate) enum NumericalIntegration {
     BE,
     TRAP,
 }
@@ -452,7 +434,7 @@ impl Default for NumericalIntegration {
 }
 
 #[derive(Default)]
-pub struct TranState {
+pub(crate) struct TranState {
     t: f64,
     dt: f64,
     vic: Vec<usize>,
@@ -481,6 +463,7 @@ impl TranState {
     }
 }
 
+/// Transient Analysis Options
 pub struct TranOptions {
     pub tstep: f64,
     pub tstop: f64,
@@ -495,14 +478,14 @@ impl Default for TranOptions {
     }
 }
 
-pub struct Tran {
+pub(crate) struct Tran {
     solver: Solver<f64>,
     state: TranState,
-    pub opts: TranOptions,
+    pub(crate) opts: TranOptions,
 }
 
 impl Tran {
-    pub fn new(ckt: CktParse, opts: TranOptions) -> Tran {
+    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran {
         return Tran {
             solver: Solver::new(ckt, Options::default()),
             opts,
@@ -617,7 +600,8 @@ impl Tran {
     }
 }
 
-pub fn tran(ckt: CktParse, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
+/// Transient Analysis
+pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
     return Tran::new(ckt, opts).solve();
 }
 
@@ -634,7 +618,7 @@ pub struct Options {
     pub tranMaxIter: usize,
     pub dcMaxIter: usize,
     pub dcTrcvMaxIter: usize,
-    pub integrateMethod: NumericalIntegration,
+    pub integrateMethod: usize,
     pub order: usize,
     pub maxOrder: usize,
     pub pivotAbsTol: f64,
@@ -657,7 +641,7 @@ impl Default for Options {
             tranMaxIter: 10,
             dcMaxIter: 100,
             dcTrcvMaxIter: 50,
-            integrateMethod: NumericalIntegration::TRAP,
+            integrateMethod: 0,
             order: 1,
             maxOrder: 2,
             pivotAbsTol: 1e-13,
@@ -669,7 +653,7 @@ impl Default for Options {
 }
 
 #[derive(Default)]
-pub struct AcState {
+pub(crate) struct AcState {
     pub omega: f64,
 }
 
@@ -718,12 +702,12 @@ impl AcResult {
 }
 
 /// AC Analysis
-/// FIXME: result saving is in flux, and essentially on three tracks:
-/// * The in-memory format used by unit-tests returns vectors of complex numbers
-/// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
-/// * The AcResult struct holds all relevant data (in memory), and can serialize it to JSON (or any other serde format).
-///
-pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+    /// FIXME: result saving is in flux, and essentially on three tracks:
+    /// * The in-memory format used by unit-tests returns vectors of complex numbers
+    /// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
+    /// * The AcResult struct holds all relevant data (in memory), and can serialize it to JSON (or any other serde format).
+    ///
     use serde::ser::{SerializeSeq, Serializer};
     use std::fs::File;
 
@@ -790,16 +774,15 @@ pub fn ac(ckt: CktParse, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuit::{n, s, Ckt, Comp};
     use crate::comps::MosType;
-    use crate::proto::{n, s, CktParse, CompParse};
     use crate::spresult::TestResult;
-    use CompParse::{Mos0, C, R};
+    use Comp::{Mos0, C, R};
     use NodeRef::{Gnd, Num};
 
     #[test]
     fn test_ac1() -> TestResult {
-        let ckt = CktParse {
-            nodes: 1,
+        let ckt = Ckt {
             comps: vec![R(1.0, Num(0), Gnd)],
         };
         let soln = ac(ckt, AcOptions::default())?;
@@ -809,14 +792,13 @@ mod tests {
 
     #[test]
     fn test_ac2() -> TestResult {
-        use crate::proto::Vs;
-        use CompParse::{Vb, C, R};
-        let ckt = CktParse {
-            nodes: 2,
+        use crate::circuit::Vs;
+        use Comp::{C, R, V};
+        let ckt = Ckt {
             comps: vec![
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
-                Vb(Vs {
+                V(Vs {
                     name: s("vi"),
                     vdc: 1.0,
                     acm: 1.0,
@@ -831,12 +813,11 @@ mod tests {
 
     #[test]
     fn test_ac3() -> TestResult {
-        let ckt = CktParse {
-            nodes: 2,
+        let ckt = Ckt {
             comps: vec![
                 R(1e-3, Num(0), Num(1)),
                 C(1e-9, Num(1), Gnd),
-                CompParse::V(1.0, Num(0), Gnd),
+                Comp::vdc(1.0, Num(0), Gnd),
                 Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
             ],
         };
@@ -848,12 +829,11 @@ mod tests {
     // NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
+        use crate::circuit::Vs;
         use crate::comps::{Mos1InstanceParams, Mos1Model};
-        use crate::proto::Vs;
-        use CompParse::{Mos1, Vb, C, R};
+        use Comp::{Mos1, C, R, V};
 
-        let ckt = CktParse {
-            nodes: 3,
+        let ckt = Ckt {
             comps: vec![
                 R(1e-5, n("vdd"), n("d")),
                 C(1e-9, n("d"), Gnd),
@@ -865,8 +845,8 @@ mod tests {
                     Gnd,
                     Gnd,
                 ),
-                CompParse::V(1.0, n("vdd"), Gnd),
-                Vb(Vs {
+                Comp::vdc(1.0, n("vdd"), Gnd),
+                V(Vs {
                     name: s("vg"),
                     vdc: 0.7,
                     acm: 1.0,
@@ -883,14 +863,13 @@ mod tests {
     /// Diode-Connected NMOS AC
     #[test]
     fn test_ac5() -> TestResult {
+        use crate::circuit::Vs;
         use crate::comps::{Mos1InstanceParams, Mos1Model};
-        use crate::proto::Vs;
-        use CompParse::{Mos1, Vb};
+        use Comp::{Mos1, V};
 
-        let ckt = CktParse {
-            nodes: 1,
+        let ckt = Ckt {
             comps: vec![
-                Vb(Vs {
+                V(Vs {
                     name: s("vd"),
                     vdc: 0.5,
                     acm: 1.0,

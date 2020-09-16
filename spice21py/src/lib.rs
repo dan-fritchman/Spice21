@@ -2,7 +2,7 @@ use pyo3::exceptions::RuntimeError;
 use pyo3::prelude::*;
 use pyo3::{PyErr, PyResult};
 
-use spice21::proto::CktParse;
+use spice21::circuit::Ckt;
 use std::collections::HashMap;
 
 // Note "spice21py" must be the name of the `.so` or `.pyd` file,
@@ -31,7 +31,7 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
     fn dcop_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, f64>> {
         use spice21::analysis::dcop;
         // Decode the proto-encoded circuit
-        let c = CktParse::decode(bytes_);
+        let c = Ckt::decode(bytes_);
         // Unfortunately our Error types don't ?-convert, yet
         let ckt = match c {
             Ok(ckt) => ckt,
@@ -56,7 +56,7 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
     #[pyfn(m, "_tran")]
     fn tran_py(_py: Python, bytes_: &[u8]) -> PyResult<Vec<Vec<f64>>> {
         // Decode the proto-encoded circuit
-        let c = CktParse::decode(bytes_);
+        let c = Ckt::decode(bytes_);
         // Unfortunately our Error types don't ?-convert, yet
         let ckt = match c {
             Ok(ckt) => ckt,

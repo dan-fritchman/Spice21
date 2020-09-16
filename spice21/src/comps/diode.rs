@@ -1,18 +1,17 @@
-///
-/// Diode Solver(s)
-///
+//!
+//! # Diode Solver(s)
+//!
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
-use crate::proto::proto::instance::Comp;
-use crate::proto::proto::Circuit;
-use crate::proto::D1;
+use crate::circuit::Ds;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
-/// Diode Model Parameters
+// Diode Model Parameters
 attr!(
     DiodeModel,
+    "Diode Model Parameters",
     [
         (tnom, f64, 300.15, "Parameter measurement temperature"), // FIXME: defaults have to be literals in our macro
         (is, f64, 1e-14, "Saturation current"),
@@ -38,20 +37,22 @@ attr!(
 impl DiodeModel {
     /// Boolean indication of non-zero terminal resistance
     /// Used to determine whether to add an internal node
-    pub fn has_rs(&self) -> bool {
+    fn has_rs(&self) -> bool {
         self.rs != 0.0
     }
-    pub fn has_bv(&self) -> bool {
+    fn has_bv(&self) -> bool {
         self.bv != 0.0
     }
 }
 
+/// Diode Instance Parameters
 #[derive(Default)]
 pub struct DiodeInstParams {
     pub temp: Option<f64>, // Instance temperature
     pub area: Option<f64>, // Area factor
 }
 
+/// Diode Operating Point
 #[derive(Clone, Copy, Default)]
 pub struct DiodeOpPoint {
     pub vd: f64,     // "Diode voltage"),
@@ -188,7 +189,7 @@ impl DiodeIntParams {
 
 /// Diode Solver
 #[derive(Default)]
-pub struct Diode1 {
+pub struct Diode {
     pub ports: DiodePorts,
     pub model: DiodeModel,
     pub inst: DiodeInstParams,
@@ -198,11 +199,11 @@ pub struct Diode1 {
     pub guess: DiodeOpPoint,
 }
 
-impl Diode1 {
+impl Diode {
     /// Create a new Diode solver from a Circuit (parser) Diode
-    pub fn from<T: SpNum>(d: D1, solver: &mut Solver<T>) -> Diode1 {
+    pub(crate) fn from<T: SpNum>(d: Ds, solver: &mut Solver<T>) -> Diode {
         // Destruct the key parser-diode attributes
-        let D1 {
+        let Ds {
             mut name,
             model,
             inst,
@@ -222,7 +223,7 @@ impl Diode1 {
         // Derive internal params
         let intp = DiodeIntParams::derive(&model, &inst, &solver.opts);
         // And create our solver
-        return Diode1 {
+        return Diode {
             ports: DiodePorts { p, n, r },
             model,
             inst,
@@ -231,8 +232,8 @@ impl Diode1 {
         };
     }
     /// Create a new Diode
-    pub fn new(ports: DiodePorts, model: DiodeModel, inst: DiodeInstParams) -> Diode1 {
-        Diode1 {
+    pub(crate) fn new(ports: DiodePorts, model: DiodeModel, inst: DiodeInstParams) -> Diode {
+        Diode {
             ports,
             model,
             inst,
@@ -260,7 +261,7 @@ impl Diode1 {
         return vte * (vnew / vte).ln();
     }
 }
-impl Component for Diode1 {
+impl Component for Diode {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.matps.pp = make_matrix_elem(mat, self.ports.p, self.ports.p);
         self.matps.pr = make_matrix_elem(mat, self.ports.p, self.ports.r);
@@ -293,7 +294,7 @@ impl Component for Diode1 {
     }
     /// DC & Transient Stamp Loading
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        let gmin_temp = 1e-15; // FIXME: from ckt
+        let gmin_temp = 1e-15; // FIXME: get from ckt
         let gmin = gmin_temp;
         // Destructure most key parameters
         let DiodeIntParams {
@@ -387,7 +388,7 @@ impl Component for Diode1 {
 
 /// Simplified Diode Model, Level "Zero"
 #[derive(Default)]
-pub struct Diode0 {
+pub(crate) struct Diode0 {
     isat: f64,
     vt: f64,
     p: Option<VarIndex>,
@@ -399,7 +400,7 @@ pub struct Diode0 {
 }
 
 impl Diode0 {
-    pub fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode0 {
+    pub(crate) fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode0 {
         Diode0 {
             isat,
             vt,
