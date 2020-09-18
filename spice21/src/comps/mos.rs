@@ -8,9 +8,9 @@ use std::ops::{Index, IndexMut};
 
 use super::consts;
 use super::{make_matrix_elem, Component};
-use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
+use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{SpNum, SpResult};
+use crate::SpNum;
 
 /// Mos Terminals, in SPICE order: g, d, s, b
 #[derive(Clone, Copy)]

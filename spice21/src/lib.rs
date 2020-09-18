@@ -30,7 +30,6 @@ pub(crate) mod macros {
             $( #[doc=$desc]
                 pub $attr_name : $attr_type ),*
         }
-
         impl $src_name {
             fn getattr<S: Into<String>>(&self, key: S) -> Option<f64> {
                 let k: String = key.into();
@@ -40,7 +39,6 @@ pub(crate) mod macros {
                 }
             }
         }
-
         impl Default for $src_name {
             fn default() -> Self {
                 Self {
@@ -49,7 +47,21 @@ pub(crate) mod macros {
             }
         }
     }
-}
+    }
+
+    #[macro_export]
+    macro_rules! paramstruct {
+    ( $src_name:ident, $struct_desc:literal, [
+        $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
+    ]) => {
+        #[doc=$struct_desc]
+        #[derive(Clone, Copy, Default)]
+        pub struct $src_name {
+            $( #[doc=$desc]
+                pub $attr_name : $attr_type ),*
+        }
+    }
+    }
 
     #[cfg(test)]
     mod tests {
