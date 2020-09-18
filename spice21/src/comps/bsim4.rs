@@ -2,995 +2,5341 @@
 //! BSIM4 MOSFET Implementation
 //!
 
-use crate::paramstruct;
+use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
+use crate::sparse21::{Eindex, Matrix};
+use crate::SpNum;
 
-paramstruct! {
-    Bsim4Inst,
-    "BSIM4 Instance Parameters",[
-    (l,         f64   , "Length"),
-    (w,         f64   , "Width"),
-    (nf,       f64   , "Number of fingers"),
-    (sa,       f64   , "distance between  OD edge to poly of one side "),
-    (sb,       f64   , "distance between  OD edge to poly of the other side"),
-    (sd,       f64   , "distance between neighbour fingers"),
-    (sca,       f64   , "Integral of the first distribution function for scattered well dopant"),
-    (scb,       f64   , "Integral of the second distribution function for scattered well dopant"),
-    (scc,       f64   , "Integral of the third distribution function for scattered well dopant"),
-    (sc,       f64   , "Distance to a single well edge "),
-    (min,     usize , "Minimize either D or S"),
-    (ad,       f64   , "Drain area"),
-    (r#as,       f64   , "Source area"), // Note `r#as` allows the keyword `as`
-    (pd,       f64   , "Drain perimeter"),
-    (ps,       f64   , "Source perimeter"),
-    (nrd,     f64   , "Number of squares in drain"),
-    (nrs,     f64   , "Number of squares in source"),
-    (off,     bool   , "Device is initially off"),
-    (rbdb,   f64   , "Body resistance"),
-    (rbsb,   f64   , "Body resistance"),
-    (rbpb,   f64   , "Body resistance"),
-    (rbps,   f64   , "Body resistance"),
-    (rbpd,   f64   , "Body resistance"),
-    (delvto,   f64   , "Zero bias threshold voltage variation"),
-    (xgw,   f64, "Distance from gate contact center to device edge"),
-    (ngcon,  f64, "Number of gate contacts"),
-    (trnqsmod,  usize, "Transient NQS model selector"),
-    (acnqsmod,  usize, "AC NQS model selector"),
-    (rbodymod,  usize, "Distributed body R model selector"),
-    (rgatemod,  usize, "Gate resistance model selector"),
-    (geomod,  usize, "Geometry dependent parasitics model selector"),
-    (rgeomod,  usize, "S/D resistance and contact model selector"),
-    // Unsupported:
-    // (ic,       Vec<f64> , "Vector of DS,GS,BS initial voltages"),
-    ]
-}
-paramstruct! {
-    Bsim4OpPoint,
-    "BSIM4 Operating Point",[
-        (gmbs,                f64,    "Gmb"),
-        (gm,                    f64,    "Gm"),
-        (gds,                  f64,    "Gds"),
-        (vdsat,              f64,    "Vdsat"),
-        (vth,                  f64,    "Vth"),
-        (id,                    f64,    "Ids"),
-        (ibd,                  f64,    "Ibd"),
-        (ibs,                  f64,    "Ibs"),
-        (gbd,                  f64,    "gbd"),
-        (gbs,                  f64,    "gbs"),
-        (isub,                f64,    "Isub"),
-        (igidl,              f64,    "Igidl"),
-        (igisl,              f64,    "Igisl"),
-        (igs,                  f64,    "Igs"),
-        (igd,                  f64,    "Igd"),
-        (igb,                  f64,    "Igb"),
-        (igcs,                f64,    "Igcs"),
-        (igcd,                f64,    "Igcd"),
-        (vbs,                  f64,    "Vbs"),
-        (vgs,                  f64,    "Vgs"),
-        (vds,                  f64,    "Vds"),
-        (cgg,                f64,    "Cggb"),
-        (cgs,                f64,    "Cgsb"),
-        (cgd,                f64,    "Cgdb"),
-        (cbg,                f64,    "Cbgb"),
-        (cbd,                f64,    "Cbdb"),
-        (cbs,                f64,    "Cbsb"),
-        (cdg,                f64,    "Cdgb"),
-        (cdd,                f64,    "Cddb"),
-        (cds,                f64,    "Cdsb"),
-        (csg,                f64,    "Csgb"),
-        (csd,                f64,    "Csdb"),
-        (css,                f64,    "Cssb"),
-        (cgb,                f64,    "Cgbb"),
-        (cdb,                f64,    "Cdbb"),
-        (csb,                f64,    "Csbb"),
-        (cbb,                f64,    "Cbbb"),
-        (capbd,             f64,    "Capbd"),
-        (capbs,             f64,    "Capbs"),
-        (qg,                   f64,    "Qgate"),
-        (qb,                   f64,    "Qbulk"),
-        (qd,                   f64,    "Qdrain"),
-        (qs,                   f64,    "Qsource"),
-        (qinv,               f64,    "Qinversion"),
-        (qdef,               f64,    "Qdef"),
-        (gcrg,               f64,    "Gcrg"),
-        (gtau,               f64,    "Gtau"),
-    ]
+use super::bsim4defs::*;
+
+impl Bsim4Model {
+    /// Polarity function
+    fn p(&self) -> f64 {
+        // FIXME: use mos_type enum
+        if self.nmos {
+            1.0
+        } else {
+            -1.0
+        }
+    }
 }
 
-paramstruct! {
-    Bsim4Model,
-    "BSIM4 Model Parameters", [
-        (cvchargemod,  usize, "Capacitance Charge model selector"),
-        (capmod,  usize, "Capacitance model selector"),
-        (diomod,  usize, "Diode IV model selector"),
-        (rdsmod,  usize, "Bias-dependent S/D resistance model selector"),
-        (trnqsmod,  usize, "Transient NQS model selector"),
-        (acnqsmod,  usize, "AC NQS model selector"),
-        (mobmod,  usize, "Mobility model selector"),
-        (rbodymod,  usize, "Distributed body R model selector"),
-        (rgatemod,  usize, "Gate R model selector"),
-        (permod,  usize, "Pd and Ps model selector"),
-        (geomod,  usize, "Geometry dependent parasitics model selector"),
-        (fnoimod,  usize, "Flicker noise model selector"),
-        (tnoimod,  usize, "Thermal noise model selector"),
-        (mtrlmod,  usize, "parameter for non-silicon substrate or metal gate selector"),
-        (mtrlcompatmod,  usize, "New Material Mod backward compatibility selector"),
-        (igcmod,  usize, "Gate-to-channel Ig model selector"),
-        (igbmod,  usize, "Gate-to-body Ig model selector"),
-        (tempmod,  usize, "Temperature model selector"),
-        (gidlmod,  usize, "parameter for GIDL selector"), /* v4.7 New GIDL/GISL */
-        (paramchk,  usize, "Model parameter checking selector"),
-        (binunit,  usize, "Bin  unit  selector"),
-        (version,  f64, "parameter for model version"),
-        (eot,  f64, "Equivalent gate oxide thickness in meters"),
-        (vddeot,  f64, "Voltage for extraction of Equivalent gate oxide thickness"),
-        (tempeot,  f64, " Temperature for extraction of EOT"),
-        (leffeot,  f64, " Effective length for extraction of EOT"),
-        (weffeot,  f64, "Effective width for extraction of EOT"),
-        (ados,  f64, "Charge centroid parameter"),
-        (bdos,  f64, "Charge centroid parameter"),
-        (toxe,  f64, "Electrical gate oxide thickness in meters"),
-        (toxp,  f64, "Physical gate oxide thickness in meters"),
-        (toxm,  f64, "Gate oxide thickness at which parameters are extracted"),
-        (toxref,  f64, "Target tox value"),
-        (dtox,  f64, "Defined as (toxe - toxp) "),
-        (epsrox,  f64, "Dielectric constant of the gate oxide relative to vacuum"),
-        (cdsc,  f64, "Drain/Source and channel coupling capacitance"),
-        (cdscb,  f64, "Body-bias dependence of cdsc"),
-        (cdscd,  f64, "Drain-bias dependence of cdsc"),
-        (cit,  f64, "Interface state capacitance"),
-        (nfactor,  f64, "Subthreshold swing Coefficient"),
-        (xj,  f64, "Junction depth in meters"),
-        (vsat,  f64, "Saturation velocity at tnom"),
-        (at,  f64, "Temperature coefficient of vsat"),
-        (a0,  f64, "Non-uniform depletion width effect coefficient."),
-        (ags,  f64, "Gate bias  coefficient of Abulk."),
-        (a1,  f64, "Non-saturation effect coefficient"),
-        (a2,  f64, "Non-saturation effect coefficient"),
-        (keta,  f64, "Body-bias coefficient of non-uniform depletion width effect."),
-        (phig,  f64, "Work function of gate"),
-        (epsrgate,  f64, "Dielectric constant of gate relative to vacuum"),
-        (easub, f64, "Electron affinity of substrate"),
-        (epsrsub,  f64, "Dielectric constant of substrate relative to vacuum"),
-        (ni0sub,  f64, "Intrinsic carrier concentration of substrate at 300.15K"),
-        (bg0sub,  f64, "Band-gap of substrate at T=0K"),
-        (tbgasub,  f64, "First parameter of band-gap change due to temperature"),
-        (tbgbsub,  f64, "Second parameter of band-gap change due to temperature"),
-        (nsub,  f64, "Substrate doping concentration"),
-        (ndep,  f64, "Channel doping concentration at the depletion edge"),
-        (nsd,  f64, "S/D doping concentration"),
-        (phin,  f64, "Adjusting parameter for surface potential due to non-uniform vertical doping"),
-        (ngate,  f64, "Poly-gate doping concentration"),
-        (gamma1,  f64, "Vth body coefficient"),
-        (gamma2,  f64, "Vth body coefficient"),
-        (vbx,  f64, "Vth transition body Voltage"),
-        (vbm,  f64, "Maximum body voltage"),
-        (xt,  f64, "Doping depth"),
-        (k1,  f64, "Bulk effect coefficient 1"),
-        (kt1,  f64, "Temperature coefficient of Vth"),
-        (kt1l,  f64, "Temperature coefficient of Vth"),
-        (kt2,   f64, "Body-coefficient of kt1"),
-        (k2,     f64, "Bulk effect coefficient 2"),
-        (k3,     f64, "Narrow width effect coefficient"),
-        (k3b,   f64, "Body effect coefficient of k3"),
-        (w0,     f64, "Narrow width effect parameter"),
-        (dvtp0,   f64, "First parameter for Vth shift due to pocket"),
-        (dvtp1,   f64, "Second parameter for Vth shift due to pocket"),
-        (dvtp2,   f64, "3rd parameter for Vth shift due to pocket"),
-        (dvtp3,   f64, "4th parameter for Vth shift due to pocket"),
-        (dvtp4,   f64, "5th parameter for Vth shift due to pocket"),
-        (dvtp5,   f64, "6th parameter for Vth shift due to pocket"),
-        (lpe0,   f64, "Equivalent length of pocket region at zero bias"),
-        (lpeb,   f64, "Equivalent length of pocket region accounting for body bias"),
-        (dvt0,  f64, "Short channel effect coeff. 0"),
-        (dvt1,  f64, "Short channel effect coeff. 1"),
-        (dvt2,  f64, "Short channel effect coeff. 2"),
-        (dvt0w,  f64, "Narrow Width coeff. 0"),
-        (dvt1w,  f64, "Narrow Width effect coeff. 1"),
-        (dvt2w,  f64, "Narrow Width effect coeff. 2"),
-        (drout,  f64, "DIBL coefficient of output resistance"),
-        (dsub,  f64, "DIBL coefficient in the subthreshold region"),
-        (vth0,  f64,"Threshold voltage"),
-        (vtho,  f64,"Threshold voltage"),
-        (ua,  f64, "Linear gate dependence of mobility"),
-        (ua1,  f64, "Temperature coefficient of ua"),
-        (ub,  f64, "Quadratic gate dependence of mobility"),
-        (ub1,  f64, "Temperature coefficient of ub"),
-        (uc,  f64, "Body-bias dependence of mobility"),
-        (uc1,  f64, "Temperature coefficient of uc"),
-        (ud,  f64, "Coulomb scattering factor of mobility"),
-        (ud1,  f64, "Temperature coefficient of ud"),
-        (up,  f64, "Channel length linear factor of mobility"),
-        (lp,  f64, "Channel length exponential factor of mobility"),
-        (u0,  f64, "Low-field mobility at Tnom"),
-        (eu,  f64, "Mobility exponent"),
-        (ucs,  f64, "Colombic scattering exponent"),
-        (ute,  f64, "Temperature coefficient of mobility"),
-        (ucste,  f64,"Temperature coefficient of colombic mobility"),
-        (voff,  f64, "Threshold voltage offset"),
-        (minv,  f64, "Fitting parameter for moderate inversion in Vgsteff"),
-        (minvcv,  f64, "Fitting parameter for moderate inversion in Vgsteffcv"),
-        (voffl,  f64, "Length dependence parameter for Vth offset"),
-        (voffcvl,  f64, "Length dependence parameter for Vth offset in CV"),
-        (tnom,  f64, "Parameter measurement temperature"),
-        (cgso,  f64, "Gate-source overlap capacitance per width"),
-        (cgdo,  f64, "Gate-drain overlap capacitance per width"),
-        (cgbo,  f64, "Gate-bulk overlap capacitance per length"),
-        (xpart,  f64, "Channel charge partitioning"),
-        (delta,  f64, "Effective Vds parameter"),
-        (rsh,  f64, "Source-drain sheet resistance"),
-        (rdsw,  f64, "Source-drain resistance per width"),
-        (rdswmin,  f64, "Source-drain resistance per width at high Vg"),
-        (rsw,  f64, "Source resistance per width"),
-        (rdw,  f64, "Drain resistance per width"),
-        (rdwmin,  f64, "Drain resistance per width at high Vg"),
-        (rswmin,  f64, "Source resistance per width at high Vg"),
-        (prwg,  f64, "Gate-bias effect on parasitic resistance "),
-        (prwb,  f64, "Body-effect on parasitic resistance "),
-        (prt,  f64, "Temperature coefficient of parasitic resistance "),
-        (eta0,  f64, "Subthreshold region DIBL coefficient"),
-        (etab,  f64, "Subthreshold region DIBL coefficient"),
-        (pclm,  f64, "Channel length modulation Coefficient"),
-        (pdiblc1,  f64, "Drain-induced barrier lowering coefficient"),
-        (pdiblc2,  f64, "Drain-induced barrier lowering coefficient"),
-        (pdiblcb,  f64, "Body-effect on drain-induced barrier lowering"),
-        (fprout,  f64, "Rout degradation coefficient for pocket devices"),
-        (pdits,  f64, "Coefficient for drain-induced Vth shifts"),
-        (pditsl,  f64, "Length dependence of drain-induced Vth shifts"),
-        (pditsd,  f64, "Vds dependence of drain-induced Vth shifts"),
-        (pscbe1,  f64, "Substrate current body-effect coefficient"),
-        (pscbe2,  f64, "Substrate current body-effect coefficient"),
-        (pvag,  f64, "Gate dependence of output resistance parameter"),
-        (jss,  f64, "Bottom source junction reverse saturation current density"),
-        (jsws,  f64, "Isolation edge sidewall source junction reverse saturation current density"),
-        (jswgs,  f64, "Gate edge source junction reverse saturation current density"),
-        (pbs,  f64, "Source junction built-in potential"),
-        (njs,  f64, "Source junction emission coefficient"),
-        (xtis,  f64, "Source junction current temperature exponent"),
-        (mjs,  f64, "Source bottom junction capacitance grading coefficient"),
-        (pbsws,  f64, "Source sidewall junction capacitance built in potential"),
-        (mjsws,  f64, "Source sidewall junction capacitance grading coefficient"),
-        (pbswgs,  f64, "Source (gate side) sidewall junction capacitance built in potential"),
-        (mjswgs,  f64, "Source (gate side) sidewall junction capacitance grading coefficient"),
-        (cjs,  f64, "Source bottom junction capacitance per unit area"),
-        (cjsws,  f64, "Source sidewall junction capacitance per unit periphery"),
-        (cjswgs,  f64, "Source (gate side) sidewall junction capacitance per unit width"),
-        (jsd,  f64, "Bottom drain junction reverse saturation current density"),
-        (jswd,  f64, "Isolation edge sidewall drain junction reverse saturation current density"),
-        (jswgd,  f64, "Gate edge drain junction reverse saturation current density"),
-        (pbd,  f64, "Drain junction built-in potential"),
-        (njd,  f64, "Drain junction emission coefficient"),
-        (xtid,  f64, "Drainjunction current temperature exponent"),
-        (mjd,  f64, "Drain bottom junction capacitance grading coefficient"),
-        (pbswd,  f64, "Drain sidewall junction capacitance built in potential"),
-        (mjswd,  f64, "Drain sidewall junction capacitance grading coefficient"),
-        (pbswgd,  f64, "Drain (gate side) sidewall junction capacitance built in potential"),
-        (mjswgd,  f64, "Drain (gate side) sidewall junction capacitance grading coefficient"),
-        (cjd,  f64, "Drain bottom junction capacitance per unit area"),
-        (cjswd,  f64, "Drain sidewall junction capacitance per unit periphery"),
-        (cjswgd,  f64, "Drain (gate side) sidewall junction capacitance per unit width"),
-        (vfbcv,  f64, "Flat Band Voltage parameter for capmod=0 only"),
-        (vfb,  f64, "Flat Band Voltage"),
-        (tpb,  f64, "Temperature coefficient of pb"),
-        (tcj,  f64, "Temperature coefficient of cj"),
-        (tpbsw,  f64, "Temperature coefficient of pbsw"),
-        (tcjsw,  f64, "Temperature coefficient of cjsw"),
-        (tpbswg,  f64, "Temperature coefficient of pbswg"),
-        (tcjswg,  f64, "Temperature coefficient of cjswg"),
-        (acde,  f64, "Exponential coefficient for finite charge thickness"),
-        (moin,  f64, "Coefficient for gate-bias dependent surface potential"),
-        (noff,  f64, "C-V turn-on/off parameter"),
-        (voffcv,  f64, "C-V lateral-shift parameter"),
-        (dmcg,  f64, "Distance of Mid-Contact to Gate edge"),
-        (dmci,  f64, "Distance of Mid-Contact to Isolation"),
-        (dmdg,  f64, "Distance of Mid-Diffusion to Gate edge"),
-        (dmcgt,  f64, "Distance of Mid-Contact to Gate edge in Test structures"),
-        (xgw,   f64, "Distance from gate contact center to device edge"),
-        (xgl,   f64, "Variation in Ldrawn"),
-        (rshg,  f64, "Gate sheet resistance"),
-        (ngcon,  f64, "Number of gate contacts"),
-        (xrcrg1,   f64, "First fitting parameter the bias-dependent Rg"),
-        (xrcrg2,   f64, "Second fitting parameter the bias-dependent Rg"),
-        (lambda,   f64, " Velocity overshoot parameter"),
-        (vtl,           f64, " thermal velocity"),
-        (lc,          f64, " back scattering parameter"),
-        (xn,          f64, " back scattering parameter"),
-        (vfbsdoff,          f64, "S/D flatband voltage offset"),
-        (tvfbsdoff,          f64, "Temperature parameter for vfbsdoff"),
-        (tvoff,          f64, "Temperature parameter for voff"),
-        (tnfactor,          f64, "Temperature parameter for nfactor"), /* v4.7 Tanvir*/
-        (teta0,          f64, "Temperature parameter for eta0"),  /* v4.7 Tanvir*/
-        (tvoffcv,          f64, "Temperature parameter for tvoffcv"),  /* v4.7 Tanvir*/
-        (lintnoi,  f64, "lint offset for noise calculation"),
-        (lint,  f64, "Length reduction parameter"),
-        (ll,    f64, "Length reduction parameter"),
-        (llc,   f64, "Length reduction parameter for CV"),
-        (lln,   f64, "Length reduction parameter"),
-        (lw,     f64, "Length reduction parameter"),
-        (lwc,   f64, "Length reduction parameter for CV"),
-        (lwn,   f64, "Length reduction parameter"),
-        (lwl,   f64, "Length reduction parameter"),
-        (lwlc,  f64, "Length reduction parameter for CV"),
-        (lmin,  f64, "Minimum length for the model"),
-        (lmax,  f64, "Maximum length for the model"),
-        (wr,    f64, "Width dependence of rds"),
-        (wint,  f64, "Width reduction parameter"),
-        (dwg,   f64, "Width reduction parameter"),
-        (dwb,   f64, "Width reduction parameter"),
-        (wl,    f64, "Width reduction parameter"),
-        (wlc,   f64, "Width reduction parameter for CV"),
-        (wln,   f64, "Width reduction parameter"),
-        (ww,    f64, "Width reduction parameter"),
-        (wwc,   f64, "Width reduction parameter for CV"),
-        (wwn,   f64, "Width reduction parameter"),
-        (wwl,   f64, "Width reduction parameter"),
-        (wwlc,  f64, "Width reduction parameter for CV"),
-        (wmin,  f64, "Minimum width for the model"),
-        (wmax,  f64, "Maximum width for the model"),
-        (b0,   f64, "Abulk narrow width parameter"),
-        (b1,   f64, "Abulk narrow width parameter"),
-        (cgsl,  f64, "New C-V model parameter"),
-        (cgdl,  f64, "New C-V model parameter"),
-        (ckappas,  f64, "S/G overlap C-V parameter "),
-        (ckappad,  f64, "D/G overlap C-V parameter"),
-        (cf,   f64, "Fringe capacitance parameter"),
-        (clc,  f64, "Vdsat parameter for C-V model"),
-        (cle,  f64, "Vdsat parameter for C-V model"),
-        (dwc,  f64, "Delta W for C-V model"),
-        (dlc,  f64, "Delta L for C-V model"),
-        (xw,  f64, "W offset for channel width due to mask/etch effect"),
-        (xl,  f64, "L offset for channel length due to mask/etch effect"),
-        (dlcig,  f64, "Delta L for Ig model"),
-        (dlcigd,  f64, "Delta L for Ig model drain side"),
-        (dwj,  f64, "Delta W for S/D junctions"),
-        (alpha0,  f64, "substrate current model parameter"),
-        (alpha1,  f64, "substrate current model parameter"),
-        (beta0,  f64, "substrate current model parameter"),
-        (agidl,  f64, "Pre-exponential constant for GIDL"),
-        (bgidl,  f64, "Exponential constant for GIDL"),
-        (cgidl,  f64, "Parameter for body-bias dependence of GIDL"),
-        (rgidl,  f64, "GIDL vg parameter"),	/* v4.7 New GIDL/GISL */
-        (kgidl,  f64, "GIDL vb parameter"),   /* v4.7 New GIDL/GISL */
-        (fgidl,  f64, "GIDL vb parameter"),   /* v4.7 New GIDL/GISL */
-        (egidl,  f64, "Fitting parameter for Bandbending"),
-        (agisl,  f64, "Pre-exponential constant for GISL"),
-        (bgisl,  f64, "Exponential constant for GISL"),
-        (cgisl,  f64, "Parameter for body-bias dependence of GISL"),
-        (rgisl,  f64, "GISL vg parameter"),	/* v4.7 New GIDL/GISL */
-        (kgisl,  f64, "GISL vb parameter"),   /* v4.7 New GIDL/GISL */
-        (fgisl,  f64, "GISL vb parameter"),   /* v4.7 New GIDL/GISL */
-        (egisl,  f64, "Fitting parameter for Bandbending"),
-        (aigc,  f64, "Parameter for Igc"),
-        (bigc,  f64, "Parameter for Igc"),
-        (cigc,  f64, "Parameter for Igc"),
-        (aigsd,  f64, "Parameter for Igs,d"),
-        (bigsd,  f64, "Parameter for Igs,d"),
-        (cigsd,  f64, "Parameter for Igs,d"),
-        (aigs,  f64, "Parameter for Igs"),
-        (bigs,  f64, "Parameter for Igs"),
-        (cigs,  f64, "Parameter for Igs"),
-        (aigd,  f64, "Parameter for Igd"),
-        (bigd,  f64, "Parameter for Igd"),
-        (cigd,  f64, "Parameter for Igd"),
-        (aigbacc,  f64, "Parameter for Igb"),
-        (bigbacc,  f64, "Parameter for Igb"),
-        (cigbacc,  f64, "Parameter for Igb"),
-        (aigbinv,  f64, "Parameter for Igb"),
-        (bigbinv,  f64, "Parameter for Igb"),
-        (cigbinv,  f64, "Parameter for Igb"),
-        (nigc,  f64, "Parameter for Igc slope"),
-        (nigbinv,  f64, "Parameter for Igbinv slope"),
-        (nigbacc,  f64, "Parameter for Igbacc slope"),
-        (ntox,  f64, "Exponent for Tox ratio"),
-        (eigbinv,  f64, "Parameter for the Si bandgap for Igbinv"),
-        (pigcd,  f64, "Parameter for Igc partition"),
-        (poxedge,  f64, "Factor for the gate edge Tox"),
-        (ijthdfwd,  f64, "Forward drain diode forward limiting current"),
-        (ijthsfwd,  f64, "Forward source diode forward limiting current"),
-        (ijthdrev,  f64, "Reverse drain diode forward limiting current"),
-        (ijthsrev,  f64, "Reverse source diode forward limiting current"),
-        (xjbvd,  f64, "Fitting parameter for drain diode breakdown current"),
-        (xjbvs,  f64, "Fitting parameter for source diode breakdown current"),
-        (bvd,  f64, "Drain diode breakdown voltage"),
-        (bvs,  f64, "Source diode breakdown voltage"),
-        (jtss,  f64, "Source bottom trap-assisted saturation current density"),
-        (jtsd,  f64, "Drain bottom trap-assisted saturation current density"),
-        (jtssws,  f64, "Source STI sidewall trap-assisted saturation current density"),
-        (jtsswd,  f64, "Drain STI sidewall trap-assisted saturation current density"),
-        (jtsswgs,  f64, "Source gate-edge sidewall trap-assisted saturation current density"),
-        (jtsswgd,  f64, "Drain gate-edge sidewall trap-assisted saturation current density"),
-        (jtweff,  f64, "TAT current width dependance"),
-        (njts,  f64, "Non-ideality factor for bottom junction"),
-        (njtssw,  f64, "Non-ideality factor for STI sidewall junction"),
-        (njtsswg,  f64, "Non-ideality factor for gate-edge sidewall junction"),
-        (njtsd,  f64, "Non-ideality factor for bottom junction drain side"),
-        (njtsswd,  f64, "Non-ideality factor for STI sidewall junction drain side"),
-        (njtsswgd,  f64, "Non-ideality factor for gate-edge sidewall junction drain side"),
-        (xtss,  f64, "Power dependence of JTSS on temperature"),
-        (xtsd,  f64, "Power dependence of JTSD on temperature"),
-        (xtssws,  f64, "Power dependence of JTSSWS on temperature"),
-        (xtsswd,  f64, "Power dependence of JTSSWD on temperature"),
-        (xtsswgs,  f64, "Power dependence of JTSSWGS on temperature"),
-        (xtsswgd,  f64, "Power dependence of JTSSWGD on temperature"),
-        (tnjts,  f64, "Temperature coefficient for NJTS"),
-        (tnjtssw,  f64, "Temperature coefficient for NJTSSW"),
-        (tnjtsswg,  f64, "Temperature coefficient for NJTSSWG"),
-        (tnjtsd,  f64, "Temperature coefficient for NJTSD"),
-        (tnjtsswd,  f64, "Temperature coefficient for NJTSSWD"),
-        (tnjtsswgd,  f64, "Temperature coefficient for NJTSSWGD"),
-        (vtss,  f64, "Source bottom trap-assisted voltage dependent parameter"),
-        (vtsd,  f64, "Drain bottom trap-assisted voltage dependent parameter"),
-        (vtssws,  f64, "Source STI sidewall trap-assisted voltage dependent parameter"),
-        (vtsswd,  f64, "Drain STI sidewall trap-assisted voltage dependent parameter"),
-        (vtsswgs,  f64, "Source gate-edge sidewall trap-assisted voltage dependent parameter"),
-        (vtsswgd,  f64, "Drain gate-edge sidewall trap-assisted voltage dependent parameter"),
-        (gbmin,  f64, "Minimum body conductance"),
-        (rbdb,  f64, "Resistance between bNode and dbNode"),
-        (rbpb,  f64, "Resistance between bNodePrime and bNode"),
-        (rbsb,  f64, "Resistance between bNode and sbNode"),
-        (rbps,  f64, "Resistance between bNodePrime and sbNode"),
-        (rbpd,  f64, "Resistance between bNodePrime and bNode"),
-        (rbps0,     f64   , "Body resistance RBPS scaling"),
-        (rbpsl,     f64   , "Body resistance RBPS L scaling"),
-        (rbpsw,     f64   , "Body resistance RBPS W scaling"),
-        (rbpsnf,   f64   , "Body resistance RBPS NF scaling"),
-        (rbpd0,     f64   , "Body resistance RBPD scaling"),
-        (rbpdl,     f64   , "Body resistance RBPD L scaling"),
-        (rbpdw,     f64   , "Body resistance RBPD W scaling"),
-        (rbpdnf,   f64   , "Body resistance RBPD NF scaling"),
-        (rbpbx0,   f64   , "Body resistance RBPBX  scaling"),
-        (rbpbxl,   f64   , "Body resistance RBPBX L scaling"),
-        (rbpbxw,   f64   , "Body resistance RBPBX W scaling"),
-        (rbpbxnf,  f64   , "Body resistance RBPBX NF scaling"),
-        (rbpby0,   f64   , "Body resistance RBPBY  scaling"),
-        (rbpbyl,   f64   , "Body resistance RBPBY L scaling"),
-        (rbpbyw,   f64   , "Body resistance RBPBY W scaling"),
-        (rbpbynf,  f64   , "Body resistance RBPBY NF scaling"),
-        (rbsbx0,   f64   , "Body resistance RBSBX  scaling"),
-        (rbsby0,   f64   , "Body resistance RBSBY  scaling"),
-        (rbdbx0,   f64   , "Body resistance RBDBX  scaling"),
-        (rbdby0,   f64   , "Body resistance RBDBY  scaling"),
-        (rbsdbxl,     f64   , "Body resistance RBSDBX L scaling"),
-        (rbsdbxw,     f64   , "Body resistance RBSDBX W scaling"),
-        (rbsdbxnf,   f64   , "Body resistance RBSDBX NF scaling"),
-        (rbsdbyl,     f64   , "Body resistance RBSDBY L scaling"),
-        (rbsdbyw,     f64   , "Body resistance RBSDBY W scaling"),
-        (rbsdbynf,   f64   , "Body resistance RBSDBY NF scaling"),
-        (lcdsc,   f64, "Length dependence of cdsc"),
-        (lcdscb,  f64, "Length dependence of cdscb"),
-        (lcdscd,  f64, "Length dependence of cdscd"),
-        (lcit,     f64, "Length dependence of cit"),
-        (lnfactor,  f64, "Length dependence of nfactor"),
-        (lxj,  f64, "Length dependence of xj"),
-        (lvsat,  f64, "Length dependence of vsat"),
-        (lat,  f64, "Length dependence of at"),
-        (la0,  f64, "Length dependence of a0"),
-        (lags,  f64, "Length dependence of ags"),
-        (la1,  f64, "Length dependence of a1"),
-        (la2,  f64, "Length dependence of a2"),
-        (lketa,  f64, "Length dependence of keta"),
-        (lnsub,  f64, "Length dependence of nsub"),
-        (lndep,   f64, "Length dependence of ndep"),
-        (lnsd,   f64, "Length dependence of nsd"),
-        (lphin,  f64, "Length dependence of phin"),
-        (lngate,  f64, "Length dependence of ngate"),
-        (lgamma1,  f64, "Length dependence of gamma1"),
-        (lgamma2,  f64, "Length dependence of gamma2"),
-        (lvbx,  f64, "Length dependence of vbx"),
-        (lvbm,  f64, "Length dependence of vbm"),
-        (lxt,    f64, "Length dependence of xt"),
-        (lk1,     f64, "Length dependence of k1"),
-        (lkt1,   f64, "Length dependence of kt1"),
-        (lkt1l,  f64, "Length dependence of kt1l"),
-        (lkt2,   f64, "Length dependence of kt2"),
-        (lk2,     f64, "Length dependence of k2"),
-        (lk3,     f64, "Length dependence of k3"),
-        (lk3b,   f64, "Length dependence of k3b"),
-        (lw0,     f64, "Length dependence of w0"),
-        (ldvtp0,   f64, "Length dependence of dvtp0"),
-        (ldvtp1,   f64, "Length dependence of dvtp1"),
-        (ldvtp2,   f64, "Length dependence of dvtp2"),
-        (ldvtp3,   f64, "Length dependence of dvtp3"),
-        (ldvtp4,   f64, "Length dependence of dvtp4"),
-        (ldvtp5,   f64, "Length dependence of dvtp5"),
-        (llpe0,   f64, "Length dependence of lpe0"),
-        (llpeb,   f64, "Length dependence of lpeb"),
-        (ldvt0,  f64, "Length dependence of dvt0"),
-        (ldvt1,  f64, "Length dependence of dvt1"),
-        (ldvt2,  f64, "Length dependence of dvt2"),
-        (ldvt0w,  f64, "Length dependence of dvt0w"),
-        (ldvt1w,  f64, "Length dependence of dvt1w"),
-        (ldvt2w,  f64, "Length dependence of dvt2w"),
-        (ldrout,  f64, "Length dependence of drout"),
-        (ldsub,  f64, "Length dependence of dsub"),
-        (lvth0,  f64,"Length dependence of vto"),
-        (lvtho,  f64,"Length dependence of vto"),
-        (lua,   f64, "Length dependence of ua"),
-        (lua1,  f64, "Length dependence of ua1"),
-        (lub,  f64, "Length dependence of ub"),
-        (lub1,  f64, "Length dependence of ub1"),
-        (luc,   f64, "Length dependence of uc"),
-        (luc1,  f64, "Length dependence of uc1"),
-        (lud,   f64, "Length dependence of ud"),
-        (lud1,  f64, "Length dependence of ud1"),
-        (lup,   f64, "Length dependence of up"),
-        (llp,   f64, "Length dependence of lp"),
-        (lu0,   f64, "Length dependence of u0"),
-        (lute,  f64, "Length dependence of ute"),
-        (lucste,  f64, "Length dependence of ucste"),
-        (lvoff,  f64, "Length dependence of voff"),
-        (lminv,  f64, "Length dependence of minv"),
-        (lminvcv,  f64, "Length dependence of minvcv"),
-        (ldelta,  f64, "Length dependence of delta"),
-        (lrdsw,   f64, "Length dependence of rdsw "),
-        (lrsw,  f64, "Length dependence of rsw"),
-        (lrdw,  f64, "Length dependence of rdw"),
-        (lprwg,   f64, "Length dependence of prwg "),
-        (lprwb,   f64, "Length dependence of prwb "),
-        (lprt,  f64, "Length dependence of prt "),
-        (leta0,  f64, "Length dependence of eta0"),
-        (letab,  f64, "Length dependence of etab"),
-        (lpclm,  f64, "Length dependence of pclm"),
-        (lpdiblc1,  f64, "Length dependence of pdiblc1"),
-        (lpdiblc2,  f64, "Length dependence of pdiblc2"),
-        (lpdiblcb,  f64, "Length dependence of pdiblcb"),
-        (lfprout,  f64, "Length dependence of pdiblcb"),
-        (lpdits,  f64, "Length dependence of pdits"),
-        (lpditsd,  f64, "Length dependence of pditsd"),
-        (lpscbe1,   f64, "Length dependence of pscbe1"),
-        (lpscbe2,   f64, "Length dependence of pscbe2"),
-        (lpvag,  f64, "Length dependence of pvag"),
-        (lwr,   f64, "Length dependence of wr"),
-        (ldwg,  f64, "Length dependence of dwg"),
-        (ldwb,  f64, "Length dependence of dwb"),
-        (lb0,   f64, "Length dependence of b0"),
-        (lb1,   f64, "Length dependence of b1"),
-        (lcgsl,  f64, "Length dependence of cgsl"),
-        (lcgdl,  f64, "Length dependence of cgdl"),
-        (lckappas,  f64, "Length dependence of ckappas"),
-        (lckappad,  f64, "Length dependence of ckappad"),
-        (lcf,    f64, "Length dependence of cf"),
-        (lclc,  f64, "Length dependence of clc"),
-        (lcle,  f64, "Length dependence of cle"),
-        (lalpha0,  f64, "Length dependence of alpha0"),
-        (lalpha1,  f64, "Length dependence of alpha1"),
-        (lbeta0,  f64, "Length dependence of beta0"),
-        (lagidl,  f64, "Length dependence of agidl"),
-        (lbgidl,  f64, "Length dependence of bgidl"),
-        (lcgidl,  f64, "Length dependence of cgidl"),
-        (lrgidl,  f64, "Length dependence of rgidl"),	/* v4.7 New GIDL/GISL */
-        (lkgidl,  f64, "Length dependence of kgidl"),	/* v4.7 New GIDL/GISL */
-        (lfgidl,  f64, "Length dependence of fgidl"),	/* v4.7 New GIDL/GISL */
-        (legidl,  f64, "Length dependence of egidl"),
-        (lagisl,  f64, "Length dependence of agisl"),
-        (lbgisl,  f64, "Length dependence of bgisl"),
-        (lcgisl,  f64, "Length dependence of cgisl"),
-        (lrgisl,  f64, "Length dependence of rgisl"),	/* v4.7 New GIDL/GISL */
-        (lkgisl,  f64, "Length dependence of kgisl"),	/* v4.7 New GIDL/GISL */
-        (lfgisl,  f64, "Length dependence of fgisl"),	/* v4.7 New GIDL/GISL */
-        (legisl,  f64, "Length dependence of egisl"),
-        (laigc,  f64, "Length dependence of aigc"),
-        (lbigc,  f64, "Length dependence of bigc"),
-        (lcigc,  f64, "Length dependence of cigc"),
-        (laigsd,  f64, "Length dependence of aigsd"),
-        (lbigsd,  f64, "Length dependence of bigsd"),
-        (lcigsd,  f64, "Length dependence of cigsd"),
-        (laigs,  f64, "Length dependence of aigs"),
-        (lbigs,  f64, "Length dependence of bigs"),
-        (lcigs,  f64, "Length dependence of cigs"),
-        (laigd,  f64, "Length dependence of aigd"),
-        (lbigd,  f64, "Length dependence of bigd"),
-        (lcigd,  f64, "Length dependence of cigd"),
-        (laigbacc,  f64, "Length dependence of aigbacc"),
-        (lbigbacc,  f64, "Length dependence of bigbacc"),
-        (lcigbacc,  f64, "Length dependence of cigbacc"),
-        (laigbinv,  f64, "Length dependence of aigbinv"),
-        (lbigbinv,  f64, "Length dependence of bigbinv"),
-        (lcigbinv,  f64, "Length dependence of cigbinv"),
-        (lnigc,  f64, "Length dependence of nigc"),
-        (lnigbinv,  f64, "Length dependence of nigbinv"),
-        (lnigbacc,  f64, "Length dependence of nigbacc"),
-        (lntox,  f64, "Length dependence of ntox"),
-        (leigbinv,  f64, "Length dependence for eigbinv"),
-        (lpigcd,  f64, "Length dependence for pigcd"),
-        (lpoxedge,  f64, "Length dependence for poxedge"),
-        (lvfbcv,  f64, "Length dependence of vfbcv"),
-        (lvfb,  f64, "Length dependence of vfb"),
-        (lacde,  f64, "Length dependence of acde"),
-        (lmoin,  f64, "Length dependence of moin"),
-        (lnoff,  f64, "Length dependence of noff"),
-        (lvoffcv,  f64, "Length dependence of voffcv"),
-        (lxrcrg1,   f64, "Length dependence of xrcrg1"),
-        (lxrcrg2,   f64, "Length dependence of xrcrg2"),
-        (llambda,   f64, "Length dependence of lambda"),
-        (lvtl,           f64, " Length dependence of vtl"),
-        (lxn,         f64, " Length dependence of xn"),
-        (leu,   f64, " Length dependence of eu"),
-        (lucs,   f64, "Length dependence of lucs"),
-        (lvfbsdoff,          f64, "Length dependence of vfbsdoff"),
-        (ltvfbsdoff,          f64, "Length dependence of tvfbsdoff"),
-        (ltvoff,          f64, "Length dependence of tvoff"),
-        (ltnfactor,          f64, "Length dependence of tnfactor"),  /* v4.7 Tanvir*/
-        (lteta0,          f64, "Length dependence of teta0"),  /* v4.7 Tanvir*/
-        (ltvoffcv,          f64, "Length dependence of tvoffcv"),  /* v4.7 Tanvir*/
-        (wcdsc,   f64, "Width dependence of cdsc"),
-        (wcdscb,  f64, "Width dependence of cdscb"),
-        (wcdscd,  f64, "Width dependence of cdscd"),
-        (wcit,     f64, "Width dependence of cit"),
-        (wnfactor,  f64, "Width dependence of nfactor"),
-        (wxj,  f64, "Width dependence of xj"),
-        (wvsat,  f64, "Width dependence of vsat"),
-        (wat,  f64, "Width dependence of at"),
-        (wa0,  f64, "Width dependence of a0"),
-        (wags,  f64, "Width dependence of ags"),
-        (wa1,  f64, "Width dependence of a1"),
-        (wa2,  f64, "Width dependence of a2"),
-        (wketa,  f64, "Width dependence of keta"),
-        (wnsub,  f64, "Width dependence of nsub"),
-        (wndep,   f64, "Width dependence of ndep"),
-        (wnsd,   f64, "Width dependence of nsd"),
-        (wphin,  f64, "Width dependence of phin"),
-        (wngate,  f64, "Width dependence of ngate"),
-        (wgamma1,  f64, "Width dependence of gamma1"),
-        (wgamma2,  f64, "Width dependence of gamma2"),
-        (wvbx,  f64, "Width dependence of vbx"),
-        (wvbm,  f64, "Width dependence of vbm"),
-        (wxt,    f64, "Width dependence of xt"),
-        (wk1,     f64, "Width dependence of k1"),
-        (wkt1,   f64, "Width dependence of kt1"),
-        (wkt1l,  f64, "Width dependence of kt1l"),
-        (wkt2,   f64, "Width dependence of kt2"),
-        (wk2,     f64, "Width dependence of k2"),
-        (wk3,     f64, "Width dependence of k3"),
-        (wk3b,   f64, "Width dependence of k3b"),
-        (ww0,     f64, "Width dependence of w0"),
-        (wdvtp0,   f64, "Width dependence of dvtp0"),
-        (wdvtp1,   f64, "Width dependence of dvtp1"),
-        (wdvtp2,   f64, "Width dependence of dvtp2"),
-        (wdvtp3,   f64, "Width dependence of dvtp3"),
-        (wdvtp4,   f64, "Width dependence of dvtp4"),
-        (wdvtp5,   f64, "Width dependence of dvtp5"),
-        (wlpe0,   f64, "Width dependence of lpe0"),
-        (wlpeb,   f64, "Width dependence of lpeb"),
-        (wdvt0,  f64, "Width dependence of dvt0"),
-        (wdvt1,  f64, "Width dependence of dvt1"),
-        (wdvt2,  f64, "Width dependence of dvt2"),
-        (wdvt0w,  f64, "Width dependence of dvt0w"),
-        (wdvt1w,  f64, "Width dependence of dvt1w"),
-        (wdvt2w,  f64, "Width dependence of dvt2w"),
-        (wdrout,  f64, "Width dependence of drout"),
-        (wdsub,  f64, "Width dependence of dsub"),
-        (wvth0,  f64,"Width dependence of vto"),
-        (wvtho,  f64,"Width dependence of vto"),
-        (wua,   f64, "Width dependence of ua"),
-        (wua1,  f64, "Width dependence of ua1"),
-        (wub,  f64, "Width dependence of ub"),
-        (wub1,  f64, "Width dependence of ub1"),
-        (wuc,   f64, "Width dependence of uc"),
-        (wuc1,  f64, "Width dependence of uc1"),
-        (wud,   f64, "Width dependence of ud"),
-        (wud1,  f64, "Width dependence of ud1"),
-        (wup,   f64, "Width dependence of up"),
-        (wlp,   f64, "Width dependence of lp"),
-        (wu0,   f64, "Width dependence of u0"),
-        (wute,  f64, "Width dependence of ute"),
-        (wucste,  f64, "Width dependence of ucste"),
-        (wvoff,  f64, "Width dependence of voff"),
-        (wminv,  f64, "Width dependence of minv"),
-        (wminvcv,  f64, "Width dependence of minvcv"),
-        (wdelta,  f64, "Width dependence of delta"),
-        (wrdsw,   f64, "Width dependence of rdsw "),
-        (wrsw,  f64, "Width dependence of rsw"),
-        (wrdw,  f64, "Width dependence of rdw"),
-        (wprwg,   f64, "Width dependence of prwg "),
-        (wprwb,   f64, "Width dependence of prwb "),
-        (wprt,  f64, "Width dependence of prt"),
-        (weta0,  f64, "Width dependence of eta0"),
-        (wetab,  f64, "Width dependence of etab"),
-        (wpclm,  f64, "Width dependence of pclm"),
-        (wpdiblc1,  f64, "Width dependence of pdiblc1"),
-        (wpdiblc2,  f64, "Width dependence of pdiblc2"),
-        (wpdiblcb,  f64, "Width dependence of pdiblcb"),
-        (wfprout,  f64, "Width dependence of pdiblcb"),
-        (wpdits,  f64, "Width dependence of pdits"),
-        (wpditsd,  f64, "Width dependence of pditsd"),
-        (wpscbe1,   f64, "Width dependence of pscbe1"),
-        (wpscbe2,   f64, "Width dependence of pscbe2"),
-        (wpvag,  f64, "Width dependence of pvag"),
-        (wwr,   f64, "Width dependence of wr"),
-        (wdwg,  f64, "Width dependence of dwg"),
-        (wdwb,  f64, "Width dependence of dwb"),
-        (wb0,   f64, "Width dependence of b0"),
-        (wb1,   f64, "Width dependence of b1"),
-        (wcgsl,  f64, "Width dependence of cgsl"),
-        (wcgdl,  f64, "Width dependence of cgdl"),
-        (wckappas,  f64, "Width dependence of ckappas"),
-        (wckappad,  f64, "Width dependence of ckappad"),
-        (wcf,    f64, "Width dependence of cf"),
-        (wclc,  f64, "Width dependence of clc"),
-        (wcle,  f64, "Width dependence of cle"),
-        (walpha0,  f64, "Width dependence of alpha0"),
-        (walpha1,  f64, "Width dependence of alpha1"),
-        (wbeta0,  f64, "Width dependence of beta0"),
-        (wagidl,  f64, "Width dependence of agidl"),
-        (wbgidl,  f64, "Width dependence of bgidl"),
-        (wcgidl,  f64, "Width dependence of cgidl"),
-        (wrgidl,  f64, "Width dependence of rgidl"),		/* v4.7 New GIDL/GISL */
-        (wkgidl,  f64, "Width dependence of kgidl"),		/* v4.7 New GIDL/GISL */
-        (wfgidl,  f64, "Width dependence of fgidl"),		/* v4.7 New GIDL/GISL */
-        (wegidl,  f64, "Width dependence of egidl"),
-        (wagisl,  f64, "Width dependence of agisl"),
-        (wbgisl,  f64, "Width dependence of bgisl"),
-        (wcgisl,  f64, "Width dependence of cgisl"),
-        (wrgisl,  f64, "Width dependence of rgisl"),		/* v4.7 New GIDL/GISL */
-        (wkgisl,  f64, "Width dependence of kgisl"),		/* v4.7 New GIDL/GISL */
-        (wfgisl,  f64, "Width dependence of fgisl"),		/* v4.7 New GIDL/GISL */
-        (wegisl,  f64, "Width dependence of egisl"),
-        (waigc,  f64, "Width dependence of aigc"),
-        (wbigc,  f64, "Width dependence of bigc"),
-        (wcigc,  f64, "Width dependence of cigc"),
-        (waigsd,  f64, "Width dependence of aigsd"),
-        (wbigsd,  f64, "Width dependence of bigsd"),
-        (wcigsd,  f64, "Width dependence of cigsd"),
-        (waigs,  f64, "Width dependence of aigs"),
-        (wbigs,  f64, "Width dependence of bigs"),
-        (wcigs,  f64, "Width dependence of cigs"),
-        (waigd,  f64, "Width dependence of aigd"),
-        (wbigd,  f64, "Width dependence of bigd"),
-        (wcigd,  f64, "Width dependence of cigd"),
-        (waigbacc,  f64, "Width dependence of aigbacc"),
-        (wbigbacc,  f64, "Width dependence of bigbacc"),
-        (wcigbacc,  f64, "Width dependence of cigbacc"),
-        (waigbinv,  f64, "Width dependence of aigbinv"),
-        (wbigbinv,  f64, "Width dependence of bigbinv"),
-        (wcigbinv,  f64, "Width dependence of cigbinv"),
-        (wnigc,  f64, "Width dependence of nigc"),
-        (wnigbinv,  f64, "Width dependence of nigbinv"),
-        (wnigbacc,  f64, "Width dependence of nigbacc"),
-        (wntox,  f64, "Width dependence of ntox"),
-        (weigbinv,  f64, "Width dependence for eigbinv"),
-        (wpigcd,  f64, "Width dependence for pigcd"),
-        (wpoxedge,  f64, "Width dependence for poxedge"),
-        (wvfbcv,  f64, "Width dependence of vfbcv"),
-        (wvfb,  f64, "Width dependence of vfb"),
-        (wacde,  f64, "Width dependence of acde"),
-        (wmoin,  f64, "Width dependence of moin"),
-        (wnoff,  f64, "Width dependence of noff"),
-        (wvoffcv,  f64, "Width dependence of voffcv"),
-        (wxrcrg1,   f64, "Width dependence of xrcrg1"),
-        (wxrcrg2,   f64, "Width dependence of xrcrg2"),
-        (wlambda,   f64, "Width dependence of lambda"),
-        (wvtl,           f64, "Width dependence of vtl"),
-        (wxn,         f64, "Width dependence of xn"),
-        (weu,   f64, "Width dependence of eu"),
-        (wucs,   f64, "Width dependence of ucs"),
-        (wvfbsdoff,          f64, "Width dependence of vfbsdoff"),
-        (wtvfbsdoff,          f64, "Width dependence of tvfbsdoff"),
-        (wtvoff,          f64, "Width dependence of tvoff"),
-        (wtnfactor,          f64, "Width dependence of tnfactor"),  /* v4.7 Tanvir*/
-        (wteta0,          f64, "Width dependence of teta0"),  /* v4.7 Tanvir*/
-        (wtvoffcv,          f64, "Width dependence of tvoffcv"),  /* v4.7 Tanvir*/
-        (pcdsc,   f64, "Cross-term dependence of cdsc"),
-        (pcdscb,  f64, "Cross-term dependence of cdscb"),
-        (pcdscd,  f64, "Cross-term dependence of cdscd"),
-        (pcit,     f64, "Cross-term dependence of cit"),
-        (pnfactor,  f64, "Cross-term dependence of nfactor"),
-        (pxj,  f64, "Cross-term dependence of xj"),
-        (pvsat,  f64, "Cross-term dependence of vsat"),
-        (pat,  f64, "Cross-term dependence of at"),
-        (pa0,  f64, "Cross-term dependence of a0"),
-        (pags,  f64, "Cross-term dependence of ags"),
-        (pa1,  f64, "Cross-term dependence of a1"),
-        (pa2,  f64, "Cross-term dependence of a2"),
-        (pketa,  f64, "Cross-term dependence of keta"),
-        (pnsub,  f64, "Cross-term dependence of nsub"),
-        (pndep,   f64, "Cross-term dependence of ndep"),
-        (pnsd,   f64, "Cross-term dependence of nsd"),
-        (pphin,  f64, "Cross-term dependence of phin"),
-        (pngate,  f64, "Cross-term dependence of ngate"),
-        (pgamma1,  f64, "Cross-term dependence of gamma1"),
-        (pgamma2,  f64, "Cross-term dependence of gamma2"),
-        (pvbx,  f64, "Cross-term dependence of vbx"),
-        (pvbm,  f64, "Cross-term dependence of vbm"),
-        (pxt,    f64, "Cross-term dependence of xt"),
-        (pk1,     f64, "Cross-term dependence of k1"),
-        (pkt1,   f64, "Cross-term dependence of kt1"),
-        (pkt1l,  f64, "Cross-term dependence of kt1l"),
-        (pkt2,   f64, "Cross-term dependence of kt2"),
-        (pk2,     f64, "Cross-term dependence of k2"),
-        (pk3,     f64, "Cross-term dependence of k3"),
-        (pk3b,   f64, "Cross-term dependence of k3b"),
-        (pw0,     f64, "Cross-term dependence of w0"),
-        (pdvtp0,   f64, "Cross-term dependence of dvtp0"),
-        (pdvtp1,   f64, "Cross-term dependence of dvtp1"),
-        (pdvtp2,   f64, "Cross-term dependence of dvtp2"),
-        (pdvtp3,   f64, "Cross-term dependence of dvtp3"),
-        (pdvtp4,   f64, "Cross-term dependence of dvtp4"),
-        (pdvtp5,   f64, "Cross-term dependence of dvtp5"),
-        (plpe0,   f64, "Cross-term dependence of lpe0"),
-        (plpeb,   f64, "Cross-term dependence of lpeb"),
-        (pdvt0,  f64, "Cross-term dependence of dvt0"),
-        (pdvt1,  f64, "Cross-term dependence of dvt1"),
-        (pdvt2,  f64, "Cross-term dependence of dvt2"),
-        (pdvt0w,  f64, "Cross-term dependence of dvt0w"),
-        (pdvt1w,  f64, "Cross-term dependence of dvt1w"),
-        (pdvt2w,  f64, "Cross-term dependence of dvt2w"),
-        (pdrout,  f64, "Cross-term dependence of drout"),
-        (pdsub,  f64, "Cross-term dependence of dsub"),
-        (pvth0,  f64,"Cross-term dependence of vto"),
-        (pvtho,  f64,"Cross-term dependence of vto"),
-        (pua,   f64, "Cross-term dependence of ua"),
-        (pua1,  f64, "Cross-term dependence of ua1"),
-        (r#pub,  f64, "Cross-term dependence of ub"), // Note: r# allows use of the keyword `pub` 
-        (pub1,  f64, "Cross-term dependence of ub1"),
-        (puc,   f64, "Cross-term dependence of uc"),
-        (puc1,  f64, "Cross-term dependence of uc1"),
-        (pud,   f64, "Cross-term dependence of ud"),
-        (pud1,  f64, "Cross-term dependence of ud1"),
-        (pup,   f64, "Cross-term dependence of up"),
-        (plp,   f64, "Cross-term dependence of lp"),
-        (pu0,   f64, "Cross-term dependence of u0"),
-        (pute,  f64, "Cross-term dependence of ute"),
-        (pucste,  f64, "Cross-term dependence of ucste"),
-        (pvoff,  f64, "Cross-term dependence of voff"),
-        (pminv,  f64, "Cross-term dependence of minv"),
-        (pminvcv,  f64, "Cross-term dependence of minvcv"),
-        (pdelta,  f64, "Cross-term dependence of delta"),
-        (prdsw,   f64, "Cross-term dependence of rdsw "),
-        (prsw,  f64, "Cross-term dependence of rsw"),
-        (prdw,  f64, "Cross-term dependence of rdw"),
-        (pprwg,   f64, "Cross-term dependence of prwg "),
-        (pprwb,   f64, "Cross-term dependence of prwb "),
-        (pprt,  f64, "Cross-term dependence of prt "),
-        (peta0,  f64, "Cross-term dependence of eta0"),
-        (petab,  f64, "Cross-term dependence of etab"),
-        (ppclm,  f64, "Cross-term dependence of pclm"),
-        (ppdiblc1,  f64, "Cross-term dependence of pdiblc1"),
-        (ppdiblc2,  f64, "Cross-term dependence of pdiblc2"),
-        (ppdiblcb,  f64, "Cross-term dependence of pdiblcb"),
-        (pfprout,  f64, "Cross-term dependence of pdiblcb"),
-        (ppdits,  f64, "Cross-term dependence of pdits"),
-        (ppditsd,  f64, "Cross-term dependence of pditsd"),
-        (ppscbe1,   f64, "Cross-term dependence of pscbe1"),
-        (ppscbe2,   f64, "Cross-term dependence of pscbe2"),
-        (ppvag,  f64, "Cross-term dependence of pvag"),
-        (pwr,   f64, "Cross-term dependence of wr"),
-        (pdwg,  f64, "Cross-term dependence of dwg"),
-        (pdwb,  f64, "Cross-term dependence of dwb"),
-        (pb0,   f64, "Cross-term dependence of b0"),
-        (pb1,   f64, "Cross-term dependence of b1"),
-        (pcgsl,  f64, "Cross-term dependence of cgsl"),
-        (pcgdl,  f64, "Cross-term dependence of cgdl"),
-        (pckappas,  f64, "Cross-term dependence of ckappas"),
-        (pckappad,  f64, "Cross-term dependence of ckappad"),
-        (pcf,    f64, "Cross-term dependence of cf"),
-        (pclc,  f64, "Cross-term dependence of clc"),
-        (pcle,  f64, "Cross-term dependence of cle"),
-        (palpha0,  f64, "Cross-term dependence of alpha0"),
-        (palpha1,  f64, "Cross-term dependence of alpha1"),
-        (pbeta0,  f64, "Cross-term dependence of beta0"),
-        (pagidl,  f64, "Cross-term dependence of agidl"),
-        (pbgidl,  f64, "Cross-term dependence of bgidl"),
-        (pcgidl,  f64, "Cross-term dependence of cgidl"),
-        (prgidl,  f64, "Cross-term dependence of rgidl"),	/* v4.7 New GIDL/GISL */
-        (pkgidl,  f64, "Cross-term dependence of kgidl"),	/* v4.7 New GIDL/GISL */
-        (pfgidl,  f64, "Cross-term dependence of fgidl"),	/* v4.7 New GIDL/GISL */
-        (pegidl,  f64, "Cross-term dependence of egidl"),
-        (pagisl,  f64, "Cross-term dependence of agisl"),
-        (pbgisl,  f64, "Cross-term dependence of bgisl"),
-        (pcgisl,  f64, "Cross-term dependence of cgisl"),
-        (pegisl,  f64, "Cross-term dependence of egisl"),
-        (prgisl,  f64, "Cross-term dependence of rgisl"),	/* v4.7 New GIDL/GISL */
-        (pkgisl,  f64, "Cross-term dependence of kgisl"),	/* v4.7 New GIDL/GISL */
-        (pfgisl,  f64, "Cross-term dependence of fgisl"),	/* v4.7 New GIDL/GISL */
-        (paigc,  f64, "Cross-term dependence of aigc"),
-        (pbigc,  f64, "Cross-term dependence of bigc"),
-        (pcigc,  f64, "Cross-term dependence of cigc"),
-        (paigsd,  f64, "Cross-term dependence of aigsd"),
-        (pbigsd,  f64, "Cross-term dependence of bigsd"),
-        (pcigsd,  f64, "Cross-term dependence of cigsd"),
-        (paigs,  f64, "Cross-term dependence of aigs"),
-        (pbigs,  f64, "Cross-term dependence of bigs"),
-        (pcigs,  f64, "Cross-term dependence of cigs"),
-        (paigd,  f64, "Cross-term dependence of aigd"),
-        (pbigd,  f64, "Cross-term dependence of bigd"),
-        (pcigd,  f64, "Cross-term dependence of cigd"),
-        (paigbacc,  f64, "Cross-term dependence of aigbacc"),
-        (pbigbacc,  f64, "Cross-term dependence of bigbacc"),
-        (pcigbacc,  f64, "Cross-term dependence of cigbacc"),
-        (paigbinv,  f64, "Cross-term dependence of aigbinv"),
-        (pbigbinv,  f64, "Cross-term dependence of bigbinv"),
-        (pcigbinv,  f64, "Cross-term dependence of cigbinv"),
-        (pnigc,  f64, "Cross-term dependence of nigc"),
-        (pnigbinv,  f64, "Cross-term dependence of nigbinv"),
-        (pnigbacc,  f64, "Cross-term dependence of nigbacc"),
-        (pntox,  f64, "Cross-term dependence of ntox"),
-        (peigbinv,  f64, "Cross-term dependence for eigbinv"),
-        (ppigcd,  f64, "Cross-term dependence for pigcd"),
-        (ppoxedge,  f64, "Cross-term dependence for poxedge"),
-        (pvfbcv,  f64, "Cross-term dependence of vfbcv"),
-        (pvfb,  f64, "Cross-term dependence of vfb"),
-        (pacde,  f64, "Cross-term dependence of acde"),
-        (pmoin,  f64, "Cross-term dependence of moin"),
-        (pnoff,  f64, "Cross-term dependence of noff"),
-        (pvoffcv,  f64, "Cross-term dependence of voffcv"),
-        (pxrcrg1,   f64, "Cross-term dependence of xrcrg1"),
-        (pxrcrg2,   f64, "Cross-term dependence of xrcrg2"),
-        (plambda,   f64, "Cross-term dependence of lambda"),
-        (pvtl,           f64, "Cross-term dependence of vtl"),
-        (pxn,         f64, "Cross-term dependence of xn"),
-        (peu,   f64, "Cross-term dependence of eu"),
-        (pucs,   f64, "Cross-term dependence of ucs"),
-        (pvfbsdoff,          f64, "Cross-term dependence of vfbsdoff"),
-        (ptvfbsdoff,          f64, "Cross-term dependence of tvfbsdoff"),
-        (ptvoff,          f64, "Cross-term dependence of tvoff"),
-        (ptnfactor,          f64, "Cross-term dependence of tnfactor"),  /* v4.7 Tanvir*/
-        (pteta0,          f64, "Cross-term dependence of teta0"),  /* v4.7 Tanvir*/
-        (ptvoffcv,          f64, "Cross-term dependence of tvoffcv"),  /* v4.7 Tanvir*/
-        /* stress effect*/
-        (saref,  f64, "Reference distance between OD edge to poly of one side"),
-        (sbref,  f64, "Reference distance between OD edge to poly of the other side"),
-        (wlod,  f64, "Width parameter for stress effect"),
-        (ku0,  f64, "Mobility degradation/enhancement coefficient for LOD"),
-        (kvsat,  f64, "Saturation velocity degradation/enhancement parameter for LOD"),
-        (kvth0,  f64, "Threshold degradation/enhancement parameter for LOD"),
-        (tku0,  f64, "Temperature coefficient of KU0"),
-        (llodku0,   f64, "Length parameter for u0 LOD effect"),
-        (wlodku0,   f64, "Width parameter for u0 LOD effect"),
-        (llodvth,   f64, "Length parameter for vth LOD effect"),
-        (wlodvth,   f64, "Width parameter for vth LOD effect"),
-        (lku0,  f64, "Length dependence of ku0"),
-        (wku0,  f64, "Width dependence of ku0"),
-        (pku0,  f64, "Cross-term dependence of ku0"),
-        (lkvth0,  f64, "Length dependence of kvth0"),
-        (wkvth0,  f64, "Width dependence of kvth0"),
-        (pkvth0,  f64, "Cross-term dependence of kvth0"),
-        (stk2,  f64, "K2 shift factor related to stress effect on vth"),
-        (lodk2,  f64, "K2 shift modification factor for stress effect"),
-        (steta0,  f64, "eta0 shift factor related to stress effect on vth"),
-        (lodeta0,  f64, "eta0 shift modification factor for stress effect"),
-        /* Well Proximity Effect */
-        (web,  f64, "Coefficient for SCB"),
-        (wec,  f64, "Coefficient for SCC"),
-        (kvth0we,  f64, "Threshold shift factor for well proximity effect"),
-        (k2we,  f64, " K2 shift factor for well proximity effect "),
-        (ku0we,  f64, " Mobility degradation factor for well proximity effect "),
-        (scref,  f64, " Reference distance to calculate SCA, SCB and SCC"),
-        (wpemod,  f64, " Flag for WPE model (WPEMOD=1 to activate this model) "),
-        (lkvth0we,  f64, "Length dependence of kvth0we"),
-        (lk2we,  f64, " Length dependence of k2we "),
-        (lku0we,  f64, " Length dependence of ku0we "),
-        (wkvth0we,  f64, "Width dependence of kvth0we"),
-        (wk2we,  f64, " Width dependence of k2we "),
-        (wku0we,  f64, " Width dependence of ku0we "),
-        (pkvth0we,  f64, "Cross-term dependence of kvth0we"),
-        (pk2we,  f64, " Cross-term dependence of k2we "),
-        (pku0we,  f64, " Cross-term dependence of ku0we "),
-        //
-        (noia,  f64, "Flicker noise parameter"),
-        (noib,  f64, "Flicker noise parameter"),
-        (noic,  f64, "Flicker noise parameter"),
-        (tnoia,  f64, "Thermal noise parameter"),
-        (tnoib,  f64, "Thermal noise parameter"),
-        (tnoic,  f64, "Thermal noise parameter"),
-        (rnoia,  f64, "Thermal noise coefficient"),
-        (rnoib,  f64, "Thermal noise coefficient"),
-        (rnoic,  f64, "Thermal noise coefficient"),
-        (ntnoi,  f64, "Thermal noise parameter"),
-        (em,  f64, "Flicker noise parameter"),
-        (ef,  f64, "Flicker noise frequency exponent"),
-        (af,  f64, "Flicker noise exponent"),
-        (kf,  f64, "Flicker noise coefficient"),
-        //
-        (nmos,   bool, "Flag to indicate NMOS"),
-        (pmos,   bool, "Flag to indicate PMOS"),
-    ]
-}
+pub struct Bsim4Ports {}
 
+pub struct Bsim4InternalParams {}
+
+pub struct Bsim4SizeDepParams {}
+
+/// BSIM4 MOSFET Solver
 pub struct Bsim4 {
-    // pub ports: MosPorts,
+    pub ports: Bsim4Ports,
     pub inst: Bsim4Inst,
     pub model: Bsim4Model,
+    pub size_params: Bsim4SizeDepParams,
+    pub intp: Bsim4InternalParams,
     pub guess: Bsim4OpPoint,
     pub op: Bsim4OpPoint,
     // pub matps: MosMatrixPointers,
+}
+
+// #define MAX_EXPL 2.688117142e+43
+// #define MIN_EXPL 3.720075976e-44
+// #define EXPL_THRESHOLD 100.0
+
+// #define MAX_EXP 5.834617425e14
+// #define MIN_EXP 1.713908431e-15
+// #define EXP_THRESHOLD 34.0
+// #define EPS0 8.85418e-12
+// #define EPSSI 1.03594e-10
+// #define Charge_q 1.60219e-19
+// #define DELTA_1 0.02
+// #define DELTA_2 0.02
+// #define DELTA_3 0.02
+// #define DELTA_4 0.02
+// #define MM  3  /* smooth coeff */
+// #define DEXP(A,B,C) {                                                         \
+//         if (A > EXP_THRESHOLD) {                                              \
+//             B = MAX_EXP*(1.0+(A)-EXP_THRESHOLD);                              \
+//             C = MAX_EXP;                                                      \
+//         } else if (A < -EXP_THRESHOLD)  {                                     \
+//             B = MIN_EXP;                                                      \
+//             C = 0;                                                            \
+//         } else   {                                                            \
+//             B = exp(A);                                                       \
+//             C = B;                                                            \
+//         }                                                                     \
+//     }
+
+use super::Component;
+
+impl Component for Bsim4 {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {} // FIXME!
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        // Start by declaring about 700 local float variables!
+        let mut ceqgstot: f64;
+        let mut dgstot_dvd: f64;
+        let mut dgstot_dvg: f64;
+        let mut dgstot_dvs: f64;
+        let mut dgstot_dvb: f64;
+        let mut ceqgdtot: f64;
+        let mut dgdtot_dvd: f64;
+        let mut dgdtot_dvg: f64;
+        let mut dgdtot_dvs: f64;
+        let mut dgdtot_dvb: f64;
+        let mut gstot: f64;
+        let mut gstotd: f64;
+        let mut gstotg: f64;
+        let mut gstots: f64;
+        let mut gstotb: f64;
+        let mut gspr: f64;
+        let mut Rs: f64;
+        let mut Rd: f64;
+        let mut gdtot: f64;
+        let mut gdtotd: f64;
+        let mut gdtotg: f64;
+        let mut gdtots: f64;
+        let mut gdtotb: f64;
+        let mut gdpr: f64;
+        let mut vgs_eff: f64;
+        let mut vgd_eff: f64;
+        let mut dvgs_eff_dvg: f64;
+        let mut dvgd_eff_dvg: f64;
+        let mut dRs_dvg: f64;
+        let mut dRd_dvg: f64;
+        let mut dRs_dvb: f64;
+        let mut dRd_dvb: f64;
+        let mut dT0_dvg: f64;
+        let mut dT1_dvb: f64;
+        let mut dT3_dvg: f64;
+        let mut dT3_dvb: f64;
+        let mut vses: f64;
+        let mut vdes: f64;
+        let mut vdedo: f64;
+        let mut delvses: f64;
+        let mut delvded: f64;
+        let mut delvdes: f64;
+        let mut Isestot: f64;
+        let mut cseshat: f64;
+        let mut Idedtot: f64;
+        let mut cdedhat: f64;
+        let mut tol0: f64;
+        let mut tol1: f64;
+        let mut tol2: f64;
+        let mut tol3: f64;
+        let mut tol4: f64;
+        let mut tol5: f64;
+        let mut tol6: f64;
+
+        let mut geltd: f64;
+        let mut gcrg: f64;
+        let mut gcrgg: f64;
+        let mut gcrgd: f64;
+        let mut gcrgs: f64;
+        let mut gcrgb: f64;
+        let mut ceqgcrg: f64;
+        let mut vges: f64;
+        let mut vgms: f64;
+        let mut vgedo: f64;
+        let mut vgmdo: f64;
+        let mut vged: f64;
+        let mut vgmd: f64;
+        let mut delvged: f64;
+        let mut delvgmd: f64;
+        let mut delvges: f64;
+        let mut delvgms: f64;
+        let mut vgmb: f64;
+        let mut gcgmgmb: f64;
+        let mut gcgmdb: f64;
+        let mut gcgmsb: f64;
+        let mut gcdgmb: f64;
+        let mut gcsgmb: f64;
+        let mut gcgmbb: f64;
+        let mut gcbgmb: f64;
+        let mut qgmb: f64;
+        let mut qgmid: f64;
+        let mut ceqqgmid: f64;
+
+        let mut vbd: f64;
+        let mut vbs: f64;
+        let mut vds: f64;
+        let mut vgb: f64;
+        let mut vgd: f64;
+        let mut vgs: f64;
+        let mut vgdo: f64;
+        let mut xfact: f64;
+        let mut vdbs: f64;
+        let mut vdbd: f64;
+        let mut vsbs: f64;
+        let mut vsbdo: f64;
+        let mut vsbd: f64;
+        let mut delvdbs: f64;
+        let mut delvdbd: f64;
+        let mut delvsbs: f64;
+        let mut delvbd_jct: f64;
+        let mut delvbs_jct: f64;
+        let mut vbs_jct: f64;
+        let mut vbd_jct: f64;
+
+        let mut SourceSatCurrent: f64;
+        let mut DrainSatCurrent: f64;
+        let mut ag0: f64;
+        let mut qgd: f64;
+        let mut qgs: f64;
+        let mut qgb: f64;
+        let mut von: f64;
+        let mut cbhat: f64;
+        let mut VgstNVt: f64;
+        let mut ExpVgst: f64;
+        let mut ceqqb: f64;
+        let mut ceqqd: f64;
+        let mut ceqqg: f64;
+        let mut ceqqjd: f64;
+        let mut ceqqjs: f64;
+        let mut ceq: f64;
+        let mut geq: f64;
+        let mut cdrain: f64;
+        let mut cdhat: f64;
+        let mut ceqdrn: f64;
+        let mut ceqbd: f64;
+        let mut ceqbs: f64;
+        let mut ceqjd: f64;
+        let mut ceqjs: f64;
+        let mut gjbd: f64;
+        let mut gjbs: f64;
+        let mut czbd: f64;
+        let mut czbdsw: f64;
+        let mut czbdswg: f64;
+        let mut czbs: f64;
+        let mut czbssw: f64;
+        let mut czbsswg: f64;
+        let mut evbd: f64;
+        let mut evbs: f64;
+        let mut arg: f64;
+        let mut sarg: f64;
+        let mut delvbd: f64;
+        let mut delvbs: f64;
+        let mut delvds: f64;
+        let mut delvgd: f64;
+        let mut delvgs: f64;
+        let mut Vfbeff: f64;
+        let mut dVfbeff_dVg: f64;
+        let mut dVfbeff_dVb: f64;
+        let mut V3: f64;
+        let mut V4: f64;
+        let mut gcbdb: f64;
+        let mut gcbgb: f64;
+        let mut gcbsb: f64;
+        let mut gcddb: f64;
+        let mut gcdgb: f64;
+        let mut gcdsb: f64;
+        let mut gcgdb: f64;
+        let mut gcggb: f64;
+        let mut gcgsb: f64;
+        let mut gcsdb: f64;
+        let mut gcgbb: f64;
+        let mut gcdbb: f64;
+        let mut gcsbb: f64;
+        let mut gcbbb: f64;
+        let mut gcdbdb: f64;
+        let mut gcsbsb: f64;
+        let mut gcsgb: f64;
+        let mut gcssb: f64;
+        let mut MJD: f64;
+        let mut MJSWD: f64;
+        let mut MJSWGD: f64;
+        let mut MJS: f64;
+        let mut MJSWS: f64;
+        let mut MJSWGS: f64;
+        let mut qgate: f64;
+        let mut qbulk: f64;
+        let mut qdrn: f64;
+        let mut qsrc: f64;
+        let mut cqgate: f64;
+        let mut cqbody: f64;
+        let mut cqdrn: f64;
+        let mut Vdb: f64;
+        let mut Vds: f64;
+        let mut Vgs: f64;
+        let mut Vbs: f64;
+        let mut Gmbs: f64;
+        let mut FwdSum: f64;
+        let mut RevSum: f64;
+        let mut Igidl: f64;
+        let mut Ggidld: f64;
+        let mut Ggidlg: f64;
+        let mut Ggidlb: f64;
+        let mut Voxacc: f64;
+        let mut dVoxacc_dVg: f64;
+        let mut dVoxacc_dVb: f64;
+        let mut Voxdepinv: f64;
+        let mut dVoxdepinv_dVg: f64;
+        let mut dVoxdepinv_dVd: f64;
+        let mut dVoxdepinv_dVb: f64;
+        let mut VxNVt: f64;
+        let mut ExpVxNVt: f64;
+        let mut Vaux: f64;
+        let mut dVaux_dVg: f64;
+        let mut dVaux_dVd: f64;
+        let mut dVaux_dVb: f64;
+        let mut Igc: f64;
+        let mut dIgc_dVg: f64;
+        let mut dIgc_dVd: f64;
+        let mut dIgc_dVb: f64;
+        let mut Igcs: f64;
+        let mut dIgcs_dVg: f64;
+        let mut dIgcs_dVd: f64;
+        let mut dIgcs_dVb: f64;
+        let mut Igcd: f64;
+        let mut dIgcd_dVg: f64;
+        let mut dIgcd_dVd: f64;
+        let mut dIgcd_dVb: f64;
+        let mut Igs: f64;
+        let mut dIgs_dVg: f64;
+        let mut dIgs_dVs: f64;
+        let mut Igd: f64;
+        let mut dIgd_dVg: f64;
+        let mut dIgd_dVd: f64;
+        let mut Igbacc: f64;
+        let mut dIgbacc_dVg: f64;
+        let mut dIgbacc_dVd: f64;
+        let mut dIgbacc_dVb: f64;
+        let mut Igbinv: f64;
+        let mut dIgbinv_dVg: f64;
+        let mut dIgbinv_dVd: f64;
+        let mut dIgbinv_dVb: f64;
+        let mut Igb: f64;
+        let mut dIgb_dVg: f64;
+        let mut dIgb_dVd: f64;
+        let mut dIgb_dVb: f64;
+        let mut Pigcd: f64;
+        let mut dPigcd_dVg: f64;
+        let mut dPigcd_dVd: f64;
+        let mut dPigcd_dVb: f64;
+        let mut Istoteq: f64;
+        let mut gIstotg: f64;
+        let mut gIstotd: f64;
+        let mut gIstots: f64;
+        let mut gIstotb: f64;
+        let mut Idtoteq: f64;
+        let mut gIdtotg: f64;
+        let mut gIdtotd: f64;
+        let mut gIdtots: f64;
+        let mut gIdtotb: f64;
+        let mut Ibtoteq: f64;
+        let mut gIbtotg: f64;
+        let mut gIbtotd: f64;
+        let mut gIbtots: f64;
+        let mut gIbtotb: f64;
+        let mut Igtoteq: f64;
+        let mut gIgtotg: f64;
+        let mut gIgtotd: f64;
+        let mut gIgtots: f64;
+        let mut gIgtotb: f64;
+        let mut Igstot: f64;
+        let mut cgshat: f64;
+        let mut Igdtot: f64;
+        let mut cgdhat: f64;
+        let mut Igbtot: f64;
+        let mut cgbhat: f64;
+        let mut Vgs_eff: f64;
+        let mut Vfb: f64;
+        let mut dVbs_dVb: f64;
+        let mut Vth_NarrowW: f64;
+        /* let mut Vgd_eff: f64;
+        let mut dVgd_eff_dVg: f64; 	 v4.7.0 */
+        let mut Phis: f64;
+        let mut dPhis_dVb: f64;
+        let mut sqrtPhis: f64;
+        let mut dsqrtPhis_dVb: f64;
+        let mut Vth: f64;
+        let mut dVth_dVb: f64;
+        let mut dVth_dVd: f64;
+        let mut Vgst: f64;
+        let mut dVgst_dVg: f64;
+        let mut dVgst_dVb: f64;
+        let mut dVgs_eff_dVg: f64;
+        let mut Nvtms: f64;
+        let mut Nvtmd: f64;
+        let mut Vgdt: f64;
+        let mut Vgsaddvth: f64;
+        let mut Vgsaddvth2: f64;
+        let mut Vgsaddvth1o3: f64;
+        let mut Vtm: f64;
+        let mut Vtm0: f64;
+        let mut n: f64;
+        let mut dn_dVb: f64;
+        let mut dn_dVd: f64;
+        let mut voffcv: f64;
+        let mut noff: f64;
+        let mut dnoff_dVd: f64;
+        let mut dnoff_dVb: f64;
+        let mut ExpArg: f64;
+        let mut ExpArg1: f64;
+        let mut V0: f64;
+        let mut CoxWLcen: f64;
+        let mut QovCox: f64;
+        let mut LINK: f64;
+        let mut DeltaPhi: f64;
+        let mut dDeltaPhi_dVg: f64;
+        let mut VgDP: f64;
+        let mut dVgDP_dVg: f64;
+        let mut Cox: f64;
+        let mut Tox: f64;
+        let mut Tcen: f64;
+        let mut dTcen_dVg: f64;
+        let mut dTcen_dVd: f64;
+        let mut dTcen_dVb: f64;
+        let mut Ccen: f64;
+        let mut Coxeff: f64;
+        let mut dCoxeff_dVd: f64;
+        let mut dCoxeff_dVg: f64;
+        let mut dCoxeff_dVb: f64;
+        let mut Denomi: f64;
+        let mut dDenomi_dVg: f64;
+        let mut dDenomi_dVd: f64;
+        let mut dDenomi_dVb: f64;
+        let mut ueff: f64;
+        let mut dueff_dVg: f64;
+        let mut dueff_dVd: f64;
+        let mut dueff_dVb: f64;
+        let mut Esat: f64;
+        let mut dEsat_dVg: f64;
+        let mut dEsat_dVd: f64;
+        let mut dEsat_dVb: f64;
+        let mut Vdsat: f64;
+        let mut Vdsat0: f64;
+        let mut EsatL: f64;
+        let mut dEsatL_dVg: f64;
+        let mut dEsatL_dVd: f64;
+        let mut dEsatL_dVb: f64;
+        let mut Ilimit: f64;
+        let mut Iexp: f64;
+        let mut dIexp_dVg: f64;
+        let mut dIexp_dVd: f64;
+        let mut dIexp_dVb: f64;
+        let mut dVdsat_dVg: f64;
+        let mut dVdsat_dVb: f64;
+        let mut dVdsat_dVd: f64;
+        let mut Vasat: f64;
+        let mut dAlphaz_dVg: f64;
+        let mut dAlphaz_dVb: f64;
+        let mut dVasat_dVg: f64;
+        let mut dVasat_dVb: f64;
+        let mut dVasat_dVd: f64;
+        let mut Va: f64;
+        let mut Va2: f64;
+        let mut dVa_dVd: f64;
+        let mut dVa_dVg: f64;
+        let mut dVa_dVb: f64;
+        let mut Vbseff: f64;
+        let mut dVbseff_dVb: f64;
+        let mut VbseffCV: f64;
+        let mut dVbseffCV_dVb: f64;
+        let mut VgsteffVth: f64;
+        let mut dT11_dVg: f64;
+        let mut Arg1: f64;
+        let mut Arg2: f64;
+        let mut One_Third_CoxWL: f64;
+        let mut Two_Third_CoxWL: f64;
+        let mut Alphaz: f64;
+        let mut CoxWL: f64;
+        let mut T0: f64;
+        let mut dT0_dVg: f64;
+        let mut dT0_dVd: f64;
+        let mut dT0_dVb: f64;
+        let mut T1: f64;
+        let mut dT1_dVg: f64;
+        let mut dT1_dVd: f64;
+        let mut dT1_dVb: f64;
+        let mut T2: f64;
+        let mut dT2_dVg: f64;
+        let mut dT2_dVd: f64;
+        let mut dT2_dVb: f64;
+        let mut T3: f64;
+        let mut dT3_dVg: f64;
+        let mut dT3_dVd: f64;
+        let mut dT3_dVb: f64;
+        let mut T4: f64;
+        let mut dT4_dVg: f64;
+        let mut dT4_dVd: f64;
+        let mut dT4_dVb: f64;
+        let mut T5: f64;
+        let mut dT5_dVg: f64;
+        let mut dT5_dVd: f64;
+        let mut dT5_dVb: f64;
+        let mut T6: f64;
+        let mut dT6_dVg: f64;
+        let mut dT6_dVd: f64;
+        let mut dT6_dVb: f64;
+        let mut T7: f64;
+        let mut dT7_dVg: f64;
+        let mut dT7_dVd: f64;
+        let mut dT7_dVb: f64;
+        let mut T8: f64;
+        let mut dT8_dVg: f64;
+        let mut dT8_dVd: f64;
+        let mut dT8_dVb: f64;
+        let mut T9: f64;
+        let mut dT9_dVg: f64;
+        let mut dT9_dVd: f64;
+        let mut dT9_dVb: f64;
+        let mut T10: f64;
+        let mut dT10_dVg: f64;
+        let mut dT10_dVb: f64;
+        let mut dT10_dVd: f64;
+        let mut T11: f64;
+        let mut T12: f64;
+        let mut T13: f64;
+        let mut T14: f64;
+        let mut tmp: f64;
+        let mut Abulk: f64;
+        let mut dAbulk_dVb: f64;
+        let mut Abulk0: f64;
+        let mut dAbulk0_dVb: f64;
+        let mut Cclm: f64;
+        let mut dCclm_dVg: f64;
+        let mut dCclm_dVd: f64;
+        let mut dCclm_dVb: f64;
+        let mut FP: f64;
+        let mut dFP_dVg: f64;
+        let mut PvagTerm: f64;
+        let mut dPvagTerm_dVg: f64;
+        let mut dPvagTerm_dVd: f64;
+        let mut dPvagTerm_dVb: f64;
+        let mut VADITS: f64;
+        let mut dVADITS_dVg: f64;
+        let mut dVADITS_dVd: f64;
+        let mut Lpe_Vb: f64;
+        let mut DITS_Sft: f64;
+        let mut dDITS_Sft_dVb: f64;
+        let mut dDITS_Sft_dVd: f64;
+        let mut DITS_Sft2: f64;
+        let mut dDITS_Sft2_dVd: f64; /* v4.7 New DITS */
+        let mut VACLM: f64;
+        let mut dVACLM_dVg: f64;
+        let mut dVACLM_dVd: f64;
+        let mut dVACLM_dVb: f64;
+        let mut VADIBL: f64;
+        let mut dVADIBL_dVg: f64;
+        let mut dVADIBL_dVd: f64;
+        let mut dVADIBL_dVb: f64;
+        let mut Xdep: f64;
+        let mut dXdep_dVb: f64;
+        let mut lt1: f64;
+        let mut dlt1_dVb: f64;
+        let mut ltw: f64;
+        let mut dltw_dVb: f64;
+        let mut Delt_vth: f64;
+        let mut dDelt_vth_dVb: f64;
+        let mut Theta0: f64;
+        let mut dTheta0_dVb: f64;
+        let mut Theta1: f64;
+        let mut dTheta1_dVb: f64;
+        let mut Thetarout: f64;
+        let mut dThetarout_dVb: f64;
+        let mut TempRatio: f64;
+        let mut tmp1: f64;
+        let mut tmp2: f64;
+        let mut tmp3: f64;
+        let mut tmp4: f64;
+        let mut DIBL_Sft: f64;
+        let mut dDIBL_Sft_dVd: f64;
+        let mut DIBL_fact: f64;
+        let mut Lambda: f64;
+        let mut dLambda_dVg: f64;
+        let mut Idtot: f64;
+        let mut Ibtot: f64;
+        let mut a1: f64;
+        let mut ScalingFactor: f64;
+
+        let mut Vgsteff: f64;
+        let mut dVgsteff_dVg: f64;
+        let mut dVgsteff_dVd: f64;
+        let mut dVgsteff_dVb: f64;
+        let mut Vdseff: f64;
+        let mut dVdseff_dVg: f64;
+        let mut dVdseff_dVd: f64;
+        let mut dVdseff_dVb: f64;
+        let mut VdseffCV: f64;
+        let mut dVdseffCV_dVg: f64;
+        let mut dVdseffCV_dVd: f64;
+        let mut dVdseffCV_dVb: f64;
+        let mut diffVds: f64;
+        let mut diffVdsCV: f64;
+        let mut dAbulk_dVg: f64;
+        let mut beta: f64;
+        let mut dbeta_dVg: f64;
+        let mut dbeta_dVd: f64;
+        let mut dbeta_dVb: f64;
+        let mut gche: f64;
+        let mut dgche_dVg: f64;
+        let mut dgche_dVd: f64;
+        let mut dgche_dVb: f64;
+        let mut fgche1: f64;
+        let mut dfgche1_dVg: f64;
+        let mut dfgche1_dVd: f64;
+        let mut dfgche1_dVb: f64;
+        let mut fgche2: f64;
+        let mut dfgche2_dVg: f64;
+        let mut dfgche2_dVd: f64;
+        let mut dfgche2_dVb: f64;
+        let mut Idl: f64;
+        let mut dIdl_dVg: f64;
+        let mut dIdl_dVd: f64;
+        let mut dIdl_dVb: f64;
+        let mut Idsa: f64;
+        let mut dIdsa_dVg: f64;
+        let mut dIdsa_dVd: f64;
+        let mut dIdsa_dVb: f64;
+        let mut Ids: f64;
+        let mut Gm: f64;
+        let mut Gds: f64;
+        let mut Gmb: f64;
+        let mut devbs_dvb: f64;
+        let mut devbd_dvb: f64;
+        let mut Isub: f64;
+        let mut Gbd: f64;
+        let mut Gbg: f64;
+        let mut Gbb: f64;
+        let mut VASCBE: f64;
+        let mut dVASCBE_dVg: f64;
+        let mut dVASCBE_dVd: f64;
+        let mut dVASCBE_dVb: f64;
+        let mut CoxeffWovL: f64;
+        let mut Rds: f64;
+        let mut dRds_dVg: f64;
+        let mut dRds_dVb: f64;
+        let mut WVCox: f64;
+        let mut WVCoxRds: f64;
+        let mut Vgst2Vtm: f64;
+        let mut VdsatCV: f64;
+        let mut dVdsatCV_dVd: f64;
+        let mut dVdsatCV_dVg: f64;
+        let mut dVdsatCV_dVb: f64;
+        let mut Leff: f64;
+        let mut Weff: f64;
+        let mut dWeff_dVg: f64;
+        let mut dWeff_dVb: f64;
+        let mut AbulkCV: f64;
+        let mut dAbulkCV_dVb: f64;
+        let mut qcheq: f64;
+        let mut qdef: f64;
+        let mut gqdef: f64;
+        let mut cqdef: f64;
+        let mut cqcheq: f64;
+        let mut gcqdb: f64;
+        let mut gcqsb: f64;
+        let mut gcqgb: f64;
+        let mut gcqbb: f64;
+        let mut dxpart: f64;
+        let mut sxpart: f64;
+        let mut ggtg: f64;
+        let mut ggtd: f64;
+        let mut ggts: f64;
+        let mut ggtb: f64;
+        let mut ddxpart_dVd: f64;
+        let mut ddxpart_dVg: f64;
+        let mut ddxpart_dVb: f64;
+        let mut ddxpart_dVs: f64;
+        let mut dsxpart_dVd: f64;
+        let mut dsxpart_dVg: f64;
+        let mut dsxpart_dVb: f64;
+        let mut dsxpart_dVs: f64;
+        let mut gbspsp: f64;
+        let mut gbbdp: f64;
+        let mut gbbsp: f64;
+        let mut gbspg: f64;
+        let mut gbspb: f64;
+        let mut gbspdp: f64;
+        let mut gbdpdp: f64;
+        let mut gbdpg: f64;
+        let mut gbdpb: f64;
+        let mut gbdpsp: f64;
+        let mut qgdo: f64;
+        let mut qgso: f64;
+        let mut cgdo: f64;
+        let mut cgso: f64;
+        let mut cqbs: f64;
+        let mut cqbd: f64;
+        let mut Cgg: f64;
+        let mut Cgd: f64;
+        let mut Cgs: f64;
+        let mut Cgb: f64;
+        let mut Cdg: f64;
+        let mut Cdd: f64;
+        let mut Cds: f64;
+        let mut Cdb: f64;
+        let mut Qg: f64;
+        let mut Qd: f64;
+        let mut Csg: f64;
+        let mut Csd: f64;
+        let mut Css: f64;
+        let mut Csb: f64;
+        let mut Cbg: f64;
+        let mut Cbd: f64;
+        let mut Cbs: f64;
+        let mut Cbb: f64;
+        let mut Qs: f64;
+        let mut Qb: f64;
+        let mut Cgg1: f64;
+        let mut Cgb1: f64;
+        let mut Cgd1: f64;
+        let mut Cbg1: f64;
+        let mut Cbb1: f64;
+        let mut Cbd1: f64;
+        let mut Csg1: f64;
+        let mut Csd1: f64;
+        let mut Csb1: f64;
+        let mut Qac0: f64;
+        let mut Qsub0: f64;
+        let mut dQac0_dVg: f64;
+        let mut dQac0_dVb: f64;
+        let mut dQsub0_dVg: f64;
+        let mut dQsub0_dVd: f64;
+        let mut dQsub0_dVb: f64;
+        let mut ggidld: f64;
+        let mut ggidlg: f64;
+        let mut ggidlb: f64;
+        let mut ggisld: f64;
+        let mut ggislg: f64;
+        let mut ggislb: f64;
+        let mut ggisls: f64;
+        let mut Igisl: f64;
+        let mut Ggisld: f64;
+        let mut Ggislg: f64;
+        let mut Ggislb: f64;
+        let mut Ggisls: f64;
+        let mut Nvtmrss: f64;
+        let mut Nvtmrssws: f64;
+        let mut Nvtmrsswgs: f64;
+        let mut Nvtmrsd: f64;
+        let mut Nvtmrsswd: f64;
+        let mut Nvtmrsswgd: f64;
+
+        let mut vs: f64;
+        let mut Fsevl: f64;
+        let mut dvs_dVg: f64;
+        let mut dvs_dVd: f64;
+        let mut dvs_dVb: f64;
+        let mut dFsevl_dVg: f64;
+        let mut dFsevl_dVd: f64;
+        let mut dFsevl_dVb: f64;
+        let mut vgdx: f64;
+        let mut vgsx: f64;
+        let mut epssub: f64;
+        let mut toxe: f64;
+        let mut epsrox: f64;
+
+        // And even a few non-floats
+        let mut error: usize;
+
+        let ScalingFactor = 1.0e-9;
+        let ChargeComputationNeeded = if let AnalysisInfo::TRAN(_a, _b) = an {
+            true
+        } else {
+            false
+        };
+
+        // Create a new operating point, which we'll fill in along the way
+        let mut newop = Bsim4OpPoint::default();
+
+        let mut vds =
+            self.model.p() * (guess.get(self.ports.dNodePrime) - guess.get(self.ports.sNodePrime));
+        let mut vgs =
+            self.model.p() * (guess.get(self.ports.gNodePrime) - guess.get(self.ports.sNodePrime));
+        let mut vbs =
+            self.model.p() * (guess.get(self.ports.bNodePrime) - guess.get(self.ports.sNodePrime));
+        let mut vges =
+            self.model.p() * (guess.get(self.ports.gNodeExt) - guess.get(self.ports.sNodePrime));
+        let mut vgms =
+            self.model.p() * (guess.get(self.ports.gNodeMid) - guess.get(self.ports.sNodePrime));
+        let mut vdbs =
+            self.model.p() * (guess.get(self.ports.dbNode) - guess.get(self.ports.sNodePrime));
+        let mut vsbs =
+            self.model.p() * (guess.get(self.ports.sbNode) - guess.get(self.ports.sNodePrime));
+        let mut vses =
+            self.model.p() * (guess.get(self.ports.sNode) - guess.get(self.ports.sNodePrime));
+        let mut vdes =
+            self.model.p() * (guess.get(self.ports.dNode) - guess.get(self.ports.sNodePrime));
+        let mut qdef = self.model.p() * (guess.get(self.ports.qNode));
+
+        vgdo = self.guess.vgs - self.guess.vds;
+        vgedo = self.guess.vges - self.guess.vds;
+        vgmdo = self.guess.vgms - self.guess.vds;
+
+        vbd = vbs - vds;
+        vdbd = vdbs - vds;
+        vgd = vgs - vds;
+        vged = vges - vds;
+        vgmd = vgms - vds;
+
+        delvbd = vbd - self.guess.vbd;
+        delvdbd = vdbd - self.guess.vdbd;
+        delvgd = vgd - vgdo;
+        delvged = vged - vgedo;
+        delvgmd = vgmd - vgmdo;
+
+        delvds = vds - self.guess.vds;
+        delvgs = vgs - self.guess.vgs;
+        delvges = vges - self.guess.vges;
+        delvgms = vgms - self.guess.vgms;
+        delvbs = vbs - self.guess.vbs;
+        delvdbs = vdbs - self.guess.vdbs;
+        delvsbs = vsbs - self.guess.vsbs;
+
+        delvses = vses - (self.guess.vses);
+        vdedo = self.guess.vdes - self.guess.vds;
+        delvdes = vdes - self.guess.vdes;
+        delvded = vdes - vds - vdedo;
+
+        delvbd_jct = if self.intp.rbodyMod != 0 {
+            delvbd
+        } else {
+            delvdbd
+        };
+        delvbs_jct = if self.intp.rbodyMod != 0 {
+            delvbs
+        } else {
+            delvsbs
+        };
+
+        if self.guess.mode >= 0 {
+            Idtot = self.guess.cd + self.guess.csub - self.guess.cbd + self.guess.Igidl;
+            cdhat = Idtot - self.guess.gbd * delvbd_jct
+                + (self.guess.gmbs + self.guess.gbbs + self.guess.ggidlb) * delvbs
+                + (self.guess.gm + self.guess.gbgs + self.guess.ggidlg) * delvgs
+                + (self.guess.gds + self.guess.gbds + self.guess.ggidld) * delvds;
+            Ibtot = self.guess.cbs + self.guess.cbd
+                - self.guess.Igidl
+                - self.guess.Igisl
+                - self.guess.csub;
+            cbhat = Ibtot + self.guess.gbd * delvbd_jct + self.guess.gbs * delvbs_jct
+                - (self.guess.gbbs + self.guess.ggidlb) * delvbs
+                - (self.guess.gbgs + self.guess.ggidlg) * delvgs
+                - (self.guess.gbds + self.guess.ggidld - self.guess.ggisls) * delvds
+                - self.guess.ggislg * delvgd
+                - self.guess.ggislb * delvbd;
+
+            Igstot = self.guess.Igs + self.guess.Igcs;
+            cgshat = Igstot
+                + (self.guess.gIgsg + self.guess.gIgcsg) * delvgs
+                + self.guess.gIgcsd * delvds
+                + self.guess.gIgcsb * delvbs;
+
+            Igdtot = self.guess.Igd + self.guess.Igcd;
+            cgdhat = Igdtot
+                + self.guess.gIgdg * delvgd
+                + self.guess.gIgcdg * delvgs
+                + self.guess.gIgcdd * delvds
+                + self.guess.gIgcdb * delvbs;
+
+            Igbtot = self.guess.Igb;
+            cgbhat = self.guess.Igb
+                + self.guess.gIgbg * delvgs
+                + self.guess.gIgbd * delvds
+                + self.guess.gIgbb * delvbs;
+        } else {
+            Idtot = self.guess.cd + self.guess.cbd - self.guess.Igidl;
+            cdhat = Idtot
+                + self.guess.gbd * delvbd_jct
+                + self.guess.gmbs * delvbd
+                + self.guess.gm * delvgd
+                - (self.guess.gds + self.guess.ggidls) * delvds
+                - self.guess.ggidlg * delvgs
+                - self.guess.ggidlb * delvbs;
+            Ibtot = self.guess.cbs + self.guess.cbd
+                - self.guess.Igidl
+                - self.guess.Igisl
+                - self.guess.csub;
+            cbhat = Ibtot + self.guess.gbs * delvbs_jct + self.guess.gbd * delvbd_jct
+                - (self.guess.gbbs + self.guess.ggislb) * delvbd
+                - (self.guess.gbgs + self.guess.ggislg) * delvgd
+                + (self.guess.gbds + self.guess.ggisld - self.guess.ggidls) * delvds
+                - self.guess.ggidlg * delvgs
+                - self.guess.ggidlb * delvbs;
+
+            Igstot = self.guess.Igs + self.guess.Igcd;
+            cgshat = Igstot + self.guess.gIgsg * delvgs + self.guess.gIgcdg * delvgd
+                - self.guess.gIgcdd * delvds
+                + self.guess.gIgcdb * delvbd;
+
+            Igdtot = self.guess.Igd + self.guess.Igcs;
+            cgdhat = Igdtot + (self.guess.gIgdg + self.guess.gIgcsg) * delvgd
+                - self.guess.gIgcsd * delvds
+                + self.guess.gIgcsb * delvbd;
+
+            Igbtot = self.guess.Igb;
+            cgbhat = self.guess.Igb + self.guess.gIgbg * delvgd - self.guess.gIgbd * delvds
+                + self.guess.gIgbb * delvbd;
+        }
+
+        Isestot = self.guess.gstot * self.guess.vses;
+        cseshat = Isestot
+            + self.guess.gstot * delvses
+            + self.guess.gstotd * delvds
+            + self.guess.gstotg * delvgs
+            + self.guess.gstotb * delvbs;
+
+        Idedtot = self.guess.gdtot * vdedo;
+        cdedhat = Idedtot
+            + self.guess.gdtot * delvded
+            + self.guess.gdtotd * delvds
+            + self.guess.gdtotg * delvgs
+            + self.guess.gdtotb * delvbs;
+
+        von = self.guess.von;
+        if self.guess.vds >= 0.0 {
+            vgs = DEVfetlim(vgs, self.guess.vgs, von);
+            vds = vgs - vgd;
+            vds = DEVlimvds(vds, self.guess.vds);
+            vgd = vgs - vds;
+            if self.intp.rgateMod == 3 {
+                vges = DEVfetlim(vges, self.guess.vges, von);
+                vgms = DEVfetlim(vgms, self.guess.vgms, von);
+                vged = vges - vds;
+                vgmd = vgms - vds;
+            } else if (self.intp.rgateMod == 1) || (self.intp.rgateMod == 2) {
+                vges = DEVfetlim(vges, self.guess.vges, von);
+                vged = vges - vds;
+            }
+            if self.model.rdsMod {
+                vdes = DEVlimvds(vdes, self.guess.vdes);
+                vses = -DEVlimvds(-vses, -self.guess.vses);
+            }
+        } else {
+            vgd = DEVfetlim(vgd, vgdo, von);
+            vds = vgs - vgd;
+            vds = -DEVlimvds(-vds, -self.guess.vds);
+            vgs = vgd + vds;
+
+            if self.intp.rgateMod == 3 {
+                vged = DEVfetlim(vged, vgedo, von);
+                vges = vged + vds;
+                vgmd = DEVfetlim(vgmd, vgmdo, von);
+                vgms = vgmd + vds;
+            }
+            if (self.intp.rgateMod == 1) || (self.intp.rgateMod == 2) {
+                vged = DEVfetlim(vged, vgedo, von);
+                vges = vged + vds;
+            }
+
+            if self.model.rdsMod {
+                vdes = -DEVlimvds(-vdes, -self.guess.vdes);
+                vses = DEVlimvds(vses, self.guess.vses);
+            }
+        }
+
+        if vds >= 0.0 {
+            vbs = DEVpnjlim(vbs, self.guess.vbs, CONSTvt0, self.model.vcrit);
+            vbd = vbs - vds;
+            if self.intp.rbodyMod {
+                vdbs = DEVpnjlim(vdbs, self.guess.vdbs, CONSTvt0, self.model.vcrit);
+                vdbd = vdbs - vds;
+                vsbs = DEVpnjlim(vsbs, self.guess.vsbs, CONSTvt0, self.model.vcrit);
+            }
+        } else {
+            vbd = DEVpnjlim(vbd, self.guess.vbd, CONSTvt0, self.model.vcrit);
+            vbs = vbd + vds;
+            if self.intp.rbodyMod {
+                vdbd = DEVpnjlim(vdbd, self.guess.vdbd, CONSTvt0, self.model.vcrit);
+                vdbs = vdbd + vds;
+                vsbdo = self.guess.vsbs - self.guess.vds;
+                vsbd = vsbs - vds;
+                vsbd = DEVpnjlim(vsbd, vsbdo, CONSTvt0, self.model.vcrit);
+                vsbs = vsbd + vds;
+            }
+        }
+    }
+
+    /* Calculate DC currents and their derivatives */
+        vbd = vbs - vds;
+        vgd = vgs - vds;
+        vgb = vgs - vbs;
+        vged = vges - vds;
+        vgmd = vgms - vds;
+        vgmb = vgms - vbs;
+        vdbd = vdbs - vds;
+
+        vbs_jct = (!self.intp.rbodyMod) ? vbs : vsbs;
+        vbd_jct = (!self.intp.rbodyMod) ? vbd : vdbd;
+
+    // Source/drain junction diode DC model begins
+          Nvtms = self.model.vtm * self.model.SjctEmissionCoeff;
+          if (self.intp.Aseff <= 0.0) && (self.intp.Pseff <= 0.0) {
+	     SourceSatCurrent = 0.0;
+	  }
+          else
+          {   SourceSatCurrent = self.intp.Aseff * self.model.SjctTempSatCurDensity
+                               + self.intp.Pseff * self.model.SjctSidewallTempSatCurDensity
+                               + self.size_params.weffCJ * self.intp.nf
+                               * self.model.SjctGateSidewallTempSatCurDensity;
+          }
+
+	  if SourceSatCurrent <= 0.0 {
+	     newop.gbs = gmin;
+              newop.cbs = newop.gbs * vbs_jct;
+          }
+          else
+	  {   switch(self.model.dioMod)
+              {   case 0:
+                      evbs = exp(vbs_jct / Nvtms);
+                      T1 = self.model.xjbvs * exp(-(self.model.bvs + vbs_jct) / Nvtms);
+
+		      newop.gbs = SourceSatCurrent * (evbs + T1) / Nvtms + gmin;
+		      newop.cbs = SourceSatCurrent * (evbs + self.intp.XExpBVS
+				     - T1 - 1.0) + gmin * vbs_jct;
+		      break;
+                  case 1:
+		      T2 = vbs_jct / Nvtms;
+	              if T2 < -EXP_THRESHOLD {
+		         newop.gbs = gmin;
+                          newop.cbs = SourceSatCurrent * (MIN_EXP - 1.0)
+                                         + gmin * vbs_jct;
+                      }
+		      else if vbs_jct <= self.intp.vjsmFwd {
+		         evbs = exp(T2);
+			  newop.gbs = SourceSatCurrent * evbs / Nvtms + gmin;
+                          newop.cbs = SourceSatCurrent * (evbs - 1.0)
+                                         + gmin * vbs_jct;
+	              }
+		      else
+		      {   T0 = self.intp.IVjsmFwd / Nvtms;
+                          newop.gbs = T0 + gmin;
+                          newop.cbs = self.intp.IVjsmFwd - SourceSatCurrent + T0
+					 * (vbs_jct - self.intp.vjsmFwd) + gmin * vbs_jct;
+		      }
+                      break;
+                  case 2:
+                      if vbs_jct < self.intp.vjsmRev {
+                         T0 = vbs_jct / Nvtms;
+                          if T0 < -EXP_THRESHOLD {
+                              evbs = MIN_EXP;
+			       devbs_dvb = 0.0;
+			  }
+                          else
+			  {    evbs = exp(T0);
+                               devbs_dvb = evbs / Nvtms;
+			  }
+
+			  T1 = evbs - 1.0;
+			  T2 = self.intp.IVjsmRev + self.intp.SslpRev
+			     * (vbs_jct - self.intp.vjsmRev);
+			  newop.gbs = devbs_dvb * T2 + T1 * self.intp.SslpRev + gmin;
+                          newop.cbs = T1 * T2 + gmin * vbs_jct;
+                      }        
+                      else if vbs_jct <= self.intp.vjsmFwd {
+                         T0 = vbs_jct / Nvtms;
+                          if T0 < -EXP_THRESHOLD {
+                              evbs = MIN_EXP;
+                               devbs_dvb = 0.0;
+                          }
+                          else
+                          {    evbs = exp(T0);
+                               devbs_dvb = evbs / Nvtms;
+                          }
+
+			  T1 = (self.model.bvs + vbs_jct) / Nvtms;
+                          if T1 > EXP_THRESHOLD {
+                             T2 = MIN_EXP;
+			      T3 = 0.0;
+			  }
+                          else
+			  {   T2 = exp(-T1);
+			      T3 = -T2 /Nvtms;
+			  }
+                          newop.gbs = SourceSatCurrent * (devbs_dvb - self.model.xjbvs * T3)
+					 + gmin;
+			  newop.cbs = SourceSatCurrent * (evbs + self.intp.XExpBVS - 1.0
+				         - self.model.xjbvs * T2) + gmin * vbs_jct;
+                      }
+		      else
+		      {   newop.gbs = self.intp.SslpFwd + gmin;
+                          newop.cbs = self.intp.IVjsmFwd + self.intp.SslpFwd * (vbs_jct
+					 - self.intp.vjsmFwd) + gmin * vbs_jct;
+		      }
+                      break;
+                  default: break;
+              }
+	  }
+
+          Nvtmd = self.model.vtm * self.model.DjctEmissionCoeff;
+
+	  if (self.intp.Adeff <= 0.0) && (self.intp.Pdeff <= 0.0) {
+	     DrainSatCurrent = 0.0;
+	  }
+          else
+          {   DrainSatCurrent = self.intp.Adeff * self.model.DjctTempSatCurDensity
+                              + self.intp.Pdeff * self.model.DjctSidewallTempSatCurDensity
+                              + self.size_params.weffCJ * self.intp.nf
+                              * self.model.DjctGateSidewallTempSatCurDensity;
+          }
+
+	  if DrainSatCurrent <= 0.0 {
+	     newop.gbd = gmin;
+              newop.cbd = here->BSIM4gbd * vbd_jct;
+          }
+          else
+          {   switch(self.model.dioMod)
+              {   case 0:
+                      evbd = exp(vbd_jct / Nvtmd);
+                      T1 = self.model.xjbvd * exp(-(self.model.bvd + vbd_jct) / Nvtmd);
+    /* WDLiu: Magic T1 in this form; different from BSIM4 beta. */
+                      newop.gbd = DrainSatCurrent * (evbd + T1) / Nvtmd + gmin;
+                      newop.cbd = DrainSatCurrent * (evbd + self.intp.XExpBVD
+                                     - T1 - 1.0) + gmin * vbd_jct;
+                      break;
+                  case 1:
+		      T2 = vbd_jct / Nvtmd;
+                      if T2 < -EXP_THRESHOLD {
+                         newop.gbd = gmin;
+                          newop.cbd = DrainSatCurrent * (MIN_EXP - 1.0)
+                                         + gmin * vbd_jct;
+                      }
+                      else if vbd_jct <= self.intp.vjdmFwd {
+                         evbd = exp(T2);
+                          newop.gbd = DrainSatCurrent * evbd / Nvtmd + gmin;
+                          newop.cbd = DrainSatCurrent * (evbd - 1.0)
+                                         + gmin * vbd_jct;
+                      }
+                      else
+                      {   T0 = self.intp.IVjdmFwd / Nvtmd;
+                          newop.gbd = T0 + gmin;
+                          newop.cbd = self.intp.IVjdmFwd - DrainSatCurrent + T0
+                                         * (vbd_jct - self.intp.vjdmFwd) + gmin * vbd_jct;
+                      }
+                      break;
+                  case 2:
+                      if vbd_jct < self.intp.vjdmRev {
+                         T0 = vbd_jct / Nvtmd;
+                          if T0 < -EXP_THRESHOLD {
+                              evbd = MIN_EXP;
+                               devbd_dvb = 0.0;
+                          }
+                          else
+                          {    evbd = exp(T0);
+                               devbd_dvb = evbd / Nvtmd;
+                          }
+
+                          T1 = evbd - 1.0;
+                          T2 = self.intp.IVjdmRev + self.intp.DslpRev
+                             * (vbd_jct - self.intp.vjdmRev);
+                          newop.gbd = devbd_dvb * T2 + T1 * hself.intp.DslpRev + gmin;
+                          newop.cbd = T1 * T2 + gmin * vbd_jct;
+                      }
+                      else if vbd_jct <= self.intp.vjdmFwd {
+                         T0 = vbd_jct / Nvtmd;
+                          if T0 < -EXP_THRESHOLD {
+                              evbd = MIN_EXP;
+                               devbd_dvb = 0.0;
+                          }
+                          else
+                          {    evbd = exp(T0);
+                               devbd_dvb = evbd / Nvtmd;
+                          }
+
+                          T1 = (self.model.bvd + vbd_jct) / Nvtmd;
+                          if T1 > EXP_THRESHOLD {
+                             T2 = MIN_EXP;
+                              T3 = 0.0;
+                          }
+                          else
+                          {   T2 = exp(-T1);
+                              T3 = -T2 /Nvtmd;
+                          }    
+                          newop.gbd = DrainSatCurrent * (devbd_dvb - self.model.xjbvd * T3)
+                                         + gmin;
+                          newop.cbd = DrainSatCurrent * (evbd + self.intp.XExpBVD - 1.0
+                                         - self.model.xjbvd * T2) + gmin * vbd_jct;
+                      }
+                      else
+                      {   newop.gbd = self.intp.DslpFwd + gmin;
+                          newop.cbd = self.intp.IVjdmFwd + self.intp.DslpFwd * (vbd_jct
+                                         - self.intp.vjdmFwd) + gmin * vbd_jct;
+                      }
+                      break;
+                  default: break;
+              }
+          }
+
+    /* trap-assisted tunneling and recombination current for reverse bias  */
+          Nvtmrssws = self.model.vtm0 * self.model.njtsswstemp;
+          Nvtmrsswgs = self.model.vtm0 * self.model.njtsswgstemp;
+          Nvtmrss = self.model.vtm0 * self.model.njtsstemp;
+          Nvtmrsswd = self.model.vtm0 * self.model.njtsswdtemp;
+          Nvtmrsswgd = self.model.vtm0 * self.model.njtsswgdtemp;
+          Nvtmrsd = self.model.vtm0 * self.model.njtsdtemp;
+
+        if (self.model.vtss - vbs_jct) < (self.model.vtss * 1e-3) {
+         T9 = 1.0e3;
+          T0 = - vbs_jct / Nvtmrss * T9;
+          DEXP(T0, T1, T10);
+          dT1_dVb = T10 / Nvtmrss * T9;
+        } else {
+          T9 = 1.0 / (self.model.vtss - vbs_jct);
+          T0 = -vbs_jct / Nvtmrss * self.model.vtss * T9;
+          dT0_dVb = self.model.vtss / Nvtmrss * (T9 + vbs_jct * T9 * T9) ;
+          DEXP(T0, T1, T10);
+          dT1_dVb = T10 * dT0_dVb;
+        }
+
+       if (self.model.vtsd - vbd_jct) < (self.model.vtsd * 1e-3)  {
+         T9 = 1.0e3;
+          T0 = -vbd_jct / Nvtmrsd * T9;
+          DEXP(T0, T2, T10);
+          dT2_dVb = T10 / Nvtmrsd * T9;
+        } else {
+          T9 = 1.0 / (self.model.vtsd - vbd_jct);
+          T0 = -vbd_jct / Nvtmrsd * self.model.vtsd * T9;
+          dT0_dVb = self.model.vtsd / Nvtmrsd * (T9 + vbd_jct * T9 * T9) ;
+          DEXP(T0, T2, T10);
+          dT2_dVb = T10 * dT0_dVb;
+        }
+
+        if (self.model.vtssws - vbs_jct) < (self.model.vtssws * 1e-3)  {
+         T9 = 1.0e3;
+          T0 = -vbs_jct / Nvtmrssws * T9;
+          DEXP(T0, T3, T10);
+          dT3_dVb = T10 / Nvtmrssws * T9;
+        } else {
+          T9 = 1.0 / (self.model.vtssws - vbs_jct);
+          T0 = -vbs_jct / Nvtmrssws * self.model.vtssws * T9;
+          dT0_dVb = self.model.vtssws / Nvtmrssws * (T9 + vbs_jct * T9 * T9) ;
+          DEXP(T0, T3, T10);
+          dT3_dVb = T10 * dT0_dVb;
+        }
+
+        if (self.model.vtsswd - vbd_jct) < (self.model.vtsswd * 1e-3)  {
+         T9 = 1.0e3;
+          T0 = -vbd_jct / Nvtmrsswd * T9;
+          DEXP(T0, T4, T10);
+          dT4_dVb = T10 / Nvtmrsswd * T9;
+        } else {
+          T9 = 1.0 / (self.model.vtsswd - vbd_jct);
+          T0 = -vbd_jct / Nvtmrsswd * self.model.vtsswd * T9;
+          dT0_dVb = self.model.vtsswd / Nvtmrsswd * (T9 + vbd_jct * T9 * T9) ;
+          DEXP(T0, T4, T10);
+          dT4_dVb = T10 * dT0_dVb;
+        }
+
+        if (self.model.vtsswgs - vbs_jct) < (self.model.vtsswgs * 1e-3)  {
+         T9 = 1.0e3;
+          T0 = -vbs_jct / Nvtmrsswgs * T9;
+          DEXP(T0, T5, T10);
+          dT5_dVb = T10 / Nvtmrsswgs * T9;
+        } else {
+          T9 = 1.0 / (self.model.vtsswgs - vbs_jct);
+          T0 = -vbs_jct / Nvtmrsswgs * self.model.vtsswgs * T9;
+          dT0_dVb = self.model.vtsswgs / Nvtmrsswgs * (T9 + vbs_jct * T9 * T9) ;
+          DEXP(T0, T5, T10);
+          dT5_dVb = T10 * dT0_dVb;
+        }
+
+        if (self.model.vtsswgd - vbd_jct) < (self.model.vtsswgd * 1e-3)  {
+         T9 = 1.0e3;
+          T0 = -vbd_jct / Nvtmrsswgd * T9;
+          DEXP(T0, T6, T10);
+          dT6_dVb = T10 / Nvtmrsswgd * T9;
+        } else {
+          T9 = 1.0 / (self.model.vtsswgd - vbd_jct);
+          T0 = -vbd_jct / Nvtmrsswgd * self.model.vtsswgd * T9;
+          dT0_dVb = self.model.vtsswgd / Nvtmrsswgd * (T9 + vbd_jct * T9 * T9) ;
+          DEXP(T0, T6, T10);
+          dT6_dVb = T10 * dT0_dVb;
+        }
+
+	  here->BSIM4gbs += self.intp.SjctTempRevSatCur * dT1_dVb
+	  			+ self.intp.SswTempRevSatCur * dT3_dVb
+	  			+ self.intp.SswgTempRevSatCur * dT5_dVb;
+	  here->BSIM4cbs -= self.intp.SjctTempRevSatCur * (T1 - 1.0)
+	  			+ self.intp.SswTempRevSatCur * (T3 - 1.0)
+	  			+ self.intp.SswgTempRevSatCur * (T5 - 1.0);
+	  here->BSIM4gbd += self.intp.DjctTempRevSatCur * dT2_dVb
+	  			+ self.intp.DswTempRevSatCur * dT4_dVb
+	  			+ self.intp.DswgTempRevSatCur * dT6_dVb;
+	  here->BSIM4cbd -= self.intp.DjctTempRevSatCur * (T2 - 1.0)
+	  			+ self.intp.DswTempRevSatCur * (T4 - 1.0)
+	  			+ self.intp.DswgTempRevSatCur * (T6 - 1.0);
+
+    /* End of diode DC model */
+
+          if vds >= 0.0 {
+	     newop.mode = 1;
+              Vds = vds;
+              Vgs = vgs;
+              Vbs = vbs;
+	      Vdb = vds - vbs;  
+
+          }
+	  else
+	  {   newop.mode = -1;
+              Vds = -vds;
+              Vgs = vgd;
+              Vbs = vbd;
+	      Vdb = -vbs;
+          }
+
+
+    /* dunga */
+	 if(self.model.mtrlMod)
+	   {
+	     epsrox = 3.9;
+	     toxe = self.model.eot;
+	     epssub = EPS0 * self.model.epsrsub;
+	   }
+	 else
+	   {
+	     epsrox = self.model.epsrox;
+	     toxe = self.model.toxe;
+	     epssub = EPSSI;
+	   }
+
+
+	  T0 = Vbs - here->BSIM4vbsc - 0.001;
+	  T1 = sqrt(T0 * T0 - 0.004 * here->BSIM4vbsc);
+	  if T0 >= 0.0 {
+	     Vbseff = here->BSIM4vbsc + 0.5 * (T0 + T1);
+              dVbseff_dVb = 0.5 * (1.0 + T0 / T1);
+	  }
+	  else
+	  {   T2 = -0.002 / (T1 - T0);
+	      Vbseff = here->BSIM4vbsc * (1.0 + T2);
+	      dVbseff_dVb = T2 * here->BSIM4vbsc / T1;
+	  }
+
+    /* JX: Correction to forward body bias  */
+	  T9 = 0.95 * self.size_params.phi;
+	  T0 = T9 - Vbseff - 0.001;
+	  T1 = sqrt(T0 * T0 + 0.004 * T9);
+	  Vbseff = T9 - 0.5 * (T0 + T1);
+          dVbseff_dVb *= 0.5 * (1.0 + T0 / T1);
+          Phis = self.size_params.phi - Vbseff;
+          dPhis_dVb = -1.0;
+          sqrtPhis = sqrt(Phis);
+          dsqrtPhis_dVb = -0.5 / sqrtPhis;
+
+          Xdep = self.size_params.Xdep0 * sqrtPhis / self.size_params.sqrtPhi;
+          dXdep_dVb = (self.size_params.Xdep0 / self.size_params.sqrtPhi)
+		    * dsqrtPhis_dVb;
+
+          Leff = self.size_params.leff;
+          Vtm = self.model.vtm;
+          Vtm0 = self.model.vtm0;
+
+    /* Vth Calculation */
+          T3 = sqrt(Xdep);
+          V0 = self.size_params.vbi - self.size_params.phi;
+
+          T0 = self.size_params.dvt2 * Vbseff;
+          if T0 >= - 0.5 {
+	     T1 = 1.0 + T0;
+	      T2 = self.size_params.dvt2;
+	  }
+	  else
+	  {   T4 = 1.0 / (3.0 + 8.0 * T0);
+	      T1 = (1.0 + 3.0 * T0) * T4;
+	      T2 = self.size_params.dvt2 * T4 * T4;
+	  }
+          lt1 = self.model.factor1 * T3 * T1;
+          dlt1_dVb = self.model.factor1 * (0.5 / T3 * T1 * dXdep_dVb + T3 * T2);
+
+          T0 = self.size_params.dvt2w * Vbseff;
+          if T0 >= - 0.5 {
+	     T1 = 1.0 + T0;
+	      T2 = self.size_params.dvt2w;
+	  }
+	  else
+	  {   T4 = 1.0 / (3.0 + 8.0 * T0);
+	      T1 = (1.0 + 3.0 * T0) * T4;
+	      T2 = self.size_params.dvt2w * T4 * T4;
+	  }
+          ltw = self.model.factor1 * T3 * T1;
+          dltw_dVb = self.model.factor1 * (0.5 / T3 * T1 * dXdep_dVb + T3 * T2);
+
+          T0 = self.size_params.dvt1 * Leff / lt1;
+          if T0 < EXP_THRESHOLD {
+             T1 = exp(T0);
+              T2 = T1 - 1.0;
+              T3 = T2 * T2;
+              T4 = T3 + 2.0 * T1 * MIN_EXP;
+              Theta0 = T1 / T4;
+              dT1_dVb = -T0 * T1 * dlt1_dVb / lt1;
+              dTheta0_dVb = dT1_dVb * (T4 - 2.0 * T1 * (T2 + MIN_EXP)) / T4 / T4;
+          }
+          else
+{   Theta0 = 1.0 / (MAX_EXP - 2.0); /* 3.0 * MIN_EXP omitted */
+              dTheta0_dVb = 0.0;
+          }
+          newop.thetavth = self.size_params.dvt0 * Theta0;
+          Delt_vth = here->BSIM4thetavth * V0;
+          dDelt_vth_dVb = self.size_params.dvt0 * dTheta0_dVb * V0;
+
+          T0 = self.size_params.dvt1w * self.size_params.weff * Leff / ltw;
+          if T0 < EXP_THRESHOLD {
+             T1 = exp(T0);
+              T2 = T1 - 1.0;
+              T3 = T2 * T2;
+              T4 = T3 + 2.0 * T1 * MIN_EXP;
+              T5 = T1 / T4;
+              dT1_dVb = -T0 * T1 * dltw_dVb / ltw;
+              dT5_dVb = dT1_dVb * (T4 - 2.0 * T1 * (T2 + MIN_EXP)) / T4 / T4;
+          }
+          else
+{   T5 = 1.0 / (MAX_EXP - 2.0); /* 3.0 * MIN_EXP omitted */
+              dT5_dVb = 0.0;
+          }
+          T0 = self.size_params.dvt0w * T5;
+          T2 = T0 * V0;
+          dT2_dVb = self.size_params.dvt0w * dT5_dVb * V0;
+
+    //   TempRatio =  ckt->CKTtemp / self.model.tnom - 1.0;
+          T0 = sqrt(1.0 + self.size_params.lpe0 / Leff);
+          T1 = self.size_params.k1ox * (T0 - 1.0) * self.size_params.sqrtPhi
+             + (self.size_params.kt1 + self.size_params.kt1l / Leff
+             + self.size_params.kt2 * Vbseff) * self.intp.TempRatio;
+          Vth_NarrowW = toxe * self.size_params.phi
+	              / (self.size_params.weff + self.size_params.w0);
+
+	  T3 = here->BSIM4eta0 + self.size_params.etab * Vbseff;
+	  if T3 < 1.0e-4 {
+	     T9 = 1.0 / (3.0 - 2.0e4 * T3);
+	      T3 = (2.0e-4 - T3) * T9;
+	      T4 = T9 * T9;
+	  }
+	  else
+	  {   T4 = 1.0;
+	  }
+	  dDIBL_Sft_dVd = T3 * self.size_params.theta0vb0;
+          DIBL_Sft = dDIBL_Sft_dVd * Vds;
+
+ 	  Lpe_Vb = sqrt(1.0 + self.size_params.lpeb / Leff);
+
+          Vth = self.model.p() * self.intp.vth0 + (self.size_params.k1ox * sqrtPhis
+	      - self.size_params.k1 * self.size_params.sqrtPhi) * Lpe_Vb
+              - here->BSIM4k2ox * Vbseff - Delt_vth - T2 + (self.size_params.k3
+              + self.size_params.k3b * Vbseff) * Vth_NarrowW + T1 - DIBL_Sft;
+
+          dVth_dVb = Lpe_Vb * self.size_params.k1ox * dsqrtPhis_dVb - here->BSIM4k2ox
+                   - dDelt_vth_dVb - dT2_dVb + self.size_params.k3b * Vth_NarrowW
+                   - self.size_params.etab * Vds * self.size_params.theta0vb0 * T4
+                   + self.size_params.kt2 * self.intp.TempRatio;
+          dVth_dVd = -dDIBL_Sft_dVd;
+
+
+    /* Calculate n */
+          tmp1 = epssub / Xdep;
+	  newop.nstar = self.model.vtm / Charge_q * (self.model.coxe
+			   + tmp1 + self.size_params.cit);  
+          tmp2 = self.size_params.nfactor * tmp1;
+          tmp3 = self.size_params.cdsc + self.size_params.cdscb * Vbseff
+               + self.size_params.cdscd * Vds;
+	  tmp4 = (tmp2 + tmp3 * Theta0 + self.size_params.cit) / self.model.coxe;
+	  if tmp4 >= -0.5 {
+	     n = 1.0 + tmp4;
+	      dn_dVb = (-tmp2 / Xdep * dXdep_dVb + tmp3 * dTheta0_dVb
+                     + self.size_params.cdscb * Theta0) / self.model.coxe;
+              dn_dVd = self.size_params.cdscd * Theta0 / self.model.coxe;
+	  }
+	  else
+	  {   T0 = 1.0 / (3.0 + 8.0 * tmp4);
+	      n = (1.0 + 3.0 * tmp4) * T0;
+	      T0 *= T0;
+	      dn_dVb = (-tmp2 / Xdep * dXdep_dVb + tmp3 * dTheta0_dVb
+                     + self.size_params.cdscb * Theta0) / self.model.coxe * T0;
+              dn_dVd = self.size_params.cdscd * Theta0 / self.model.coxe * T0;
+	  }
+
+
+    /* Vth correction for Pocket implant */
+ 	  if self.size_params.dvtp0 > 0.0 {
+             T0 = -self.size_params.dvtp1 * Vds;
+              if T0 < -EXP_THRESHOLD {
+                 T2 = MIN_EXP;
+                  dT2_dVd = 0.0;
+              }
+              else
+              {   T2 = exp(T0);
+                  dT2_dVd = -self.size_params.dvtp1 * T2;
+              }
+
+              T3 = Leff + self.size_params.dvtp0 * (1.0 + T2);
+              dT3_dVd = self.size_params.dvtp0 * dT2_dVd;
+              if self.model.tempMod < 2 {
+              
+                T4 = Vtm * log(Leff / T3);
+                dT4_dVd = -Vtm * dT3_dVd / T3;
+              }
+              else
+              {
+                T4 = self.model.vtm0 * log(Leff / T3);
+                dT4_dVd = -self.model.vtm0 * dT3_dVd / T3;
+              }
+              dDITS_Sft_dVd = dn_dVd * T4 + n * dT4_dVd;
+              dDITS_Sft_dVb = T4 * dn_dVb;
+
+              Vth -= n * T4;
+              dVth_dVd -= dDITS_Sft_dVd;
+              dVth_dVb -= dDITS_Sft_dVb;
+	  }
+
+    /* v4.7 DITS_SFT2  */
+	if ((self.size_params.dvtp4  == 0.0) || (self.size_params.dvtp2factor == 0.0)) {
+	  T0 = 0.0;
+  	  DITS_Sft2 = 0.0;  
+	}
+	else
+	{
+    //T0 = exp(2.0 * self.size_params.dvtp4 * Vds);   /* beta code */
+	  T1 = 2.0 * self.size_params.dvtp4 * Vds;
+	  DEXP(T1, T0, T10);
+  	  DITS_Sft2 = self.size_params.dvtp2factor * (T0-1) / (T0+1);  
+    //dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T0 / ((T0+1) * (T0+1));   /* beta code */
+	  dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T10 / ((T0+1) * (T0+1));
+	  Vth -= DITS_Sft2;
+	  dVth_dVd -= dDITS_Sft2_dVd;
+	}
+
+
+
+          newop.von = Vth;
+
+	 
+    /* Poly Gate Si Depletion Effect */
+	  T0 = here->BSIM4vfb + self.size_params.phi;
+	  if(self.model.mtrlMod == 0)                
+	    T1 = EPSSI;
+	  else
+	    T1 = self.model.epsrgate * EPS0;
+    	  let (vgs_eff, dvgs_eff_dvg) = BSIM4polyDepletion(T0, self.size_params.ngate, T1, self.model.coxe, vgs);
+    	  let (vgd_eff, dvgd_eff_dvg) = BSIM4polyDepletion(T0, self.size_params.ngate, T1, self.model.coxe, vgd);
+    	 
+    	  if(self.guess.mode>0) {
+    	  	Vgs_eff = vgs_eff;
+    	  	dVgs_eff_dVg = dvgs_eff_dvg;
+    	  } else {
+    	  	Vgs_eff = vgd_eff;
+    	  	dVgs_eff_dVg = dvgd_eff_dvg;
+    	  }
+    	  newop.vgs_eff = vgs_eff;
+    	  newop.vgd_eff = vgd_eff;
+    	  newop.dvgs_eff_dvg = dvgs_eff_dvg;
+    	  newop.dvgd_eff_dvg = dvgd_eff_dvg;
+
+
+          Vgst = Vgs_eff - Vth;
+
+    /* Calculate Vgsteff */
+	  T0 = n * Vtm;
+	  T1 = self.size_params.mstar * Vgst;
+	  T2 = T1 / T0;
+	  if T2 > EXP_THRESHOLD {
+	     T10 = T1;
+	      dT10_dVg = self.size_params.mstar * dVgs_eff_dVg;
+              dT10_dVd = -dVth_dVd * self.size_params.mstar;
+              dT10_dVb = -dVth_dVb * self.size_params.mstar;
+	  }
+	  else if T2 < -EXP_THRESHOLD {
+	     T10 = Vtm * log(1.0 + MIN_EXP);
+              dT10_dVg = 0.0;
+              dT10_dVd = T10 * dn_dVd;
+              dT10_dVb = T10 * dn_dVb;
+	      T10 *= n;
+	  }
+	  else
+	  {   ExpVgst = exp(T2);
+	      T3 = Vtm * log(1.0 + ExpVgst);
+              T10 = n * T3;
+              dT10_dVg = self.size_params.mstar * ExpVgst / (1.0 + ExpVgst);
+              dT10_dVb = T3 * dn_dVb - dT10_dVg * (dVth_dVb + Vgst * dn_dVb / n);
+              dT10_dVd = T3 * dn_dVd - dT10_dVg * (dVth_dVd + Vgst * dn_dVd / n);
+	      dT10_dVg *= dVgs_eff_dVg;
+	  }
+
+	  T1 = self.size_params.voffcbn - (1.0 - self.size_params.mstar) * Vgst;
+	  T2 = T1 / T0;
+          if T2 < -EXP_THRESHOLD {
+             T3 = self.model.coxe * MIN_EXP / self.size_params.cdep0;
+	      T9 = self.size_params.mstar + T3 * n;
+              dT9_dVg = 0.0;
+              dT9_dVd = dn_dVd * T3;
+              dT9_dVb = dn_dVb * T3;
+          }
+          else if T2 > EXP_THRESHOLD {
+             T3 = self.model.coxe * MAX_EXP / self.size_params.cdep0;
+              T9 = self.size_params.mstar + T3 * n;
+              dT9_dVg = 0.0;
+              dT9_dVd = dn_dVd * T3;
+              dT9_dVb = dn_dVb * T3;
+          }
+          else
+          {   ExpVgst = exp(T2);
+	      T3 = self.model.coxe / self.size_params.cdep0;
+	      T4 = T3 * ExpVgst;
+	      T5 = T1 * T4 / T0;
+              T9 = self.size_params.mstar + n * T4;
+              dT9_dVg = T3 * (self.size_params.mstar - 1.0) * ExpVgst / Vtm;
+              dT9_dVb = T4 * dn_dVb - dT9_dVg * dVth_dVb - T5 * dn_dVb;
+              dT9_dVd = T4 * dn_dVd - dT9_dVg * dVth_dVd - T5 * dn_dVd;
+              dT9_dVg *= dVgs_eff_dVg;
+          }
+          newop.Vgsteff = Vgsteff = T10 / T9;
+	  T11 = T9 * T9;
+          dVgsteff_dVg = (T9 * dT10_dVg - T10 * dT9_dVg) / T11;
+          dVgsteff_dVd = (T9 * dT10_dVd - T10 * dT9_dVd) / T11;
+          dVgsteff_dVb = (T9 * dT10_dVb - T10 * dT9_dVb) / T11;
+
+    /* Calculate Effective Channel Geometry */
+          T9 = sqrtPhis - self.size_params.sqrtPhi;
+          Weff = self.size_params.weff - 2.0 * (self.size_params.dwg * Vgsteff
+               + self.size_params.dwb * T9);
+          dWeff_dVg = -2.0 * self.size_params.dwg;
+          dWeff_dVb = -2.0 * self.size_params.dwb * dsqrtPhis_dVb;
+
+if (Weff < 2.0e-8) /* to avoid the discontinuity problem due to Weff*/
+	  {   T0 = 1.0 / (6.0e-8 - 2.0 * Weff);
+	      Weff = 2.0e-8 * (4.0e-8 - Weff) * T0;
+	      T0 *= T0 * 4.0e-16;
+              dWeff_dVg *= T0;
+	      dWeff_dVb *= T0;
+          }
+
+	  if (self.model.rdsMod == 1)
+	      Rds = dRds_dVg = dRds_dVb = 0.0;
+          else
+          {   T0 = 1.0 + self.size_params.prwg * Vgsteff;
+	      dT0_dVg = -self.size_params.prwg / T0 / T0;
+	      T1 = self.size_params.prwb * T9;
+	      dT1_dVb = self.size_params.prwb * dsqrtPhis_dVb;
+
+	      T2 = 1.0 / T0 + T1;
+T3 = T2 + sqrt(T2 * T2 + 0.01); /* 0.01 = 4.0 * 0.05 * 0.05 */
+	      dT3_dVg = 1.0 + T2 / (T3 - T2);
+	      dT3_dVb = dT3_dVg * dT1_dVb;
+	      dT3_dVg *= dT0_dVg;
+
+	      T4 = self.size_params.rds0 * 0.5;
+	      Rds = self.size_params.rdswmin + T3 * T4;
+              dRds_dVg = T4 * dT3_dVg;
+              dRds_dVb = T4 * dT3_dVb;
+
+	      if (Rds > 0.0)
+newop.grdsw = 1.0 / Rds* self.intp.nf; /*4.6.2*/
+	      else
+                  newop.grdsw = 0.0;
+          }
+	 
+    /* Calculate Abulk */
+	  T9 = 0.5 * self.size_params.k1ox * Lpe_Vb / sqrtPhis;
+          T1 = T9 + here->BSIM4k2ox - self.size_params.k3b * Vth_NarrowW;
+          dT1_dVb = -T9 / sqrtPhis * dsqrtPhis_dVb;
+
+          T9 = sqrt(self.size_params.xj * Xdep);
+          tmp1 = Leff + 2.0 * T9;
+          T5 = Leff / tmp1;
+          tmp2 = self.size_params.a0 * T5;
+          tmp3 = self.size_params.weff + self.size_params.b1;
+          tmp4 = self.size_params.b0 / tmp3;
+          T2 = tmp2 + tmp4;
+          dT2_dVb = -T9 / tmp1 / Xdep * dXdep_dVb;
+          T6 = T5 * T5;
+          T7 = T5 * T6;
+
+          Abulk0 = 1.0 + T1 * T2;
+          dAbulk0_dVb = T1 * tmp2 * dT2_dVb + T2 * dT1_dVb;
+
+          T8 = self.size_params.ags * self.size_params.a0 * T7;
+          dAbulk_dVg = -T1 * T8;
+          Abulk = Abulk0 + dAbulk_dVg * Vgsteff;
+          dAbulk_dVb = dAbulk0_dVb - T8 * Vgsteff * (dT1_dVb
+		     + 3.0 * T1 * dT2_dVb);
+
+if (Abulk0 < 0.1) /* added to avoid the problems caused by Abulk0 */
+	  {   T9 = 1.0 / (3.0 - 20.0 * Abulk0);
+	      Abulk0 = (0.2 - Abulk0) * T9;
+	      dAbulk0_dVb *= T9 * T9;
+	  }
+
+          if Abulk < 0.1 {
+	     T9 = 1.0 / (3.0 - 20.0 * Abulk);
+	      Abulk = (0.2 - Abulk) * T9;
+              T10 = T9 * T9;
+	      dAbulk_dVb *= T10;
+              dAbulk_dVg *= T10;
+	  }
+	  newop.Abulk = Abulk;
+
+          T2 = self.size_params.keta * Vbseff;
+	  if T2 >= -0.9 {
+	     T0 = 1.0 / (1.0 + T2);
+              dT0_dVb = -self.size_params.keta * T0 * T0;
+	  }
+	  else
+	  {   T1 = 1.0 / (0.8 + T2);
+	      T0 = (17.0 + 20.0 * T2) * T1;
+              dT0_dVb = -self.size_params.keta * T1 * T1;
+	  }
+	  dAbulk_dVg *= T0;
+	  dAbulk_dVb = dAbulk_dVb * T0 + Abulk * dT0_dVb;
+	  dAbulk0_dVb = dAbulk0_dVb * T0 + Abulk0 * dT0_dVb;
+	  Abulk *= T0;
+	  Abulk0 *= T0;
+
+    /* Mobility calculation */
+	  if (self.model.mtrlMod && self.model.mtrlCompatMod == 0)
+	    T14 = 2.0 * self.model.p() *(self.model.phig - self.model.easub - 0.5*self.model.Eg0 + 0.45);  
+	  else
+	    T14 = 0.0;
+
+          if self.model.mobMod == 0 {
+             T0 = Vgsteff + Vth + Vth - T14;
+              T2 = self.size_params.ua + self.size_params.uc * Vbseff;
+              T3 = T0 / toxe;
+              T12 = sqrt(Vth * Vth + 0.0001);
+              T9 = 1.0/(Vgsteff + 2*T12);
+              T10 = T9*toxe;
+              T8 = self.size_params.ud * T10 * T10 * Vth;
+              T6 = T8 * Vth;
+              T5 = T3 * (T2 + self.size_params.ub * T3) + T6;
+              T7 = - 2.0 * T6 * T9;
+              T11 = T7 * Vth/T12;
+              dDenomi_dVg = (T2 + 2.0 * self.size_params.ub * T3) / toxe;
+              T13 = 2.0 * (dDenomi_dVg + T11 + T8);
+              dDenomi_dVd = T13 * dVth_dVd;
+              dDenomi_dVb = T13 * dVth_dVb + self.size_params.uc * T3;
+              dDenomi_dVg+= T7;
+          }
+          else if self.model.mobMod == 1 {
+             T0 = Vgsteff + Vth + Vth - T14;
+              T2 = 1.0 + self.size_params.uc * Vbseff;
+              T3 = T0 / toxe;
+              T4 = T3 * (self.size_params.ua + self.size_params.ub * T3);
+              T12 = sqrt(Vth * Vth + 0.0001);
+              T9 = 1.0/(Vgsteff + 2*T12);
+              T10 = T9*toxe;
+              T8 = self.size_params.ud * T10 * T10 * Vth;
+              T6 = T8 * Vth;
+              T5 = T4 * T2 + T6;
+              T7 = - 2.0 * T6 * T9;
+              T11 = T7 * Vth/T12;
+              dDenomi_dVg = (self.size_params.ua + 2.0 * self.size_params.ub * T3) * T2 / toxe;
+              T13 = 2.0 * (dDenomi_dVg + T11 + T8);
+              dDenomi_dVd = T13 * dVth_dVd;
+              dDenomi_dVb = T13 * dVth_dVb + self.size_params.uc * T4;
+              dDenomi_dVg+= T7;
+          }
+          else if self.model.mobMod == 2 {
+             T0 = (Vgsteff + self.intp.vtfbphi1) / toxe;
+              T1 = exp(self.size_params.eu * log(T0));
+              dT1_dVg = T1 * self.size_params.eu / T0 / toxe;
+              T2 = self.size_params.ua + self.size_params.uc * Vbseff;
+
+              T12 = sqrt(Vth * Vth + 0.0001);
+              T9 = 1.0/(Vgsteff + 2*T12);
+              T10 = T9*toxe;
+              T8 = self.size_params.ud * T10 * T10 * Vth;
+              T6 = T8 * Vth;
+              T5 = T1 * T2 + T6;
+              T7 = - 2.0 * T6 * T9;
+              T11 = T7 * Vth/T12;
+              dDenomi_dVg = T2 * dT1_dVg + T7;
+              T13 = 2.0 * (T11 + T8);
+              dDenomi_dVd = T13 * dVth_dVd;
+              dDenomi_dVb = T13 * dVth_dVb + T1 * self.size_params.uc;
+          }
+else if (self.model.mobMod == 4) /* Synopsys 08/30/2013 add */
+	  {
+              T0 = Vgsteff + self.intp.vtfbphi1 - T14;
+              T2 = self.size_params.ua + self.size_params.uc * Vbseff;
+              T3 = T0 / toxe;	 
+              T12 = sqrt(self.intp.vtfbphi1*self.intp.vtfbphi1 + 0.0001);
+              T9 = 1.0/(Vgsteff + 2*T12);
+              T10 = T9*toxe;
+              T8 = self.size_params.ud * T10 * T10 * self.intp.vtfbphi1;
+              T6 = T8 * self.intp.vtfbphi1;
+              T5 = T3 * (T2 + self.size_params.ub * T3) + T6;
+              T7 = - 2.0 * T6 * T9;
+              dDenomi_dVg = (T2 + 2.0 * self.size_params.ub * T3) / toxe;
+              dDenomi_dVd = 0.0;
+              dDenomi_dVb = self.size_params.uc * T3;
+              dDenomi_dVg+= T7;
+	  }
+else if (self.model.mobMod == 5) /* Synopsys 08/30/2013 add */
+	  {
+              T0 = Vgsteff + self.intp.vtfbphi1 - T14;
+              T2 = 1.0 + self.size_params.uc * Vbseff;
+              T3 = T0 / toxe;
+              T4 = T3 * (self.size_params.ua + self.size_params.ub * T3);
+              T12 = sqrt(self.intp.vtfbphi1 * self.intp.vtfbphi1 + 0.0001);
+              T9 = 1.0/(Vgsteff + 2*T12);
+              T10 = T9*toxe;
+              T8 = self.size_params.ud * T10 * T10 * self.intp.vtfbphi1;
+              T6 = T8 * self.intp.vtfbphi1;
+              T5 = T4 * T2 + T6;
+              T7 = - 2.0 * T6 * T9;
+              dDenomi_dVg = (self.size_params.ua + 2.0 * self.size_params.ub * T3) * T2
+                          / toxe;
+              dDenomi_dVd = 0.0;
+              dDenomi_dVb = self.size_params.uc * T4;
+              dDenomi_dVg+= T7;	    	      	 
+	  }	 
+else if (self.model.mobMod == 6) /* Synopsys 08/30/2013 modify */
+          {   T0 = (Vgsteff + self.intp.vtfbphi1) / toxe;
+              T1 = exp(self.size_params.eu * log(T0));
+              dT1_dVg = T1 * self.size_params.eu / T0 / toxe;
+              T2 = self.size_params.ua + self.size_params.uc * Vbseff;
+
+              T12 = sqrt(self.intp.vtfbphi1 * self.intp.vtfbphi1 + 0.0001);
+              T9 = 1.0/(Vgsteff + 2*T12);
+              T10 = T9*toxe;
+              T8 = self.size_params.ud * T10 * T10 * self.intp.vtfbphi1;
+              T6 = T8 * self.intp.vtfbphi1;
+              T5 = T1 * T2 + T6;
+              T7 = - 2.0 * T6 * T9;        
+              dDenomi_dVg = T2 * dT1_dVg + T7;              
+              dDenomi_dVd = 0;
+              dDenomi_dVb = T1 * self.size_params.uc;
+          }		  
+	 
+    /*high K mobility*/
+	 else
+      {		 	
+		
+			     
+    /*univsersal mobility*/
+		 T0 = (Vgsteff + self.intp.vtfbphi1)* 1.0e-8 / toxe/6.0;
+	     T1 = exp(self.size_params.eu * log(T0));
+		 dT1_dVg = T1 * self.size_params.eu * 1.0e-8/ T0 / toxe/6.0;
+	     T2 = self.size_params.ua + self.size_params.uc * Vbseff;
+		
+    /*Coulombic*/
+		 VgsteffVth = self.size_params.VgsteffVth;
+		
+		 T10 = exp(self.size_params.ucs * log(0.5 + 0.5 * Vgsteff/VgsteffVth));
+		 	 T11 =  self.size_params.ud/T10;
+		 dT11_dVg = - 0.5 * self.size_params.ucs * T11 /(0.5 + 0.5*Vgsteff/VgsteffVth)/VgsteffVth;
+		
+		dDenomi_dVg = T2 * dT1_dVg + dT11_dVg;
+		dDenomi_dVd = 0.0;
+		dDenomi_dVb = T1 * self.size_params.uc;
+		
+		T5 = T1 * T2 + T11;
+	  }
+
+       	  
+	 
+      
+
+	  if T5 >= -0.8 {
+	     Denomi = 1.0 + T5;
+	  }
+	  else
+	  {   T9 = 1.0 / (7.0 + 10.0 * T5);
+	      Denomi = (0.6 + T5) * T9;
+	      T9 *= T9;
+              dDenomi_dVg *= T9;
+              dDenomi_dVd *= T9;
+              dDenomi_dVb *= T9;
+	  }
+	 
+
+          newop.ueff = ueff = here->BSIM4u0temp / Denomi;
+	  T9 = -ueff / Denomi;
+          dueff_dVg = T9 * dDenomi_dVg;
+          dueff_dVd = T9 * dDenomi_dVd;
+          dueff_dVb = T9 * dDenomi_dVb;
+
+    /* Saturation Drain Voltage  Vdsat */
+          WVCox = Weff * here->BSIM4vsattemp * self.model.coxe;
+          WVCoxRds = WVCox * Rds;
+
+          Esat = 2.0 * here->BSIM4vsattemp / ueff;
+          newop.EsatL = EsatL = Esat * Leff;
+          T0 = -EsatL /ueff;
+          dEsatL_dVg = T0 * dueff_dVg;
+          dEsatL_dVd = T0 * dueff_dVd;
+          dEsatL_dVb = T0 * dueff_dVb;
+  
+    /* Sqrt() */
+          a1 = self.size_params.a1;
+	  if a1 == 0.0 {
+	     Lambda = self.size_params.a2;
+	      dLambda_dVg = 0.0;
+	  }
+	  else if a1 > 0.0 {
+	     T0 = 1.0 - self.size_params.a2;
+	      T1 = T0 - self.size_params.a1 * Vgsteff - 0.0001;
+	      T2 = sqrt(T1 * T1 + 0.0004 * T0);
+	      Lambda = self.size_params.a2 + T0 - 0.5 * (T1 + T2);
+	      dLambda_dVg = 0.5 * self.size_params.a1 * (1.0 + T1 / T2);
+	  }
+	  else
+	  {   T1 = self.size_params.a2 + self.size_params.a1 * Vgsteff - 0.0001;
+	      T2 = sqrt(T1 * T1 + 0.0004 * self.size_params.a2);
+	      Lambda = 0.5 * (T1 + T2);
+	      dLambda_dVg = 0.5 * self.size_params.a1 * (1.0 + T1 / T2);
+	  }
+
+          Vgst2Vtm = Vgsteff + 2.0 * Vtm;
+          if Rds > 0 {
+             tmp2 = dRds_dVg / Rds + dWeff_dVg / Weff;
+              tmp3 = dRds_dVb / Rds + dWeff_dVb / Weff;
+          }
+          else
+          {   tmp2 = dWeff_dVg / Weff;
+              tmp3 = dWeff_dVb / Weff;
+	  }
+          if (Rds == 0.0) && (Lambda == 1.0) {
+             T0 = 1.0 / (Abulk * EsatL + Vgst2Vtm);
+              tmp1 = 0.0;
+	      T1 = T0 * T0;
+	      T2 = Vgst2Vtm * T0;
+              T3 = EsatL * Vgst2Vtm;
+              Vdsat = T3 * T0;
+                          
+              dT0_dVg = -(Abulk * dEsatL_dVg + EsatL * dAbulk_dVg + 1.0) * T1;
+              dT0_dVd = -(Abulk * dEsatL_dVd) * T1;
+              dT0_dVb = -(Abulk * dEsatL_dVb + dAbulk_dVb * EsatL) * T1;  
+
+              dVdsat_dVg = T3 * dT0_dVg + T2 * dEsatL_dVg + EsatL * T0;
+              dVdsat_dVd = T3 * dT0_dVd + T2 * dEsatL_dVd;
+              dVdsat_dVb = T3 * dT0_dVb + T2 * dEsatL_dVb;  
+          }
+          else
+          {   tmp1 = dLambda_dVg / (Lambda * Lambda);
+              T9 = Abulk * WVCoxRds;
+	      T8 = Abulk * T9;
+	      T7 = Vgst2Vtm * T9;
+              T6 = Vgst2Vtm * WVCoxRds;
+              T0 = 2.0 * Abulk * (T9 - 1.0 + 1.0 / Lambda);
+              dT0_dVg = 2.0 * (T8 * tmp2 - Abulk * tmp1
+		      + (2.0 * T9 + 1.0 / Lambda - 1.0) * dAbulk_dVg);
+            
+              dT0_dVb = 2.0 * (T8 * (2.0 / Abulk * dAbulk_dVb + tmp3)
+		      + (1.0 / Lambda - 1.0) * dAbulk_dVb);
+	      dT0_dVd = 0.0;
+              T1 = Vgst2Vtm * (2.0 / Lambda - 1.0) + Abulk * EsatL + 3.0 * T7;
+            
+              dT1_dVg = (2.0 / Lambda - 1.0) - 2.0 * Vgst2Vtm * tmp1
+		      + Abulk * dEsatL_dVg + EsatL * dAbulk_dVg + 3.0 * (T9
+		      + T7 * tmp2 + T6 * dAbulk_dVg);
+              dT1_dVb = Abulk * dEsatL_dVb + EsatL * dAbulk_dVb
+	              + 3.0 * (T6 * dAbulk_dVb + T7 * tmp3);
+              dT1_dVd = Abulk * dEsatL_dVd;
+
+              T2 = Vgst2Vtm * (EsatL + 2.0 * T6);
+              dT2_dVg = EsatL + Vgst2Vtm * dEsatL_dVg
+		      + T6 * (4.0 + 2.0 * Vgst2Vtm * tmp2);
+              dT2_dVb = Vgst2Vtm * (dEsatL_dVb + 2.0 * T6 * tmp3);
+              dT2_dVd = Vgst2Vtm * dEsatL_dVd;
+
+              T3 = sqrt(T1 * T1 - 2.0 * T0 * T2);
+              Vdsat = (T1 - T3) / T0;
+
+              dT3_dVg = (T1 * dT1_dVg - 2.0 * (T0 * dT2_dVg + T2 * dT0_dVg))
+	              / T3;
+              dT3_dVd = (T1 * dT1_dVd - 2.0 * (T0 * dT2_dVd + T2 * dT0_dVd))
+		      / T3;
+              dT3_dVb = (T1 * dT1_dVb - 2.0 * (T0 * dT2_dVb + T2 * dT0_dVb))
+		      / T3;
+
+              dVdsat_dVg = (dT1_dVg - (T1 * dT1_dVg - dT0_dVg * T2
+			 - T0 * dT2_dVg) / T3 - Vdsat * dT0_dVg) / T0;
+              dVdsat_dVb = (dT1_dVb - (T1 * dT1_dVb - dT0_dVb * T2
+			 - T0 * dT2_dVb) / T3 - Vdsat * dT0_dVb) / T0;
+              dVdsat_dVd = (dT1_dVd - (T1 * dT1_dVd - T0 * dT2_dVd) / T3) / T0;
+          }
+          newop.vdsat = Vdsat;
+
+    /* Calculate Vdseff */
+          T1 = Vdsat - Vds - self.size_params.delta;
+          dT1_dVg = dVdsat_dVg;
+          dT1_dVd = dVdsat_dVd - 1.0;
+          dT1_dVb = dVdsat_dVb;
+
+          T2 = sqrt(T1 * T1 + 4.0 * self.size_params.delta * Vdsat);
+	  T0 = T1 / T2;
+   	  T9 = 2.0 * self.size_params.delta;
+	  T3 = T9 / T2;
+          dT2_dVg = T0 * dT1_dVg + T3 * dVdsat_dVg;
+          dT2_dVd = T0 * dT1_dVd + T3 * dVdsat_dVd;
+          dT2_dVb = T0 * dT1_dVb + T3 * dVdsat_dVb;
+
+	  if T1 >= 0.0 {
+	     Vdseff = Vdsat - 0.5 * (T1 + T2);
+	      dVdseff_dVg = dVdsat_dVg - 0.5 * (dT1_dVg + dT2_dVg);
+              dVdseff_dVd = dVdsat_dVd - 0.5 * (dT1_dVd + dT2_dVd);
+              dVdseff_dVb = dVdsat_dVb - 0.5 * (dT1_dVb + dT2_dVb);
+	  }
+	  else
+	  {   T4 = T9 / (T2 - T1);
+	      T5 = 1.0 - T4;
+	      T6 = Vdsat * T4 / (T2 - T1);
+	      Vdseff = Vdsat * T5;
+              dVdseff_dVg = dVdsat_dVg * T5 + T6 * (dT2_dVg - dT1_dVg);
+              dVdseff_dVd = dVdsat_dVd * T5 + T6 * (dT2_dVd - dT1_dVd);
+              dVdseff_dVb = dVdsat_dVb * T5 + T6 * (dT2_dVb - dT1_dVb);
+	  }
+
+          if Vds == 0.0 {
+            Vdseff = 0.0;
+             dVdseff_dVg = 0.0;
+             dVdseff_dVb = 0.0;
+          }
+
+          if (Vdseff > Vds)
+              Vdseff = Vds;
+          diffVds = Vds - Vdseff;
+          newop.Vdseff = Vdseff;
+          
+    /* Velocity Overshoot */
+        if((self.model.lambdaGiven) && (self.model.lambda > 0.0) )
+        {  
+          T1 =  Leff * ueff;
+          T2 = self.size_params.lambda / T1;
+          T3 = -T2 / T1 * Leff;
+          dT2_dVd = T3 * dueff_dVd;
+          dT2_dVg = T3 * dueff_dVg;
+          dT2_dVb = T3 * dueff_dVb;
+          T5 = 1.0 / (Esat * self.size_params.litl);
+          T4 = -T5 / EsatL;
+          dT5_dVg = dEsatL_dVg * T4;
+          dT5_dVd = dEsatL_dVd * T4;
+          dT5_dVb = dEsatL_dVb * T4;
+          T6 = 1.0 + diffVds  * T5;
+          dT6_dVg = dT5_dVg * diffVds - dVdseff_dVg * T5;
+          dT6_dVd = dT5_dVd * diffVds + (1.0 - dVdseff_dVd) * T5;
+          dT6_dVb = dT5_dVb * diffVds - dVdseff_dVb * T5;
+          T7 = 2.0 / (T6 * T6 + 1.0);
+          T8 = 1.0 - T7;
+          T9 = T6 * T7 * T7;
+          dT8_dVg = T9 * dT6_dVg;
+          dT8_dVd = T9 * dT6_dVd;
+          dT8_dVb = T9 * dT6_dVb;
+          T10 = 1.0 + T2 * T8;
+          dT10_dVg = dT2_dVg * T8 + T2 * dT8_dVg;
+          dT10_dVd = dT2_dVd * T8 + T2 * dT8_dVd;
+          dT10_dVb = dT2_dVb * T8 + T2 * dT8_dVb;
+          if(T10 == 1.0)
+                dT10_dVg = dT10_dVd = dT10_dVb = 0.0;
+
+          dEsatL_dVg *= T10;
+          dEsatL_dVg += EsatL * dT10_dVg;
+          dEsatL_dVd *= T10;
+          dEsatL_dVd += EsatL * dT10_dVd;
+          dEsatL_dVb *= T10;
+          dEsatL_dVb += EsatL * dT10_dVb;
+          EsatL *= T10;
+Esat = EsatL / Leff; /* bugfix by Wenwei Yang (4.6.4) */
+          newop.EsatL = EsatL;
+        }
+
+    /* Calculate Vasat */
+          tmp4 = 1.0 - 0.5 * Abulk * Vdsat / Vgst2Vtm;
+          T9 = WVCoxRds * Vgsteff;
+	  T8 = T9 / Vgst2Vtm;
+          T0 = EsatL + Vdsat + 2.0 * T9 * tmp4;
+        
+          T7 = 2.0 * WVCoxRds * tmp4;
+          dT0_dVg = dEsatL_dVg + dVdsat_dVg + T7 * (1.0 + tmp2 * Vgsteff)
+		  - T8 * (Abulk * dVdsat_dVg - Abulk * Vdsat / Vgst2Vtm
+		  + Vdsat * dAbulk_dVg);  
+		  
+          dT0_dVb = dEsatL_dVb + dVdsat_dVb + T7 * tmp3 * Vgsteff
+		  - T8 * (dAbulk_dVb * Vdsat + Abulk * dVdsat_dVb);
+          dT0_dVd = dEsatL_dVd + dVdsat_dVd - T8 * Abulk * dVdsat_dVd;
+
+          T9 = WVCoxRds * Abulk;
+          T1 = 2.0 / Lambda - 1.0 + T9;
+          dT1_dVg = -2.0 * tmp1 +  WVCoxRds * (Abulk * tmp2 + dAbulk_dVg);
+          dT1_dVb = dAbulk_dVb * WVCoxRds + T9 * tmp3;
+
+          Vasat = T0 / T1;
+          dVasat_dVg = (dT0_dVg - Vasat * dT1_dVg) / T1;
+          dVasat_dVb = (dT0_dVb - Vasat * dT1_dVb) / T1;
+          dVasat_dVd = dT0_dVd / T1;
+
+    /* Calculate Idl first */
+	     
+          tmp1 = self.intp.vtfbphi2;
+          tmp2 = 2.0e8 * here->BSIM4toxp;
+          dT0_dVg = 1.0 / tmp2;
+          T0 = (Vgsteff + tmp1) * dT0_dVg;
+
+          tmp3 = exp(self.model.bdos * 0.7 * log(T0));
+          T1 = 1.0 + tmp3;
+          T2 = self.model.bdos * 0.7 * tmp3 / T0;
+          Tcen = self.model.ados * 1.9e-9 / T1;
+          dTcen_dVg = -Tcen * T2 * dT0_dVg / T1;
+
+          Coxeff = epssub * here->BSIM4coxp
+                 / (epssub + here->BSIM4coxp * Tcen);
+	  newop.Coxeff = Coxeff;
+          dCoxeff_dVg = -Coxeff * Coxeff * dTcen_dVg / epssub;
+
+          CoxeffWovL = Coxeff * Weff / Leff;
+          beta = ueff * CoxeffWovL;
+          T3 = ueff / Leff;
+          dbeta_dVg = CoxeffWovL * dueff_dVg + T3
+                    * (Weff * dCoxeff_dVg + Coxeff * dWeff_dVg);
+          dbeta_dVd = CoxeffWovL * dueff_dVd;
+          dbeta_dVb = CoxeffWovL * dueff_dVb + T3 * Coxeff * dWeff_dVb;
+
+          newop.AbovVgst2Vtm = Abulk / Vgst2Vtm;
+          T0 = 1.0 - 0.5 * Vdseff * self.intp.AbovVgst2Vtm;
+          dT0_dVg = -0.5 * (Abulk * dVdseff_dVg
+                  - Abulk * Vdseff / Vgst2Vtm + Vdseff * dAbulk_dVg) / Vgst2Vtm;
+          dT0_dVd = -0.5 * Abulk * dVdseff_dVd / Vgst2Vtm;
+          dT0_dVb = -0.5 * (Abulk * dVdseff_dVb + dAbulk_dVb * Vdseff)
+                  / Vgst2Vtm;
+
+          fgche1 = Vgsteff * T0;
+          dfgche1_dVg = Vgsteff * dT0_dVg + T0;
+          dfgche1_dVd = Vgsteff * dT0_dVd;
+          dfgche1_dVb = Vgsteff * dT0_dVb;
+
+          T9 = Vdseff / EsatL;
+          fgche2 = 1.0 + T9;
+          dfgche2_dVg = (dVdseff_dVg - T9 * dEsatL_dVg) / EsatL;
+          dfgche2_dVd = (dVdseff_dVd - T9 * dEsatL_dVd) / EsatL;
+          dfgche2_dVb = (dVdseff_dVb - T9 * dEsatL_dVb) / EsatL;
+
+          gche = beta * fgche1 / fgche2;
+          dgche_dVg = (beta * dfgche1_dVg + fgche1 * dbeta_dVg
+                    - gche * dfgche2_dVg) / fgche2;
+          dgche_dVd = (beta * dfgche1_dVd + fgche1 * dbeta_dVd
+                    - gche * dfgche2_dVd) / fgche2;
+          dgche_dVb = (beta * dfgche1_dVb + fgche1 * dbeta_dVb
+                    - gche * dfgche2_dVb) / fgche2;
+
+          T0 = 1.0 + gche * Rds;
+          Idl = gche / T0;
+          T1 = (1.0 - Idl * Rds) / T0;
+          T2 = Idl * Idl;
+          dIdl_dVg = T1 * dgche_dVg - T2 * dRds_dVg;
+          dIdl_dVd = T1 * dgche_dVd;
+          dIdl_dVb = T1 * dgche_dVb - T2 * dRds_dVb;
+
+    /* Calculate degradation factor due to pocket implant */
+
+	  if self.size_params.fprout <= 0.0 {
+	     FP = 1.0;
+	      dFP_dVg = 0.0;
+	  }
+	  else
+	  {   T9 = self.size_params.fprout * sqrt(Leff) / Vgst2Vtm;
+              FP = 1.0 / (1.0 + T9);
+              dFP_dVg = FP * FP * T9 / Vgst2Vtm;
+	  }
+
+    /* Calculate VACLM */
+          T8 = self.size_params.pvag / EsatL;
+          T9 = T8 * Vgsteff;
+          if T9 > -0.9 {
+             PvagTerm = 1.0 + T9;
+              dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / EsatL);
+              dPvagTerm_dVb = -T9 * dEsatL_dVb / EsatL;
+              dPvagTerm_dVd = -T9 * dEsatL_dVd / EsatL;
+          }
+          else
+          {   T4 = 1.0 / (17.0 + 20.0 * T9);
+              PvagTerm = (0.8 + T9) * T4;
+              T4 *= T4;
+              dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / EsatL) * T4;
+              T9 *= T4 / EsatL;
+              dPvagTerm_dVb = -T9 * dEsatL_dVb;
+              dPvagTerm_dVd = -T9 * dEsatL_dVd;
+          }
+
+          if (self.size_params.pclm > MIN_EXP) && (diffVds > 1.0e-10) {
+	     T0 = 1.0 + Rds * Idl;
+              dT0_dVg = dRds_dVg * Idl + Rds * dIdl_dVg;
+              dT0_dVd = Rds * dIdl_dVd;
+              dT0_dVb = dRds_dVb * Idl + Rds * dIdl_dVb;
+
+              T2 = Vdsat / Esat;
+	      T1 = Leff + T2;
+              dT1_dVg = (dVdsat_dVg - T2 * dEsatL_dVg / Leff) / Esat;
+              dT1_dVd = (dVdsat_dVd - T2 * dEsatL_dVd / Leff) / Esat;
+              dT1_dVb = (dVdsat_dVb - T2 * dEsatL_dVb / Leff) / Esat;
+
+              Cclm = FP * PvagTerm * T0 * T1 / (self.size_params.pclm * self.size_params.litl);
+              dCclm_dVg = Cclm * (dFP_dVg / FP + dPvagTerm_dVg / PvagTerm
+                        + dT0_dVg / T0 + dT1_dVg / T1);
+              dCclm_dVb = Cclm * (dPvagTerm_dVb / PvagTerm + dT0_dVb / T0
+                        + dT1_dVb / T1);
+              dCclm_dVd = Cclm * (dPvagTerm_dVd / PvagTerm + dT0_dVd / T0
+                        + dT1_dVd / T1);
+              VACLM = Cclm * diffVds;
+
+              dVACLM_dVg = dCclm_dVg * diffVds - dVdseff_dVg * Cclm;
+              dVACLM_dVb = dCclm_dVb * diffVds - dVdseff_dVb * Cclm;
+              dVACLM_dVd = dCclm_dVd * diffVds + (1.0 - dVdseff_dVd) * Cclm;
+          }
+          else
+          {   VACLM = Cclm = MAX_EXP;
+              dVACLM_dVd = dVACLM_dVg = dVACLM_dVb = 0.0;
+              dCclm_dVd = dCclm_dVg = dCclm_dVb = 0.0;
+          }
+
+    /* Calculate VADIBL */
+          if self.size_params.thetaRout > MIN_EXP {
+	     T8 = Abulk * Vdsat;
+	      T0 = Vgst2Vtm * T8;
+              dT0_dVg = Vgst2Vtm * Abulk * dVdsat_dVg + T8
+		      + Vgst2Vtm * Vdsat * dAbulk_dVg;
+              dT0_dVb = Vgst2Vtm * (dAbulk_dVb * Vdsat + Abulk * dVdsat_dVb);
+              dT0_dVd = Vgst2Vtm * Abulk * dVdsat_dVd;
+
+              T1 = Vgst2Vtm + T8;
+              dT1_dVg = 1.0 + Abulk * dVdsat_dVg + Vdsat * dAbulk_dVg;
+              dT1_dVb = Abulk * dVdsat_dVb + dAbulk_dVb * Vdsat;
+              dT1_dVd = Abulk * dVdsat_dVd;
+
+	      T9 = T1 * T1;
+	      T2 = self.size_params.thetaRout;
+              VADIBL = (Vgst2Vtm - T0 / T1) / T2;
+              dVADIBL_dVg = (1.0 - dT0_dVg / T1 + T0 * dT1_dVg / T9) / T2;
+              dVADIBL_dVb = (-dT0_dVb / T1 + T0 * dT1_dVb / T9) / T2;
+              dVADIBL_dVd = (-dT0_dVd / T1 + T0 * dT1_dVd / T9) / T2;
+
+	      T7 = self.size_params.pdiblb * Vbseff;
+	      if T7 >= -0.9 {
+	         T3 = 1.0 / (1.0 + T7);
+                  VADIBL *= T3;
+                  dVADIBL_dVg *= T3;
+                  dVADIBL_dVb = (dVADIBL_dVb - VADIBL * self.size_params.pdiblb)
+			      * T3;
+                  dVADIBL_dVd *= T3;
+	      }
+	      else
+	      {   T4 = 1.0 / (0.8 + T7);
+		  T3 = (17.0 + 20.0 * T7) * T4;
+                  dVADIBL_dVg *= T3;
+                  dVADIBL_dVb = dVADIBL_dVb * T3
+			      - VADIBL * self.size_params.pdiblb * T4 * T4;
+                  dVADIBL_dVd *= T3;
+                  VADIBL *= T3;
+	      }
+
+              dVADIBL_dVg = dVADIBL_dVg * PvagTerm + VADIBL * dPvagTerm_dVg;
+              dVADIBL_dVb = dVADIBL_dVb * PvagTerm + VADIBL * dPvagTerm_dVb;
+              dVADIBL_dVd = dVADIBL_dVd * PvagTerm + VADIBL * dPvagTerm_dVd;
+              VADIBL *= PvagTerm;
+          }
+	  else
+	  {   VADIBL = MAX_EXP;
+              dVADIBL_dVd = dVADIBL_dVg = dVADIBL_dVb = 0.0;
+          }
+
+    /* Calculate Va */
+          Va = Vasat + VACLM;
+          dVa_dVg = dVasat_dVg + dVACLM_dVg;
+          dVa_dVb = dVasat_dVb + dVACLM_dVb;
+          dVa_dVd = dVasat_dVd + dVACLM_dVd;
+
+    /* Calculate VADITS */
+          T0 = self.size_params.pditsd * Vds;
+          if T0 > EXP_THRESHOLD {
+              T1 = MAX_EXP;
+              dT1_dVd = 0;
+          }
+	  else
+          {   T1 = exp(T0);
+              dT1_dVd = T1 * self.size_params.pditsd;
+          }
+
+          if self.size_params.pdits > MIN_EXP {
+              T2 = 1.0 + self.model.pditsl * Leff;
+              VADITS = (1.0 + T2 * T1) / self.size_params.pdits;
+              dVADITS_dVg = VADITS * dFP_dVg;
+              dVADITS_dVd = FP * T2 * dT1_dVd / self.size_params.pdits;
+	      VADITS *= FP;
+          }
+	  else
+          {   VADITS = MAX_EXP;
+              dVADITS_dVg = dVADITS_dVd = 0;
+          }
+
+    /* Calculate VASCBE */
+if ((self.size_params.pscbe2 > 0.0)&&(self.size_params.pscbe1>=0.0)) /*4.6.2*/
+	  {   if (diffVds > self.size_params.pscbe1 * self.size_params.litl
+		  / EXP_THRESHOLD)
+	      {   T0 =  self.size_params.pscbe1 * self.size_params.litl / diffVds;
+	          VASCBE = Leff * exp(T0) / self.size_params.pscbe2;
+                  T1 = T0 * VASCBE / diffVds;
+                  dVASCBE_dVg = T1 * dVdseff_dVg;
+                  dVASCBE_dVd = -T1 * (1.0 - dVdseff_dVd);
+                  dVASCBE_dVb = T1 * dVdseff_dVb;
+              }
+	      else
+	      {   VASCBE = MAX_EXP * Leff/self.size_params.pscbe2;
+                  dVASCBE_dVg = dVASCBE_dVd = dVASCBE_dVb = 0.0;
+              }
+	  }
+	  else
+	  {   VASCBE = MAX_EXP;
+              dVASCBE_dVg = dVASCBE_dVd = dVASCBE_dVb = 0.0;
+	  }
+
+    /* Add DIBL to Ids */
+          T9 = diffVds / VADIBL;
+          T0 = 1.0 + T9;
+          Idsa = Idl * T0;
+          dIdsa_dVg = T0 * dIdl_dVg - Idl * (dVdseff_dVg + T9 * dVADIBL_dVg) / VADIBL;
+          dIdsa_dVd = T0 * dIdl_dVd + Idl
+                    * (1.0 - dVdseff_dVd - T9 * dVADIBL_dVd) / VADIBL;
+          dIdsa_dVb = T0 * dIdl_dVb - Idl * (dVdseff_dVb + T9 * dVADIBL_dVb) / VADIBL;
+
+    /* Add DITS to Ids */
+          T9 = diffVds / VADITS;
+          T0 = 1.0 + T9;
+          dIdsa_dVg = T0 * dIdsa_dVg - Idsa * (dVdseff_dVg + T9 * dVADITS_dVg) / VADITS;
+          dIdsa_dVd = T0 * dIdsa_dVd + Idsa
+		    * (1.0 - dVdseff_dVd - T9 * dVADITS_dVd) / VADITS;
+          dIdsa_dVb = T0 * dIdsa_dVb - Idsa * dVdseff_dVb / VADITS;
+          Idsa *= T0;
+
+    /* Add CLM to Ids */
+          T0 = log(Va / Vasat);
+          dT0_dVg = dVa_dVg / Va - dVasat_dVg / Vasat;
+          dT0_dVb = dVa_dVb / Va - dVasat_dVb / Vasat;
+          dT0_dVd = dVa_dVd / Va - dVasat_dVd / Vasat;
+          T1 = T0 / Cclm;
+          T9 = 1.0 + T1;
+          dT9_dVg = (dT0_dVg - T1 * dCclm_dVg) / Cclm;
+          dT9_dVb = (dT0_dVb - T1 * dCclm_dVb) / Cclm;
+          dT9_dVd = (dT0_dVd - T1 * dCclm_dVd) / Cclm;
+
+          dIdsa_dVg = dIdsa_dVg * T9 + Idsa * dT9_dVg;
+          dIdsa_dVb = dIdsa_dVb * T9 + Idsa * dT9_dVb;
+          dIdsa_dVd = dIdsa_dVd * T9 + Idsa * dT9_dVd;
+          Idsa *= T9;
+
+    /* Substrate current begins */
+          tmp = self.size_params.alpha0 + self.size_params.alpha1 * Leff;
+          if (tmp <= 0.0) || (self.size_params.beta0 <= 0.0) {
+              Isub = Gbd = Gbb = Gbg = 0.0;
+          }
+          else
+          {   T2 = tmp / Leff;
+              if diffVds > self.size_params.beta0 / EXP_THRESHOLD {
+                  T0 = -self.size_params.beta0 / diffVds;
+                  T1 = T2 * diffVds * exp(T0);
+                  T3 = T1 / diffVds * (T0 - 1.0);
+                  dT1_dVg = T3 * dVdseff_dVg;
+                  dT1_dVd = T3 * (dVdseff_dVd - 1.0);
+                  dT1_dVb = T3 * dVdseff_dVb;
+              }
+              else
+              {   T3 = T2 * MIN_EXP;
+                  T1 = T3 * diffVds;
+                  dT1_dVg = -T3 * dVdseff_dVg;
+                  dT1_dVd = T3 * (1.0 - dVdseff_dVd);
+                  dT1_dVb = -T3 * dVdseff_dVb;
+              }
+              T4 = Idsa * Vdseff;
+              Isub = T1 * T4;
+              Gbg = T1 * (dIdsa_dVg * Vdseff + Idsa * dVdseff_dVg)
+                  + T4 * dT1_dVg;
+              Gbd = T1 * (dIdsa_dVd * Vdseff + Idsa * dVdseff_dVd)
+                  + T4 * dT1_dVd;
+              Gbb = T1 * (dIdsa_dVb * Vdseff + Idsa * dVdseff_dVb)
+                  + T4 * dT1_dVb;
+
+              Gbd += Gbg * dVgsteff_dVd;
+              Gbb += Gbg * dVgsteff_dVb;
+              Gbg *= dVgsteff_dVg;
+              Gbb *= dVbseff_dVb;
+          }
+          newop.csub = Isub;
+          newop.gbbs = Gbb;
+          newop.gbgs = Gbg;
+          newop.gbds = Gbd;
+
+    /* Add SCBE to Ids */
+          T9 = diffVds / VASCBE;
+          T0 = 1.0 + T9;
+          Ids = Idsa * T0;
+
+          Gm = T0 * dIdsa_dVg - Idsa
+	     * (dVdseff_dVg + T9 * dVASCBE_dVg) / VASCBE;
+          Gds = T0 * dIdsa_dVd + Idsa
+	      * (1.0 - dVdseff_dVd - T9 * dVASCBE_dVd) / VASCBE;
+          Gmb = T0 * dIdsa_dVb - Idsa
+	      * (dVdseff_dVb + T9 * dVASCBE_dVb) / VASCBE;
+
+
+	  tmp1 = Gds + Gm * dVgsteff_dVd;
+	  tmp2 = Gmb + Gm * dVgsteff_dVb;
+	  tmp3 = Gm;
+
+          Gm = (Ids * dVdseff_dVg + Vdseff * tmp3) * dVgsteff_dVg;
+          Gds = Ids * (dVdseff_dVd + dVdseff_dVg * dVgsteff_dVd)
+	      + Vdseff * tmp1;
+          Gmb = (Ids * (dVdseff_dVb + dVdseff_dVg * dVgsteff_dVb)
+	      + Vdseff * tmp2) * dVbseff_dVb;
+
+          cdrain = Ids * Vdseff;
+
+    /* Source End Velocity Limit  */
+        if((self.model.vtlGiven) && (self.model.vtl > 0.0) ) {
+          T12 = 1.0 / Leff / CoxeffWovL;
+          T11 = T12 / Vgsteff;
+          T10 = -T11 / Vgsteff;
+vs = cdrain * T11; /* vs */
+          dvs_dVg = Gm * T11 + cdrain * T10 * dVgsteff_dVg;
+          dvs_dVd = Gds * T11 + cdrain * T10 * dVgsteff_dVd;
+          dvs_dVb = Gmb * T11 + cdrain * T10 * dVgsteff_dVb;
+          T0 = 2 * MM;
+          T1 = vs / (self.size_params.vtl * self.size_params.tfactor);
+          if(T1 > 0.0)  
+          {	T2 = 1.0 + exp(T0 * log(T1));
+          	T3 = (T2 - 1.0) * T0 / vs;
+          	Fsevl = 1.0 / exp(log(T2)/ T0);
+          	dT2_dVg = T3 * dvs_dVg;
+          	dT2_dVd = T3 * dvs_dVd;
+          	dT2_dVb = T3 * dvs_dVb;
+          	T4 = -1.0 / T0 * Fsevl / T2;
+          	dFsevl_dVg = T4 * dT2_dVg;
+          	dFsevl_dVd = T4 * dT2_dVd;
+          	dFsevl_dVb = T4 * dT2_dVb;
+          } else {
+          	Fsevl = 1.0;
+          	dFsevl_dVg = 0.0;
+          	dFsevl_dVd = 0.0;
+          	dFsevl_dVb = 0.0;
+          }
+          Gm *=Fsevl;
+          Gm += cdrain * dFsevl_dVg;
+          Gmb *=Fsevl;
+          Gmb += cdrain * dFsevl_dVb;
+          Gds *=Fsevl;
+          Gds += cdrain * dFsevl_dVd;
+
+          cdrain *= Fsevl;
+        }
+
+          newop.gds = Gds;
+          newop.gm = Gm;
+          newop.gmbs = Gmb;
+          newop.IdovVds = Ids;
+          if( newop.IdovVds <= 1.0e-9) newop.IdovVds = 1.0e-9;
+
+    /* Calculate Rg */
+          if ((self.intp.rgateMod > 1) ||
+              (self.intp.trnqsMod != 0) || (self.intp.acnqsMod != 0))
+	  {   T9 = self.size_params.xrcrg2 * self.model.vtm;
+              T0 = T9 * beta;
+              dT0_dVd = (dbeta_dVd + dbeta_dVg * dVgsteff_dVd) * T9;
+              dT0_dVb = (dbeta_dVb + dbeta_dVg * dVgsteff_dVb) * T9;
+              dT0_dVg = dbeta_dVg * T9;
+
+	      newop.gcrg = self.size_params.xrcrg1 * ( T0 + Ids);
+	      newop.gcrgd = self.size_params.xrcrg1 * (dT0_dVd + tmp1);
+              newop.gcrgb = self.size_params.xrcrg1 * (dT0_dVb + tmp2)
+	 		       * dVbseff_dVb;
+              newop.gcrgg = self.size_params.xrcrg1 * (dT0_dVg + tmp3)
+			       * dVgsteff_dVg;
+
+	      if self.intp.nf != 1.0 {
+	          newop.gcrg *= self.intp.nf;
+		  newop.gcrgg *= self.intp.nf;
+		  newop.gcrgd *= self.intp.nf;
+		  newop.gcrgb *= self.intp.nf;
+	      }
+
+              if self.intp.rgateMod == 2 {
+                  T10 = here->BSIM4grgeltd * here->BSIM4grgeltd;
+		  T11 = here->BSIM4grgeltd + here->BSIM4gcrg;
+		  newop.gcrg = here->BSIM4grgeltd * here->BSIM4gcrg / T11;
+                  T12 = T10 / T11 / T11;
+                  here->BSIM4gcrgg *= T12;
+                  here->BSIM4gcrgd *= T12;
+                  here->BSIM4gcrgb *= T12;
+              }
+              newop.gcrgs = -(here->BSIM4gcrgg + here->BSIM4gcrgd
+			       + here->BSIM4gcrgb);
+	  }
+
+
+    /* Calculate bias-dependent external S/D resistance */
+          if self.model.rdsMod {
+    /* Rs(V) */
+              T0 = vgs - self.size_params.vfbsd;
+              T1 = sqrt(T0 * T0 + 1.0e-4);
+              vgs_eff = 0.5 * (T0 + T1);
+              dvgs_eff_dvg = vgs_eff / T1;
+
+              T0 = 1.0 + self.size_params.prwg * vgs_eff;
+              dT0_dvg = -self.size_params.prwg / T0 / T0 * dvgs_eff_dvg;
+              T1 = -self.size_params.prwb * vbs;
+              dT1_dvb = -self.size_params.prwb;
+
+              T2 = 1.0 / T0 + T1;
+              T3 = T2 + sqrt(T2 * T2 + 0.01);
+              dT3_dvg = T3 / (T3 - T2);
+              dT3_dvb = dT3_dvg * dT1_dvb;
+              dT3_dvg *= dT0_dvg;
+
+              T4 = self.size_params.rs0 * 0.5;
+              Rs = self.size_params.rswmin + T3 * T4;
+              dRs_dvg = T4 * dT3_dvg;
+              dRs_dvb = T4 * dT3_dvb;
+
+              T0 = 1.0 + here->BSIM4sourceConductance * Rs;
+              newop.gstot = here->BSIM4sourceConductance / T0;
+              T0 = -here->BSIM4gstot * here->BSIM4gstot;
+dgstot_dvd = 0.0; /* place holder */
+              dgstot_dvg = T0 * dRs_dvg;
+              dgstot_dvb = T0 * dRs_dvb;
+              dgstot_dvs = -(dgstot_dvg + dgstot_dvb + dgstot_dvd);
+
+    /* Rd(V) */
+              T0 = vgd - self.size_params.vfbsd;
+              T1 = sqrt(T0 * T0 + 1.0e-4);
+              vgd_eff = 0.5 * (T0 + T1);
+              dvgd_eff_dvg = vgd_eff / T1;
+
+              T0 = 1.0 + self.size_params.prwg * vgd_eff;
+              dT0_dvg = -self.size_params.prwg / T0 / T0 * dvgd_eff_dvg;
+              T1 = -self.size_params.prwb * vbd;
+              dT1_dvb = -self.size_params.prwb;
+
+              T2 = 1.0 / T0 + T1;
+              T3 = T2 + sqrt(T2 * T2 + 0.01);
+              dT3_dvg = T3 / (T3 - T2);
+              dT3_dvb = dT3_dvg * dT1_dvb;
+              dT3_dvg *= dT0_dvg;
+
+              T4 = self.size_params.rd0 * 0.5;
+              Rd = self.size_params.rdwmin + T3 * T4;
+              dRd_dvg = T4 * dT3_dvg;
+              dRd_dvb = T4 * dT3_dvb;
+
+              T0 = 1.0 + here->BSIM4drainConductance * Rd;
+              newop.gdtot = here->BSIM4drainConductance / T0;
+              T0 = -here->BSIM4gdtot * here->BSIM4gdtot;
+              dgdtot_dvs = 0.0;
+              dgdtot_dvg = T0 * dRd_dvg;
+              dgdtot_dvb = T0 * dRd_dvb;
+              dgdtot_dvd = -(dgdtot_dvg + dgdtot_dvb + dgdtot_dvs);
+
+              newop.gstotd = vses * dgstot_dvd;
+              newop.gstotg = vses * dgstot_dvg;
+              newop.gstots = vses * dgstot_dvs;
+              newop.gstotb = vses * dgstot_dvb;
+
+              T2 = vdes - vds;
+              newop.gdtotd = T2 * dgdtot_dvd;
+              newop.gdtotg = T2 * dgdtot_dvg;
+              newop.gdtots = T2 * dgdtot_dvs;
+              newop.gdtotb = T2 * dgdtot_dvb;
+	  }
+else /* WDLiu: for bypass */
+	  {   newop.gstot = newop.gstotd = newop.gstotg = 0.0;
+	      newop.gstots = newop.gstotb = 0.0;
+	      newop.gdtot = newop.gdtotd = newop.gdtotg = 0.0;
+              newop.gdtots = newop.gdtotb = 0.0;
+	  }
+
+    /* GIDL/GISL Models */
+
+	  if(self.model.mtrlMod == 0)
+	    T0 = 3.0 * toxe;
+	  else
+	    T0 = self.model.epsrsub * toxe / epsrox;
+	 
+    /* Calculate GIDL current */
+
+	  vgs_eff = here->BSIM4vgs_eff;
+          dvgs_eff_dvg = here->BSIM4dvgs_eff_dvg;
+	  vgd_eff = here->BSIM4vgd_eff;
+          dvgd_eff_dvg = here->BSIM4dvgd_eff_dvg;
+
+	  if (self.model.gidlMod==0){
+          
+	  if(self.model.mtrlMod ==0)
+	    T1 = (vds - vgs_eff - self.size_params.egidl ) / T0;
+	  else
+	    T1 = (vds - vgs_eff - self.size_params.egidl + self.size_params.vfbsd) / T0;
+          
+	  if ((self.size_params.agidl <= 0.0) || (self.size_params.bgidl <= 0.0)
+              || (T1 <= 0.0) || (self.size_params.cgidl <= 0.0) || (vbd > 0.0))
+              Igidl = Ggidld = Ggidlg = Ggidlb = 0.0;
+          else {
+              dT1_dVd = 1.0 / T0;
+              dT1_dVg = -dvgs_eff_dvg * dT1_dVd;
+              T2 = self.size_params.bgidl / T1;
+              if T2 < 100.0 {
+                  Igidl = self.size_params.agidl * self.size_params.weffCJ * T1 * exp(-T2);
+                  T3 = Igidl * (1.0 + T2) / T1;
+                  Ggidld = T3 * dT1_dVd;
+                  Ggidlg = T3 * dT1_dVg;
+              }
+              else
+              {   Igidl = self.size_params.agidl * self.size_params.weffCJ * 3.720075976e-44;
+                  Ggidld = Igidl * dT1_dVd;
+                  Ggidlg = Igidl * dT1_dVg;
+                  Igidl *= T1;
+              }
+        
+              T4 = vbd * vbd;
+              T5 = -vbd * T4;
+              T6 = self.size_params.cgidl + T5;
+              T7 = T5 / T6;
+              T8 = 3.0 * self.size_params.cgidl * T4 / T6 / T6;
+              Ggidld = Ggidld * T7 + Igidl * T8;
+              Ggidlg = Ggidlg * T7;
+              Ggidlb = -Igidl * T8;
+              Igidl *= T7;
+          }
+	  newop.Igidl = Igidl;
+          newop.ggidld = Ggidld;
+          newop.ggidlg = Ggidlg;
+          newop.ggidlb = Ggidlb;
+    /* Calculate GISL current  */
+          
+	  if(self.model.mtrlMod ==0)
+          T1 = (-vds - vgd_eff - self.size_params.egisl ) / T0;
+	  else
+          T1 = (-vds - vgd_eff - self.size_params.egisl + self.size_params.vfbsd ) / T0;
+
+          if ((self.size_params.agisl <= 0.0) || (self.size_params.bgisl <= 0.0)
+              || (T1 <= 0.0) || (self.size_params.cgisl <= 0.0) || (vbs > 0.0))
+              Igisl = Ggisls = Ggislg = Ggislb = 0.0;
+          else {
+              dT1_dVd = 1.0 / T0;
+              dT1_dVg = -dvgd_eff_dvg * dT1_dVd;
+              T2 = self.size_params.bgisl / T1;
+              if T2 < 100.0 {
+                  Igisl = self.size_params.agisl * self.size_params.weffCJ * T1 * exp(-T2);
+                  T3 = Igisl * (1.0 + T2) / T1;
+                  Ggisls = T3 * dT1_dVd;
+                  Ggislg = T3 * dT1_dVg;
+              }
+              else
+              {   Igisl = self.size_params.agisl * self.size_params.weffCJ * 3.720075976e-44;
+                  Ggisls = Igisl * dT1_dVd;
+                  Ggislg = Igisl * dT1_dVg;
+                  Igisl *= T1;
+              }
+        
+              T4 = vbs * vbs;
+              T5 = -vbs * T4;
+              T6 = self.size_params.cgisl + T5;
+              T7 = T5 / T6;
+              T8 = 3.0 * self.size_params.cgisl * T4 / T6 / T6;
+              Ggisls = Ggisls * T7 + Igisl * T8;
+              Ggislg = Ggislg * T7;
+              Ggislb = -Igisl * T8;
+              Igisl *= T7;
+          }
+          newop.Igisl = Igisl;
+          newop.ggisls = Ggisls;
+          newop.ggislg = Ggislg;
+          newop.ggislb = Ggislb;
+	  }
+	  else{
+    /* v4.7 New Gidl/GISL model */
+
+    /* GISL */
+                    if (self.model.mtrlMod==0)
+                       T1 = (-vds - self.size_params.rgisl * vgd_eff - self.size_params.egisl) / T0;    
+                    else
+                       T1 = (-vds - self.size_params.rgisl * vgd_eff - self.size_params.egisl + self.size_params.vfbsd) / T0;
+                    
+		    if ((self.size_params.agisl <= 0.0) ||
+                            (self.size_params.bgisl <= 0.0) || (T1 <= 0.0) ||
+                            (self.size_params.cgisl < 0.0)  )
+                        Igisl = Ggisls = Ggislg = Ggislb = 0.0;
+                    else
+                    {
+                        dT1_dVd = 1 / T0;                      
+                        dT1_dVg = - self.size_params.rgisl * dT1_dVd * dvgd_eff_dvg;
+                        T2 = self.size_params.bgisl / T1;
+                        if T2 < EXPL_THRESHOLD {
+                        
+                            Igisl = self.size_params.weffCJ * self.size_params.agisl * T1 * exp(-T2);
+                            T3 = Igisl / T1 * (T2 + 1);
+                            Ggisls = T3 * dT1_dVd;
+                            Ggislg = T3 * dT1_dVg;
+                        }
+			else
+                        {
+                            T3 = self.size_params.weffCJ * self.size_params.agisl * MIN_EXPL;
+                            Igisl = T3 * T1 ;
+                            Ggisls  = T3 * dT1_dVd;
+                            Ggislg  = T3 * dT1_dVg;
+                        
+                        }
+                        T4 = vbs - self.size_params.fgisl;
+                        
+			if (T4==0)
+                            T5 = EXPL_THRESHOLD;
+                        else
+                            T5 = self.size_params.kgisl / T4;
+                        if T5<EXPL_THRESHOLD {
+                         T6 = exp(T5);
+                            Ggislb = -Igisl * T6 * T5 / T4;
+                        }
+                        else
+                        {T6 = MAX_EXPL;
+                            Ggislb=0.0;
+                        }
+                        Ggisls*=T6;
+                        Ggislg*=T6;
+                        Igisl*=T6;
+
+                    }
+                    newop.Igisl = Igisl;
+          	    newop.ggisls = Ggisls;
+          	    newop.ggislg = Ggislg;
+           	    newop.ggislb = Ggislb;
+    /* End of GISL */
+
+    /* GIDL */
+                    if (self.model.mtrlMod==0)
+                        T1 = (vds - self.size_params.rgidl * vgs_eff - self.size_params.egidl) /  T0;                                          
+                    else
+                        T1 = (vds - self.size_params.rgidl * vgs_eff - self.size_params.egidl + self.size_params.vfbsd) / T0;
+                                      
+                    
+		
+                    if ((self.size_params.agidl <= 0.0) ||
+                            (self.size_params.bgidl <= 0.0) || (T1 <= 0.0) ||
+                            (self.size_params.cgidl < 0.0)  )
+                        Igidl = Ggidld = Ggidlg = Ggidlb = 0.0;
+                    else
+                    {
+                        dT1_dVd = 1 / T0;
+                        dT1_dVg = - self.size_params.rgidl * dT1_dVd * dvgs_eff_dvg;
+                        T2 = self.size_params.bgidl / T1;
+                        if T2 < EXPL_THRESHOLD {
+                        
+                            Igidl = self.size_params.weffCJ * self.size_params.agidl * T1 * exp(-T2);
+                            T3 = Igidl / T1 * (T2 + 1);
+                            Ggidld = T3 * dT1_dVd;
+                            Ggidlg = T3 * dT1_dVg;
+                            
+                        } else
+                        {
+                            T3 = self.size_params.weffCJ * self.size_params.agidl * MIN_EXPL;
+                            Igidl = T3 * T1 ;
+                            Ggidld  = T3 * dT1_dVd;
+                            Ggidlg  = T3 * dT1_dVg;
+                        }
+                        T4 = vbd - self.size_params.fgidl;
+                        if (T4==0)
+                            T5 = EXPL_THRESHOLD;
+                        else
+                            T5 = self.size_params.kgidl / T4;
+                        if T5<EXPL_THRESHOLD {
+                         T6 = exp(T5);
+                            Ggidlb = -Igidl * T6 * T5 / T4;
+                        }
+                        else
+                        {T6 = MAX_EXPL;
+                            Ggidlb=0.0;
+                        }
+                        Ggidld *= T6;
+                        Ggidlg *= T6;
+                        Igidl *= T6;
+                    }                                        
+	 newop.Igidl = Igidl;
+              newop.ggidld = Ggidld;
+           newop.ggidlg = Ggidlg;
+           newop.ggidlb = Ggidlb;
+    /* End of New GIDL */
+		}
+    /*End of Gidl*/
+
+    /* Calculate gate tunneling current */
+          if (self.model.igcMod != 0) || (self.model.igbMod != 0) {
+              Vfb = self.intp.vfbzb;
+              V3 = Vfb - Vgs_eff + Vbseff - DELTA_3;
+              if (Vfb <= 0.0)
+                  T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * Vfb);
+              else
+                  T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * Vfb);
+              T1 = 0.5 * (1.0 + V3 / T0);
+              Vfbeff = Vfb - 0.5 * (V3 + T0);
+              dVfbeff_dVg = T1 * dVgs_eff_dVg;
+              dVfbeff_dVb = -T1;
+
+              Voxacc = Vfb - Vfbeff;
+              dVoxacc_dVg = -dVfbeff_dVg;
+              dVoxacc_dVb = -dVfbeff_dVb;
+if (Voxacc < 0.0) /* WDLiu: Avoiding numerical instability. */
+                  Voxacc = dVoxacc_dVg = dVoxacc_dVb = 0.0;
+
+              T0 = 0.5 * self.size_params.k1ox;
+              T3 = Vgs_eff - Vfbeff - Vbseff - Vgsteff;
+              if (self.size_params.k1ox == 0.0)
+                  Voxdepinv = dVoxdepinv_dVg = dVoxdepinv_dVd
+			    = dVoxdepinv_dVb = 0.0;
+              else if T3 < 0.0 {
+                  Voxdepinv = -T3;
+                  dVoxdepinv_dVg = -dVgs_eff_dVg + dVfbeff_dVg
+                                 + dVgsteff_dVg;
+                  dVoxdepinv_dVd = dVgsteff_dVd;
+                  dVoxdepinv_dVb = dVfbeff_dVb + 1.0 + dVgsteff_dVb;
+	      }
+              else
+              {   T1 = sqrt(T0 * T0 + T3);
+                  T2 = T0 / T1;
+                  Voxdepinv = self.size_params.k1ox * (T1 - T0);
+                  dVoxdepinv_dVg = T2 * (dVgs_eff_dVg - dVfbeff_dVg
+				 - dVgsteff_dVg);
+                  dVoxdepinv_dVd = -T2 * dVgsteff_dVd;
+                  dVoxdepinv_dVb = -T2 * (dVfbeff_dVb + 1.0 + dVgsteff_dVb);
+              }
+
+              Voxdepinv += Vgsteff;
+              dVoxdepinv_dVg += dVgsteff_dVg;
+              dVoxdepinv_dVd += dVgsteff_dVd;
+              dVoxdepinv_dVb += dVgsteff_dVb;
+          }
+
+          if(self.model.tempMod < 2)
+          	tmp = Vtm;
+else /* self.model.tempMod = 2, 3*/
+          	tmp = Vtm0;
+          if self.model.igcMod {
+              T0 = tmp * self.size_params.nigc;
+	      if(self.model.igcMod == 1) {
+              	VxNVt = (Vgs_eff - self.model.p() * self.intp.vth0) / T0;
+              	if VxNVt > EXP_THRESHOLD {
+              	    Vaux = Vgs_eff - self.model.p() * self.intp.vth0;
+              	    dVaux_dVg = dVgs_eff_dVg;
+		    dVaux_dVd = 0.0;
+                    dVaux_dVb = 0.0;
+              	}
+	      } else if (self.model.igcMod == 2) {
+                VxNVt = (Vgs_eff - here->BSIM4von) / T0;
+                if VxNVt > EXP_THRESHOLD {
+                    Vaux = Vgs_eff - here->BSIM4von;
+                    dVaux_dVg = dVgs_eff_dVg;
+                    dVaux_dVd = -dVth_dVd;
+                    dVaux_dVb = -dVth_dVb;
+                }
+              }
+              if VxNVt < -EXP_THRESHOLD {
+                  Vaux = T0 * log(1.0 + MIN_EXP);
+                  dVaux_dVg = dVaux_dVd = dVaux_dVb = 0.0;
+              }
+              else if (VxNVt >= -EXP_THRESHOLD) && (VxNVt <= EXP_THRESHOLD) {
+                  ExpVxNVt = exp(VxNVt);
+                  Vaux = T0 * log(1.0 + ExpVxNVt);
+                  dVaux_dVg = ExpVxNVt / (1.0 + ExpVxNVt);
+		  if(self.model.igcMod == 1) {
+			dVaux_dVd = 0.0;
+                  	dVaux_dVb = 0.0;
+                  } else if (self.model.igcMod == 2) {
+dVaux_dVd = -dVaux_dVg* dVth_dVd; /* Synopsys 08/30/2013 modify */
+dVaux_dVb = -dVaux_dVg* dVth_dVb; /* Synopsys 08/30/2013 modify */
+		  }
+		  dVaux_dVg *= dVgs_eff_dVg;
+              }
+
+              T2 = Vgs_eff * Vaux;
+              dT2_dVg = dVgs_eff_dVg * Vaux + Vgs_eff * dVaux_dVg;
+              dT2_dVd = Vgs_eff * dVaux_dVd;
+              dT2_dVb = Vgs_eff * dVaux_dVb;
+
+              T11 = self.size_params.Aechvb;
+              T12 = self.size_params.Bechvb;
+              T3 = self.size_params.aigc * self.size_params.cigc
+                 - self.size_params.bigc;
+              T4 = self.size_params.bigc * self.size_params.cigc;
+              T5 = T12 * (self.size_params.aigc + T3 * Voxdepinv
+                 - T4 * Voxdepinv * Voxdepinv);
+
+              if T5 > EXP_THRESHOLD {
+                  T6 = MAX_EXP;
+                  dT6_dVg = dT6_dVd = dT6_dVb = 0.0;
+              }
+              else if T5 < -EXP_THRESHOLD {
+                  T6 = MIN_EXP;
+                  dT6_dVg = dT6_dVd = dT6_dVb = 0.0;
+              }
+              else
+              {   T6 = exp(T5);
+                  dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * Voxdepinv);
+                  dT6_dVd = dT6_dVg * dVoxdepinv_dVd;
+                  dT6_dVb = dT6_dVg * dVoxdepinv_dVb;
+                  dT6_dVg *= dVoxdepinv_dVg;
+              }
+
+              Igc = T11 * T2 * T6;
+              dIgc_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+              dIgc_dVd = T11 * (T2 * dT6_dVd + T6 * dT2_dVd);
+              dIgc_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
+
+              if self.model.pigcdGiven {
+                  Pigcd = self.size_params.pigcd;
+                  dPigcd_dVg = dPigcd_dVd = dPigcd_dVb = 0.0;
+              }
+              else
+{
+    /* T11 = self.size_params.Bechvb * toxe; v4.7 */
+		  T11 = -self.size_params.Bechvb;
+                  T12 = Vgsteff + 1.0e-20;
+                  T13 = T11 / T12 / T12;
+                  T14 = -T13 / T12;
+                  Pigcd = T13 * (1.0 - 0.5 * Vdseff / T12);
+                  dPigcd_dVg = T14 * (2.0 + 0.5 * (dVdseff_dVg
+                              - 3.0 * Vdseff / T12));
+                  dPigcd_dVd = 0.5 * T14 * dVdseff_dVd;
+                  dPigcd_dVb = 0.5 * T14 * dVdseff_dVb;
+              }
+
+T7 = -Pigcd * Vdseff; /* bugfix */
+              dT7_dVg = -Vdseff * dPigcd_dVg - Pigcd * dVdseff_dVg;
+              dT7_dVd = -Vdseff * dPigcd_dVd - Pigcd * dVdseff_dVd + dT7_dVg * dVgsteff_dVd;
+              dT7_dVb = -Vdseff * dPigcd_dVb - Pigcd * dVdseff_dVb + dT7_dVg * dVgsteff_dVb;
+              dT7_dVg *= dVgsteff_dVg;
+    /*dT7_dVb *= dVbseff_dVb;*/
+    /* Synopsys, 2013/08/30 */
+              T8 = T7 * T7 + 2.0e-4;
+              dT8_dVg = 2.0 * T7;
+              dT8_dVd = dT8_dVg * dT7_dVd;
+              dT8_dVb = dT8_dVg * dT7_dVb;
+              dT8_dVg *= dT7_dVg;
+
+              if T7 > EXP_THRESHOLD {
+                  T9 = MAX_EXP;
+                  dT9_dVg = dT9_dVd = dT9_dVb = 0.0;
+              }
+              else if T7 < -EXP_THRESHOLD {
+                  T9 = MIN_EXP;
+                  dT9_dVg = dT9_dVd = dT9_dVb = 0.0;
+              }
+              else
+              {   T9 = exp(T7);
+                  dT9_dVg = T9 * dT7_dVg;
+                  dT9_dVd = T9 * dT7_dVd;
+                  dT9_dVb = T9 * dT7_dVb;
+              }
+
+              T0 = T8 * T8;
+              T1 = T9 - 1.0 + 1.0e-4;
+              T10 = (T1 - T7) / T8;
+              dT10_dVg = (dT9_dVg - dT7_dVg - T10 * dT8_dVg) / T8;
+              dT10_dVd = (dT9_dVd - dT7_dVd - T10 * dT8_dVd) / T8;
+              dT10_dVb = (dT9_dVb - dT7_dVb - T10 * dT8_dVb) / T8;
+
+              Igcs = Igc * T10;
+              dIgcs_dVg = dIgc_dVg * T10 + Igc * dT10_dVg;
+              dIgcs_dVd = dIgc_dVd * T10 + Igc * dT10_dVd;
+              dIgcs_dVb = dIgc_dVb * T10 + Igc * dT10_dVb;
+
+              T1 = T9 - 1.0 - 1.0e-4;
+              T10 = (T7 * T9 - T1) / T8;
+              dT10_dVg = (dT7_dVg * T9 + (T7 - 1.0) * dT9_dVg
+                       - T10 * dT8_dVg) / T8;
+              dT10_dVd = (dT7_dVd * T9 + (T7 - 1.0) * dT9_dVd
+                       - T10 * dT8_dVd) / T8;
+              dT10_dVb = (dT7_dVb * T9 + (T7 - 1.0) * dT9_dVb
+                       - T10 * dT8_dVb) / T8;
+              Igcd = Igc * T10;
+              dIgcd_dVg = dIgc_dVg * T10 + Igc * dT10_dVg;
+              dIgcd_dVd = dIgc_dVd * T10 + Igc * dT10_dVd;
+              dIgcd_dVb = dIgc_dVb * T10 + Igc * dT10_dVb;
+
+              newop.Igcs = Igcs;
+              newop.gIgcsg = dIgcs_dVg;
+              newop.gIgcsd = dIgcs_dVd;
+              newop.gIgcsb =  dIgcs_dVb * dVbseff_dVb;
+              newop.Igcd = Igcd;
+              newop.gIgcdg = dIgcd_dVg;
+              newop.gIgcdd = dIgcd_dVd;
+              newop.gIgcdb = dIgcd_dVb * dVbseff_dVb;
+
+              T0 = vgs - (self.size_params.vfbsd + self.size_params.vfbsdoff);
+              vgs_eff = sqrt(T0 * T0 + 1.0e-4);
+              dvgs_eff_dvg = T0 / vgs_eff;
+
+              T2 = vgs * vgs_eff;
+              dT2_dVg = vgs * dvgs_eff_dvg + vgs_eff;
+              T11 = self.size_params.AechvbEdgeS;
+              T12 = self.size_params.BechvbEdge;
+              T3 = self.size_params.aigs * self.size_params.cigs
+                 - self.size_params.bigs;
+              T4 = self.size_params.bigs * self.size_params.cigs;
+              T5 = T12 * (self.size_params.aigs + T3 * vgs_eff
+                 - T4 * vgs_eff * vgs_eff);
+              if T5 > EXP_THRESHOLD {
+                  T6 = MAX_EXP;
+                  dT6_dVg = 0.0;
+              }
+              else if T5 < -EXP_THRESHOLD {
+                  T6 = MIN_EXP;
+                  dT6_dVg = 0.0;
+              }
+              else
+              {   T6 = exp(T5);
+                  dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * vgs_eff)
+			  * dvgs_eff_dvg;
+              }
+              Igs = T11 * T2 * T6;
+              dIgs_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+              dIgs_dVs = -dIgs_dVg;
+
+
+              T0 = vgd - (self.size_params.vfbsd + self.size_params.vfbsdoff);
+              vgd_eff = sqrt(T0 * T0 + 1.0e-4);
+              dvgd_eff_dvg = T0 / vgd_eff;
+
+              T2 = vgd * vgd_eff;
+              dT2_dVg = vgd * dvgd_eff_dvg + vgd_eff;
+              T11 = self.size_params.AechvbEdgeD;
+              T3 = self.size_params.aigd * self.size_params.cigd
+                 - self.size_params.bigd;
+              T4 = self.size_params.bigd * self.size_params.cigd;
+              T5 = T12 * (self.size_params.aigd + T3 * vgd_eff
+                 - T4 * vgd_eff * vgd_eff);
+              if T5 > EXP_THRESHOLD {
+                  T6 = MAX_EXP;
+                  dT6_dVg = 0.0;
+              }
+              else if T5 < -EXP_THRESHOLD {
+                  T6 = MIN_EXP;
+                  dT6_dVg = 0.0;
+              }
+              else
+              {   T6 = exp(T5);
+                  dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * vgd_eff)
+                          * dvgd_eff_dvg;
+              }
+              Igd = T11 * T2 * T6;
+              dIgd_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+              dIgd_dVd = -dIgd_dVg;
+
+              newop.Igs = Igs;
+              newop.gIgsg = dIgs_dVg;
+              newop.gIgss = dIgs_dVs;
+              newop.Igd = Igd;
+              newop.gIgdg = dIgd_dVg;
+              newop.gIgdd = dIgd_dVd;
+          }
+          else
+          {   newop.Igcs = newop.gIgcsg = here->BSIM4gIgcsd
+ 			      = newop.gIgcsb = 0.0;
+              newop.Igcd = newop.gIgcdg = here->BSIM4gIgcdd
+              		      = newop.gIgcdb = 0.0;
+              newop.Igs = newop.gIgsg = newop.gIgss = 0.0;
+              newop.Igd = newop.gIgdg = newop.gIgdd = 0.0;
+          }
+
+          if self.model.igbMod {
+              T0 = tmp * self.size_params.nigbacc;
+	      T1 = -Vgs_eff + Vbseff + Vfb;
+              VxNVt = T1 / T0;
+              if VxNVt > EXP_THRESHOLD {
+                  Vaux = T1;
+                  dVaux_dVg = -dVgs_eff_dVg;
+                  dVaux_dVb = 1.0;
+              }
+              else if VxNVt < -EXP_THRESHOLD {
+                  Vaux = T0 * log(1.0 + MIN_EXP);
+                  dVaux_dVg = dVaux_dVb = 0.0;
+              }
+              else
+              {   ExpVxNVt = exp(VxNVt);
+                  Vaux = T0 * log(1.0 + ExpVxNVt);
+                  dVaux_dVb = ExpVxNVt / (1.0 + ExpVxNVt);
+                  dVaux_dVg = -dVaux_dVb * dVgs_eff_dVg;
+              }
+
+	      T2 = (Vgs_eff - Vbseff) * Vaux;
+              dT2_dVg = dVgs_eff_dVg * Vaux + (Vgs_eff - Vbseff) * dVaux_dVg;
+              dT2_dVb = -Vaux + (Vgs_eff - Vbseff) * dVaux_dVb;
+
+              T11 = 4.97232e-7 * self.size_params.weff
+		  * self.size_params.leff * self.size_params.ToxRatio;
+              T12 = -7.45669e11 * toxe;
+	      T3 = self.size_params.aigbacc * self.size_params.cigbacc
+                 - self.size_params.bigbacc;
+              T4 = self.size_params.bigbacc * self.size_params.cigbacc;
+	      T5 = T12 * (self.size_params.aigbacc + T3 * Voxacc
+		 - T4 * Voxacc * Voxacc);
+
+              if T5 > EXP_THRESHOLD {
+                  T6 = MAX_EXP;
+                  dT6_dVg = dT6_dVb = 0.0;
+              }
+              else if T5 < -EXP_THRESHOLD {
+                  T6 = MIN_EXP;
+                  dT6_dVg = dT6_dVb = 0.0;
+              }
+              else
+              {   T6 = exp(T5);
+                  dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * Voxacc);
+                  dT6_dVb = dT6_dVg * dVoxacc_dVb;
+                  dT6_dVg *= dVoxacc_dVg;
+              }
+
+              Igbacc = T11 * T2 * T6;
+              dIgbacc_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+              dIgbacc_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
+
+
+              T0 = tmp * self.size_params.nigbinv;
+              T1 = Voxdepinv - self.size_params.eigbinv;
+              VxNVt = T1 / T0;
+              if VxNVt > EXP_THRESHOLD {
+                  Vaux = T1;
+                  dVaux_dVg = dVoxdepinv_dVg;
+                  dVaux_dVd = dVoxdepinv_dVd;
+                  dVaux_dVb = dVoxdepinv_dVb;
+              }
+              else if VxNVt < -EXP_THRESHOLD {
+                  Vaux = T0 * log(1.0 + MIN_EXP);
+                  dVaux_dVg = dVaux_dVd = dVaux_dVb = 0.0;
+              }
+              else
+              {   ExpVxNVt = exp(VxNVt);
+                  Vaux = T0 * log(1.0 + ExpVxNVt);
+		  dVaux_dVg = ExpVxNVt / (1.0 + ExpVxNVt);
+                  dVaux_dVd = dVaux_dVg * dVoxdepinv_dVd;
+                  dVaux_dVb = dVaux_dVg * dVoxdepinv_dVb;
+                  dVaux_dVg *= dVoxdepinv_dVg;
+              }
+
+              T2 = (Vgs_eff - Vbseff) * Vaux;
+              dT2_dVg = dVgs_eff_dVg * Vaux + (Vgs_eff - Vbseff) * dVaux_dVg;
+              dT2_dVd = (Vgs_eff - Vbseff) * dVaux_dVd;
+              dT2_dVb = -Vaux + (Vgs_eff - Vbseff) * dVaux_dVb;
+
+              T11 *= 0.75610;
+              T12 *= 1.31724;
+              T3 = self.size_params.aigbinv * self.size_params.cigbinv
+                 - self.size_params.bigbinv;
+              T4 = self.size_params.bigbinv * self.size_params.cigbinv;
+              T5 = T12 * (self.size_params.aigbinv + T3 * Voxdepinv
+                 - T4 * Voxdepinv * Voxdepinv);
+
+              if T5 > EXP_THRESHOLD {
+                  T6 = MAX_EXP;
+                  dT6_dVg = dT6_dVd = dT6_dVb = 0.0;
+              }
+              else if T5 < -EXP_THRESHOLD {
+                  T6 = MIN_EXP;
+                  dT6_dVg = dT6_dVd = dT6_dVb = 0.0;
+              }
+              else
+              {   T6 = exp(T5);
+                  dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * Voxdepinv);
+                  dT6_dVd = dT6_dVg * dVoxdepinv_dVd;
+                  dT6_dVb = dT6_dVg * dVoxdepinv_dVb;
+                  dT6_dVg *= dVoxdepinv_dVg;
+              }
+
+              Igbinv = T11 * T2 * T6;
+              dIgbinv_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+              dIgbinv_dVd = T11 * (T2 * dT6_dVd + T6 * dT2_dVd);
+              dIgbinv_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
+
+              newop.Igb = Igbinv + Igbacc;
+              newop.gIgbg = dIgbinv_dVg + dIgbacc_dVg;
+              newop.gIgbd = dIgbinv_dVd;
+              newop.gIgbb = (dIgbinv_dVb + dIgbacc_dVb) * dVbseff_dVb;
+          }
+          else
+          {  newop.Igb = newop.gIgbg = here->BSIM4gIgbd
+			    = newop.gIgbs = newop.gIgbb = 0.0;  
+} /* End of Gate current */
+
+	  if self.intp.nf != 1.0 {
+              cdrain *= self.intp.nf;
+              newop.gds *= self.intp.nf;
+              newop.gm *= self.intp.nf;
+              newop.gmbs *= self.intp.nf;
+	      newop.IdovVds *= self.intp.nf;
+                  
+              newop.gbbs *= self.intp.nf;
+              newop.gbgs *= self.intp.nf;
+              newop.gbds *= self.intp.nf;
+              newop.csub *= self.intp.nf;
+
+              newop.Igidl *= self.intp.nf;
+              newop.ggidld *= self.intp.nf;
+              newop.ggidlg *= self.intp.nf;
+	      newop.ggidlb *= self.intp.nf;
+
+              newop.Igisl *= self.intp.nf;
+              newop.ggisls *= self.intp.nf;
+              newop.ggislg *= self.intp.nf;
+              newop.ggislb *= self.intp.nf;
+
+              newop.Igcs *= self.intp.nf;
+              newop.gIgcsg *= self.intp.nf;
+              newop.gIgcsd *= self.intp.nf;
+              newop.gIgcsb *= self.intp.nf;
+              newop.Igcd *= self.intp.nf;
+              newop.gIgcdg *= self.intp.nf;
+              newop.gIgcdd *= self.intp.nf;
+              newop.gIgcdb *= self.intp.nf;
+
+              newop.Igs *= self.intp.nf;
+              newop.gIgsg *= self.intp.nf;
+              newop.gIgss *= self.intp.nf;
+              newop.Igd *= self.intp.nf;
+              newop.gIgdg *= self.intp.nf;
+              newop.gIgdd *= self.intp.nf;
+
+              newop.Igb *= self.intp.nf;
+              newop.gIgbg *= self.intp.nf;
+              newop.gIgbd *= self.intp.nf;
+              newop.gIgbb *= self.intp.nf;
+	  }
+
+          newop.ggidls = -(newop.ggidld + newop.ggidlg + newop.ggidlb);
+          newop.ggisld = -(newop.ggisls + newop.ggislg + newop.ggislb);
+          newop.gIgbs = -(newop.gIgbg + newop.gIgbd + newop.gIgbb);
+          newop.gIgcss = -(newop.gIgcsg + newop.gIgcsd + newop.gIgcsb);
+          newop.gIgcds = -(newop.gIgcdg + newop.gIgcdd + newop.gIgcdb);
+	  newop.cd = cdrain;
+
+
+    /* Calculations for noise analysis */
+
+          if self.model.tnoiMod == 0 {
+              Abulk = Abulk0 * self.size_params.abulkCVfactor;
+              Vdsat = Vgsteff / Abulk;
+              T0 = Vdsat - Vds - DELTA_4;
+              T1 = sqrt(T0 * T0 + 4.0 * DELTA_4 * Vdsat);
+              if (T0 >= 0.0)
+                  Vdseff = Vdsat - 0.5 * (T0 + T1);
+              else
+              {   T3 = (DELTA_4 + DELTA_4) / (T1 - T0);
+                  T4 = 1.0 - T3;
+                  T5 = Vdsat * T3 / (T1 - T0);
+                  Vdseff = Vdsat * T4;
+              }
+              if (Vds == 0.0)
+                  Vdseff = 0.0;
+
+              T0 = Abulk * Vdseff;
+              T1 = 12.0 * (Vgsteff - 0.5 * T0 + 1.0e-20);
+              T2 = Vdseff / T1;
+              T3 = T0 * T2;
+              newop.qinv = Coxeff * self.size_params.weffCV * self.intp.nf
+                              * self.size_params.leffCV
+                              * (Vgsteff - 0.5 * T0 + Abulk * T3);
+          }
+	  else if(self.model.tnoiMod == 2)
+	  {
+              newop.noiGd0 = self.intp.nf * beta * Vgsteff / (1.0 + gche * Rds);
+	  }
+
+    /*
+     *  BSIM4 C-V begins
+     */
+
+          if (self.model.xpart < 0) || (!ChargeComputationNeeded) {
+	      qgate  = qdrn = qsrc = qbulk = 0.0;
+              newop.cggb = newop.cgsb = newop.cgdb = 0.0;
+              newop.cdgb = newop.cdsb = newop.cddb = 0.0;
+              newop.cbgb = newop.cbsb = newop.cbdb = 0.0;
+              newop.csgb = newop.cssb = newop.csdb = 0.0;
+              newop.cgbb = newop.csbb = newop.cdbb = newop.cbbb = 0.0;
+              newop.cqdb = newop.cqsb = newop.cqgb
+                              = newop.cqbb = 0.0;
+              newop.gtau = 0.0;
+              goto finished;
+          }
+	  else if self.model.capMod == 0 {
+	   
+              if Vbseff < 0.0 {
+VbseffCV = Vbs; /*4.6.2*/
+                  dVbseffCV_dVb = 1.0;
+              }
+	      else
+	      {   VbseffCV = self.size_params.phi - Phis;
+dVbseffCV_dVb = -dPhis_dVb * dVbseff_dVb; /*4.6.2*/
+              }
+
+              Vfb = self.size_params.vfbcv;
+              Vth = Vfb + self.size_params.phi + self.size_params.k1ox * sqrtPhis;
+              Vgst = Vgs_eff - Vth;
+dVth_dVb = self.size_params.k1ox * dsqrtPhis_dVb *dVbseff_dVb; /*4.6.2*/
+              dVgst_dVb = -dVth_dVb;
+              dVgst_dVg = dVgs_eff_dVg;
+
+              CoxWL = self.model.coxe * self.size_params.weffCV
+                    * self.size_params.leffCV * self.intp.nf;
+              Arg1 = Vgs_eff - VbseffCV - Vfb;
+
+              if Arg1 <= 0.0 {
+	          qgate = CoxWL * Arg1;
+                  qbulk = -qgate;
+                  qdrn = 0.0;
+
+                  newop.cggb = CoxWL * dVgs_eff_dVg;
+                  newop.cgdb = 0.0;
+                  newop.cgsb = CoxWL * (dVbseffCV_dVb - dVgs_eff_dVg);
+
+                  newop.cdgb = 0.0;
+                  newop.cddb = 0.0;
+                  newop.cdsb = 0.0;
+
+                  newop.cbgb = -CoxWL * dVgs_eff_dVg;
+                  newop.cbdb = 0.0;
+                  newop.cbsb = -newop.cgsb;
+} /* Arg1 <= 0.0, end of accumulation */
+	      else if Vgst <= 0.0 {
+	          T1 = 0.5 * self.size_params.k1ox;
+	          T2 = sqrt(T1 * T1 + Arg1);
+	          qgate = CoxWL * self.size_params.k1ox * (T2 - T1);
+                  qbulk = -qgate;
+                  qdrn = 0.0;
+
+	          T0 = CoxWL * T1 / T2;
+	          newop.cggb = T0 * dVgs_eff_dVg;
+	          newop.cgdb = 0.0;
+                  newop.cgsb = T0 * (dVbseffCV_dVb - dVgs_eff_dVg);
+  
+                  newop.cdgb = 0.0;
+                  newop.cddb = 0.0;
+                  newop.cdsb = 0.0;
+
+                  newop.cbgb = -here->BSIM4cggb;
+                  newop.cbdb = 0.0;
+                  newop.cbsb = -here->BSIM4cgsb;
+} /* Vgst <= 0.0, end of depletion */
+	      else
+	      {   One_Third_CoxWL = CoxWL / 3.0;
+                  Two_Third_CoxWL = 2.0 * One_Third_CoxWL;
+
+                  AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
+                  dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb*dVbseff_dVb;
+	         
+dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
+			  Vdsat = Vgst * dVdsat_dVg;
+	          dVdsat_dVb = - (Vdsat * dAbulkCV_dVb + dVth_dVb)* dVdsat_dVg;
+
+                  if self.model.xpart > 0.5 {
+    /* 0/100 Charge partition model */
+		      if Vdsat <= Vds {
+    /* saturation region */
+	                  T1 = Vdsat / 3.0;
+	                  qgate = CoxWL * (Vgs_eff - Vfb
+			        - self.size_params.phi - T1);
+	                  T2 = -Two_Third_CoxWL * Vgst;
+	                  qbulk = -(qgate + T2);
+	                  qdrn = 0.0;
+
+	                  newop.cggb = One_Third_CoxWL * (3.0
+					  - dVdsat_dVg) * dVgs_eff_dVg;
+	                  T2 = -One_Third_CoxWL * dVdsat_dVb;
+	                  newop.cgsb = -(here->BSIM4cggb + T2);
+                          newop.cgdb = 0.0;
+      
+                          newop.cdgb = 0.0;
+                          newop.cddb = 0.0;
+                          newop.cdsb = 0.0;
+
+	                  newop.cbgb = -(here->BSIM4cggb
+					  - Two_Third_CoxWL * dVgs_eff_dVg);
+	                  T3 = -(T2 + Two_Third_CoxWL * dVth_dVb);
+	                  newop.cbsb = -(here->BSIM4cbgb + T3);
+                          newop.cbdb = 0.0;
+	              }
+		      else
+{
+    /* linear region */
+			  Alphaz = Vgst / Vdsat;
+	                  T1 = 2.0 * Vdsat - Vds;
+	                  T2 = Vds / (3.0 * T1);
+	                  T3 = T2 * Vds;
+	                  T9 = 0.25 * CoxWL;
+	                  T4 = T9 * Alphaz;
+	                  T7 = 2.0 * Vds - T1 - 3.0 * T3;
+	                  T8 = T3 - T1 - 2.0 * Vds;
+	                  qgate = CoxWL * (Vgs_eff - Vfb
+			        - self.size_params.phi - 0.5 * (Vds - T3));
+	                  T10 = T4 * T8;
+	                  qdrn = T4 * T7;
+	                  qbulk = -(qgate + qdrn + T10);
+  
+                          T5 = T3 / T1;
+                          newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg)
+					  * dVgs_eff_dVg;
+                          T11 = -CoxWL * T5 * dVdsat_dVb;
+                          newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
+                          newop.cgsb = -(here->BSIM4cggb + T11
+                                          + here->BSIM4cgdb);
+                          T6 = 1.0 / Vdsat;
+                          dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
+                          dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
+                          T7 = T9 * T7;
+                          T8 = T9 * T8;
+                          T9 = 2.0 * T4 * (1.0 - 3.0 * T5);
+                          newop.cdgb = (T7 * dAlphaz_dVg - T9
+					  * dVdsat_dVg) * dVgs_eff_dVg;
+                          T12 = T7 * dAlphaz_dVb - T9 * dVdsat_dVb;
+                          newop.cddb = T4 * (3.0 - 6.0 * T2 - 3.0 * T5);
+                          newop.cdsb = -(here->BSIM4cdgb + T12
+                                          + here->BSIM4cddb);
+
+                          T9 = 2.0 * T4 * (1.0 + T5);
+                          T10 = (T8 * dAlphaz_dVg - T9 * dVdsat_dVg)
+			      * dVgs_eff_dVg;
+                          T11 = T8 * dAlphaz_dVb - T9 * dVdsat_dVb;
+                          T12 = T4 * (2.0 * T2 + T5 - 1.0);
+                          T0 = -(T10 + T11 + T12);
+
+                          newop.cbgb = -(here->BSIM4cggb
+					  + here->BSIM4cdgb + T10);
+                          newop.cbdb = -(here->BSIM4cgdb
+					  + here->BSIM4cddb + T12);
+                          newop.cbsb = -(here->BSIM4cgsb
+					  + here->BSIM4cdsb + T0);
+                      }
+                  }
+		  else if self.model.xpart < 0.5 {
+    /* 40/60 Charge partition model */
+		      if Vds >= Vdsat {
+    /* saturation region */
+	                  T1 = Vdsat / 3.0;
+	                  qgate = CoxWL * (Vgs_eff - Vfb
+			        - self.size_params.phi - T1);
+	                  T2 = -Two_Third_CoxWL * Vgst;
+	                  qbulk = -(qgate + T2);
+	                  qdrn = 0.4 * T2;
+
+	                  newop.cggb = One_Third_CoxWL * (3.0
+					  - dVdsat_dVg) * dVgs_eff_dVg;
+	                  T2 = -One_Third_CoxWL * dVdsat_dVb;
+	                  newop.cgsb = -(here->BSIM4cggb + T2);
+        	          newop.cgdb = 0.0;
+      
+			  T3 = 0.4 * Two_Third_CoxWL;
+                          newop.cdgb = -T3 * dVgs_eff_dVg;
+                          newop.cddb = 0.0;
+			  T4 = T3 * dVth_dVb;
+                          newop.cdsb = -(T4 + here->BSIM4cdgb);
+
+	                  newop.cbgb = -(here->BSIM4cggb
+					  - Two_Third_CoxWL * dVgs_eff_dVg);
+	                  T3 = -(T2 + Two_Third_CoxWL * dVth_dVb);
+	                  newop.cbsb = -(here->BSIM4cbgb + T3);
+                          newop.cbdb = 0.0;
+	              }
+		      else
+{
+    /* linear region  */
+			  Alphaz = Vgst / Vdsat;
+			  T1 = 2.0 * Vdsat - Vds;
+			  T2 = Vds / (3.0 * T1);
+			  T3 = T2 * Vds;
+			  T9 = 0.25 * CoxWL;
+			  T4 = T9 * Alphaz;
+			  qgate = CoxWL * (Vgs_eff - Vfb - self.size_params.phi
+				- 0.5 * (Vds - T3));
+
+			  T5 = T3 / T1;
+                          newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg)
+					  * dVgs_eff_dVg;
+                          tmp = -CoxWL * T5 * dVdsat_dVb;
+                          newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
+                          newop.cgsb = -(here->BSIM4cggb
+					  + here->BSIM4cgdb + tmp);
+
+			  T6 = 1.0 / Vdsat;
+                          dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
+                          dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
+
+			  T6 = 8.0 * Vdsat * Vdsat - 6.0 * Vdsat * Vds
+			     + 1.2 * Vds * Vds;
+			  T8 = T2 / T1;
+			  T7 = Vds - T1 - T8 * T6;
+			  qdrn = T4 * T7;
+			  T7 *= T9;
+			  tmp = T8 / T1;
+			  tmp1 = T4 * (2.0 - 4.0 * tmp * T6
+			       + T8 * (16.0 * Vdsat - 6.0 * Vds));
+
+                          newop.cdgb = (T7 * dAlphaz_dVg - tmp1
+					  * dVdsat_dVg) * dVgs_eff_dVg;
+                          T10 = T7 * dAlphaz_dVb - tmp1 * dVdsat_dVb;
+                          newop.cddb = T4 * (2.0 - (1.0 / (3.0 * T1
+					  * T1) + 2.0 * tmp) * T6 + T8
+					  * (6.0 * Vdsat - 2.4 * Vds));
+                          newop.cdsb = -(here->BSIM4cdgb
+					  + T10 + here->BSIM4cddb);
+
+			  T7 = 2.0 * (T1 + T3);
+			  qbulk = -(qgate - T4 * T7);
+			  T7 *= T9;
+			  T0 = 4.0 * T4 * (1.0 - T5);
+			  T12 = (-T7 * dAlphaz_dVg - T0 * dVdsat_dVg) * dVgs_eff_dVg
+- here->BSIM4cdgb; /*4.6.2*/
+			  T11 = -T7 * dAlphaz_dVb - T10 - T0 * dVdsat_dVb;
+			  T10 = -4.0 * T4 * (T2 - 0.5 + 0.5 * T5)
+			      - here->BSIM4cddb;
+                          tmp = -(T10 + T11 + T12);
+
+                          newop.cbgb = -(here->BSIM4cggb
+					  + here->BSIM4cdgb + T12);
+                          newop.cbdb = -(here->BSIM4cgdb
+					  + here->BSIM4cddb + T10);  
+                          newop.cbsb = -(here->BSIM4cgsb
+					  + here->BSIM4cdsb + tmp);
+                      }
+                  }
+		  else
+{
+    /* 50/50 partitioning */
+		      if Vds >= Vdsat {
+    /* saturation region */
+	                  T1 = Vdsat / 3.0;
+	                  qgate = CoxWL * (Vgs_eff - Vfb
+			        - self.size_params.phi - T1);
+	                  T2 = -Two_Third_CoxWL * Vgst;
+	                  qbulk = -(qgate + T2);
+	                  qdrn = 0.5 * T2;
+
+	                  newop.cggb = One_Third_CoxWL * (3.0
+					  - dVdsat_dVg) * dVgs_eff_dVg;
+	                  T2 = -One_Third_CoxWL * dVdsat_dVb;
+	                  newop.cgsb = -(here->BSIM4cggb + T2);
+        	          newop.cgdb = 0.0;
+      
+                          newop.cdgb = -One_Third_CoxWL * dVgs_eff_dVg;
+                          newop.cddb = 0.0;
+			  T4 = One_Third_CoxWL * dVth_dVb;
+                          newop.cdsb = -(T4 + here->BSIM4cdgb);
+
+	                  newop.cbgb = -(here->BSIM4cggb
+					  - Two_Third_CoxWL * dVgs_eff_dVg);
+	                  T3 = -(T2 + Two_Third_CoxWL * dVth_dVb);
+	                  newop.cbsb = -(here->BSIM4cbgb + T3);
+                          newop.cbdb = 0.0;
+	              }
+		      else
+{
+    /* linear region */
+			  Alphaz = Vgst / Vdsat;
+			  T1 = 2.0 * Vdsat - Vds;
+			  T2 = Vds / (3.0 * T1);
+			  T3 = T2 * Vds;
+			  T9 = 0.25 * CoxWL;
+			  T4 = T9 * Alphaz;
+			  qgate = CoxWL * (Vgs_eff - Vfb - self.size_params.phi
+				- 0.5 * (Vds - T3));
+
+			  T5 = T3 / T1;
+                          newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg)
+					  * dVgs_eff_dVg;
+                          tmp = -CoxWL * T5 * dVdsat_dVb;
+                          newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
+                          newop.cgsb =  -(here->BSIM4cggb
+					  + here->BSIM4cgdb + tmp);
+
+			  T6 = 1.0 / Vdsat;
+                          dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
+                          dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
+
+			  T7 = T1 + T3;
+			  qdrn = -T4 * T7;
+			  qbulk = - (qgate + qdrn + qdrn);
+			  T7 *= T9;
+			  T0 = T4 * (2.0 * T5 - 2.0);
+
+                          newop.cdgb =  (T0 * dVdsat_dVg - T7
+					  * dAlphaz_dVg) * dVgs_eff_dVg;
+			  T12 = T0 * dVdsat_dVb - T7 * dAlphaz_dVb;
+                          newop.cddb =  T4 * (1.0 - 2.0 * T2 - T5);
+                          newop.cdsb = -(here->BSIM4cdgb + T12
+                                          + here->BSIM4cddb);
+
+                          newop.cbgb = -(here->BSIM4cggb
+					  + 2.0 * here->BSIM4cdgb);
+                          newop.cbdb = -(here->BSIM4cgdb
+					  + 2.0 * here->BSIM4cddb);
+                          newop.cbsb = -(here->BSIM4cgsb
+					  + 2.0 * here->BSIM4cdsb);
+} /* end of linear region */
+} /* end of 50/50 partition */
+} /* end of inversion */
+} /* end of capMod=0 */
+	  else
+	  {   if Vbseff < 0.0 {
+	          VbseffCV = Vbseff;
+                  dVbseffCV_dVb = 1.0;
+              }
+	      else
+	      {   VbseffCV = self.size_params.phi - Phis;
+                  dVbseffCV_dVb = -dPhis_dVb;
+              }
+
+              CoxWL = self.model.coxe * self.size_params.weffCV
+		    * self.size_params.leffCV * self.intp.nf;
+
+	      if(self.model.cvchargeMod == 0)
+		{
+    /* Seperate VgsteffCV with noff and voffcv */
+		  noff = n * self.size_params.noff;
+		  dnoff_dVd = self.size_params.noff * dn_dVd;
+		  dnoff_dVb = self.size_params.noff * dn_dVb;
+		  T0 = Vtm * noff;
+		  voffcv = self.size_params.voffcv;
+		  VgstNVt = (Vgst - voffcv) / T0;
+		  
+		  if VgstNVt > EXP_THRESHOLD {
+		        
+		      Vgsteff = Vgst - voffcv;
+		      dVgsteff_dVg = dVgs_eff_dVg;
+		      dVgsteff_dVd = -dVth_dVd;
+		      dVgsteff_dVb = -dVth_dVb;
+		    }
+		  else if VgstNVt < -EXP_THRESHOLD {
+		        
+		      Vgsteff = T0 * log(1.0 + MIN_EXP);
+		      dVgsteff_dVg = 0.0;
+		      dVgsteff_dVd = Vgsteff / noff;
+		      dVgsteff_dVb = dVgsteff_dVd * dnoff_dVb;
+		      dVgsteff_dVd *= dnoff_dVd;
+		    }
+		  else
+		    {  
+		      ExpVgst = exp(VgstNVt);
+		      Vgsteff = T0 * log(1.0 + ExpVgst);
+		      dVgsteff_dVg = ExpVgst / (1.0 + ExpVgst);
+		      dVgsteff_dVd = -dVgsteff_dVg * (dVth_dVd + (Vgst - voffcv)
+				   / noff * dnoff_dVd) + Vgsteff / noff * dnoff_dVd;
+		      dVgsteff_dVb = -dVgsteff_dVg * (dVth_dVb + (Vgst - voffcv)
+				   / noff * dnoff_dVb) + Vgsteff / noff * dnoff_dVb;
+		      dVgsteff_dVg *= dVgs_eff_dVg;
+		    }
+    /* End of VgsteffCV for cvchargeMod = 0 */
+		}
+	      else
+		{	       
+		  T0 = n * Vtm;
+		  T1 = self.size_params.mstarcv * Vgst;
+		  T2 = T1 / T0;
+		  if T2 > EXP_THRESHOLD {
+		        
+		      T10 = T1;
+		      dT10_dVg = self.size_params.mstarcv * dVgs_eff_dVg;
+		      dT10_dVd = -dVth_dVd * self.size_params.mstarcv;
+		      dT10_dVb = -dVth_dVb * self.size_params.mstarcv;
+		    }
+		  else if T2 < -EXP_THRESHOLD {
+		        
+		      T10 = Vtm * log(1.0 + MIN_EXP);
+		      dT10_dVg = 0.0;
+		      dT10_dVd = T10 * dn_dVd;
+		      dT10_dVb = T10 * dn_dVb;
+		      T10 *= n;
+		    }
+		  else
+		    {  
+		      ExpVgst = exp(T2);
+		      T3 = Vtm * log(1.0 + ExpVgst);
+		      T10 = n * T3;
+		      dT10_dVg = self.size_params.mstarcv * ExpVgst / (1.0 + ExpVgst);
+		      dT10_dVb = T3 * dn_dVb - dT10_dVg * (dVth_dVb + Vgst * dn_dVb / n);
+		      dT10_dVd = T3 * dn_dVd - dT10_dVg * (dVth_dVd + Vgst * dn_dVd / n);
+		      dT10_dVg *= dVgs_eff_dVg;
+		    }
+		  
+		  T1 = self.size_params.voffcbncv - (1.0 - self.size_params.mstarcv) * Vgst;
+		  T2 = T1 / T0;
+		  if T2 < -EXP_THRESHOLD {
+		        
+		      T3 = self.model.coxe * MIN_EXP / self.size_params.cdep0;
+		      T9 = self.size_params.mstarcv + T3 * n;
+		      dT9_dVg = 0.0;
+		      dT9_dVd = dn_dVd * T3;
+		      dT9_dVb = dn_dVb * T3;
+		    }
+		  else if T2 > EXP_THRESHOLD {
+		        
+		      T3 = self.model.coxe * MAX_EXP / self.size_params.cdep0;
+		      T9 = self.size_params.mstarcv + T3 * n;
+		      dT9_dVg = 0.0;
+		      dT9_dVd = dn_dVd * T3;
+		      dT9_dVb = dn_dVb * T3;
+		    }
+		  else
+		    {  
+		      ExpVgst = exp(T2);
+		      T3 = self.model.coxe / self.size_params.cdep0;
+		      T4 = T3 * ExpVgst;
+		      T5 = T1 * T4 / T0;
+		      T9 = self.size_params.mstarcv + n * T4;
+		      dT9_dVg = T3 * (self.size_params.mstarcv - 1.0) * ExpVgst / Vtm;
+		      dT9_dVb = T4 * dn_dVb - dT9_dVg * dVth_dVb - T5 * dn_dVb;
+		      dT9_dVd = T4 * dn_dVd - dT9_dVg * dVth_dVd - T5 * dn_dVd;
+		      dT9_dVg *= dVgs_eff_dVg;
+		    }
+		  
+		  Vgsteff = T10 / T9;
+		  T11 = T9 * T9;
+		  dVgsteff_dVg = (T9 * dT10_dVg - T10 * dT9_dVg) / T11;
+		  dVgsteff_dVd = (T9 * dT10_dVd - T10 * dT9_dVd) / T11;
+		  dVgsteff_dVb = (T9 * dT10_dVb - T10 * dT9_dVb) / T11;
+    /* End of VgsteffCV for cvchargeMod = 1 */
+		}
+	 
+
+	      if self.model.capMod == 1 {
+	          Vfb = self.intp.vfbzb;
+                  V3 = Vfb - Vgs_eff + VbseffCV - DELTA_3;
+		  if (Vfb <= 0.0)
+		      T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * Vfb);
+		  else
+		      T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * Vfb);
+
+		  T1 = 0.5 * (1.0 + V3 / T0);
+		  Vfbeff = Vfb - 0.5 * (V3 + T0);
+		  dVfbeff_dVg = T1 * dVgs_eff_dVg;
+		  dVfbeff_dVb = -T1 * dVbseffCV_dVb;
+		  Qac0 = CoxWL * (Vfbeff - Vfb);
+		  dQac0_dVg = CoxWL * dVfbeff_dVg;
+		  dQac0_dVb = CoxWL * dVfbeff_dVb;
+
+                  T0 = 0.5 * self.size_params.k1ox;
+		  T3 = Vgs_eff - Vfbeff - VbseffCV - Vgsteff;
+                  if self.size_params.k1ox == 0.0 {
+                      T1 = 0.0;
+                      T2 = 0.0;
+                  }
+		  else if T3 < 0.0 {
+		      T1 = T0 + T3 / self.size_params.k1ox;
+                      T2 = CoxWL;
+		  }
+		  else
+		  {   T1 = sqrt(T0 * T0 + T3);
+                      T2 = CoxWL * T0 / T1;
+		  }
+
+		  Qsub0 = CoxWL * self.size_params.k1ox * (T1 - T0);
+
+                  dQsub0_dVg = T2 * (dVgs_eff_dVg - dVfbeff_dVg - dVgsteff_dVg);
+                  dQsub0_dVd = -T2 * dVgsteff_dVd;
+                  dQsub0_dVb = -T2 * (dVfbeff_dVb + dVbseffCV_dVb
+                             + dVgsteff_dVb);
+
+                  AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
+                  dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb;
+	          VdsatCV = Vgsteff / AbulkCV;
+
+	 	  T0 = VdsatCV - Vds - DELTA_4;
+		  dT0_dVg = 1.0 / AbulkCV;
+		  dT0_dVb = -VdsatCV * dAbulkCV_dVb / AbulkCV;
+		  T1 = sqrt(T0 * T0 + 4.0 * DELTA_4 * VdsatCV);
+                  dT1_dVg = (T0 + DELTA_4 + DELTA_4) / T1;
+                  dT1_dVd = -T0 / T1;
+                  dT1_dVb = dT1_dVg * dT0_dVb;
+		  dT1_dVg *= dT0_dVg;
+		  if T0 >= 0.0 {
+		      VdseffCV = VdsatCV - 0.5 * (T0 + T1);
+                      dVdseffCV_dVg = 0.5 * (dT0_dVg - dT1_dVg);
+                      dVdseffCV_dVd = 0.5 * (1.0 - dT1_dVd);
+                      dVdseffCV_dVb = 0.5 * (dT0_dVb - dT1_dVb);
+		  }
+                  else
+                  {   T3 = (DELTA_4 + DELTA_4) / (T1 - T0);
+		      T4 = 1.0 - T3;
+		      T5 = VdsatCV * T3 / (T1 - T0);
+		      VdseffCV = VdsatCV * T4;
+                      dVdseffCV_dVg = dT0_dVg * T4 + T5 * (dT1_dVg - dT0_dVg);
+                      dVdseffCV_dVd = T5 * (dT1_dVd + 1.0);
+                      dVdseffCV_dVb = dT0_dVb * (T4 - T5) + T5 * dT1_dVb;
+                  }
+
+                  if Vds == 0.0 {
+                     VdseffCV = 0.0;
+                     dVdseffCV_dVg = 0.0;
+                     dVdseffCV_dVb = 0.0;
+                  }
+
+		  T0 = AbulkCV * VdseffCV;
+		  T1 = 12.0 * (Vgsteff - 0.5 * T0 + 1.0e-20);
+		  T2 = VdseffCV / T1;
+		  T3 = T0 * T2;
+		  
+		  T4 = (1.0 - 12.0 * T2 * T2 * AbulkCV);
+		  T5 = (6.0 * T0 * (4.0 * Vgsteff - T0) / (T1 * T1) - 0.5);
+		  T6 = 12.0 * T2 * T2 * Vgsteff;
+		  
+		  qgate = CoxWL * (Vgsteff - 0.5 * VdseffCV + T3);
+		  Cgg1 = CoxWL * (T4 + T5 * dVdseffCV_dVg);
+		  Cgd1 = CoxWL * T5 * dVdseffCV_dVd + Cgg1 * dVgsteff_dVd;
+		  Cgb1 = CoxWL * (T5 * dVdseffCV_dVb + T6 * dAbulkCV_dVb)
+		    + Cgg1 * dVgsteff_dVb;
+		  Cgg1 *= dVgsteff_dVg;
+		  
+		  T7 = 1.0 - AbulkCV;
+		  qbulk = CoxWL * T7 * (0.5 * VdseffCV - T3);
+		  T4 = -T7 * (T4 - 1.0);
+		  T5 = -T7 * T5;
+		  T6 = -(T7 * T6 + (0.5 * VdseffCV - T3));
+		  Cbg1 = CoxWL * (T4 + T5 * dVdseffCV_dVg);
+		  Cbd1 = CoxWL * T5 * dVdseffCV_dVd + Cbg1 * dVgsteff_dVd;
+		  Cbb1 = CoxWL * (T5 * dVdseffCV_dVb + T6 * dAbulkCV_dVb)
+		    + Cbg1 * dVgsteff_dVb;
+		  Cbg1 *= dVgsteff_dVg;
+		  
+		  if self.model.xpart > 0.5 {
+    /* 0/100 Charge petition model */
+		      T1 = T1 + T1;
+		      qsrc = -CoxWL * (0.5 * Vgsteff + 0.25 * T0
+				       - T0 * T0 / T1);
+		      T7 = (4.0 * Vgsteff - T0) / (T1 * T1);
+		      T4 = -(0.5 + 24.0 * T0 * T0 / (T1 * T1));
+		      T5 = -(0.25 * AbulkCV - 12.0 * AbulkCV * T0 * T7);
+		      T6 = -(0.25 * VdseffCV - 12.0 * T0 * VdseffCV * T7);
+		      Csg = CoxWL * (T4 + T5 * dVdseffCV_dVg);
+		      Csd = CoxWL * T5 * dVdseffCV_dVd + Csg * dVgsteff_dVd;
+		      Csb = CoxWL * (T5 * dVdseffCV_dVb + T6 * dAbulkCV_dVb)
+			+ Csg * dVgsteff_dVb;
+		      Csg *= dVgsteff_dVg;
+		    }
+		  else if self.model.xpart < 0.5 {
+    /* 40/60 Charge petition model */
+		      T1 = T1 / 12.0;
+		      T2 = 0.5 * CoxWL / (T1 * T1);
+		      T3 = Vgsteff * (2.0 * T0 * T0 / 3.0 + Vgsteff
+				      * (Vgsteff - 4.0 * T0 / 3.0))
+			- 2.0 * T0 * T0 * T0 / 15.0;
+		      qsrc = -T2 * T3;
+		      T7 = 4.0 / 3.0 * Vgsteff * (Vgsteff - T0)
+			+ 0.4 * T0 * T0;
+		      T4 = -2.0 * qsrc / T1 - T2 * (Vgsteff * (3.0
+							       * Vgsteff - 8.0 * T0 / 3.0)
+						    + 2.0 * T0 * T0 / 3.0);
+		      T5 = (qsrc / T1 + T2 * T7) * AbulkCV;
+		      T6 = (qsrc / T1 * VdseffCV + T2 * T7 * VdseffCV);
+		      Csg = (T4 + T5 * dVdseffCV_dVg);
+		      Csd = T5 * dVdseffCV_dVd + Csg * dVgsteff_dVd;
+		      Csb = (T5 * dVdseffCV_dVb + T6 * dAbulkCV_dVb)
+			+ Csg * dVgsteff_dVb;
+		      Csg *= dVgsteff_dVg;
+		    }
+		  else
+{
+    /* 50/50 Charge petition model */
+		      qsrc = -0.5 * (qgate + qbulk);
+		      Csg = -0.5 * (Cgg1 + Cbg1);
+		      Csb = -0.5 * (Cgb1 + Cbb1);
+		      Csd = -0.5 * (Cgd1 + Cbd1);
+		    }
+		  
+		  qgate += Qac0 + Qsub0;
+		  qbulk -= (Qac0 + Qsub0);
+		  qdrn = -(qgate + qbulk + qsrc);
+		  
+		  Cgg = dQac0_dVg + dQsub0_dVg + Cgg1;
+		  Cgd = dQsub0_dVd + Cgd1;
+		  Cgb = dQac0_dVb + dQsub0_dVb + Cgb1;
+		  
+		  Cbg = Cbg1 - dQac0_dVg - dQsub0_dVg;
+		  Cbd = Cbd1 - dQsub0_dVd;
+		  Cbb = Cbb1 - dQac0_dVb - dQsub0_dVb;
+		  
+		  Cgb *= dVbseff_dVb;
+		  Cbb *= dVbseff_dVb;
+		  Csb *= dVbseff_dVb;
+		  
+		  newop.cggb = Cgg;
+		  newop.cgsb = -(Cgg + Cgd + Cgb);
+		  newop.cgdb = Cgd;
+		  newop.cdgb = -(Cgg + Cbg + Csg);
+		  newop.cdsb = (Cgg + Cgd + Cgb + Cbg + Cbd + Cbb
+				     + Csg + Csd + Csb);
+		  newop.cddb = -(Cgd + Cbd + Csd);
+		  newop.cbgb = Cbg;
+		  newop.cbsb = -(Cbg + Cbd + Cbb);
+		  newop.cbdb = Cbd;
+	      }
+	     
+    /* Charge-Thickness capMod (CTM) begins */
+	      else if self.model.capMod == 2 {
+	          V3 = self.intp.vfbzb - Vgs_eff + VbseffCV - DELTA_3;
+		  if (self.intp.vfbzb <= 0.0)
+		      T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * self.intp.vfbzb);
+		  else
+		      T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * self.intp.vfbzb);
+
+		  T1 = 0.5 * (1.0 + V3 / T0);
+		  Vfbeff = self.intp.vfbzb - 0.5 * (V3 + T0);
+		  dVfbeff_dVg = T1 * dVgs_eff_dVg;
+		  dVfbeff_dVb = -T1 * dVbseffCV_dVb;
+
+                  Cox = here->BSIM4coxp;
+                  Tox = 1.0e8 * here->BSIM4toxp;
+                  T0 = (Vgs_eff - VbseffCV - self.intp.vfbzb) / Tox;
+                  dT0_dVg = dVgs_eff_dVg / Tox;
+                  dT0_dVb = -dVbseffCV_dVb / Tox;
+
+                  tmp = T0 * self.size_params.acde;
+                  if (-EXP_THRESHOLD < tmp) && (tmp < EXP_THRESHOLD) {
+                      Tcen = self.size_params.ldeb * exp(tmp);
+                      dTcen_dVg = self.size_params.acde * Tcen;
+                      dTcen_dVb = dTcen_dVg * dT0_dVb;
+                      dTcen_dVg *= dT0_dVg;
+                  }
+                  else if tmp <= -EXP_THRESHOLD {
+                      Tcen = self.size_params.ldeb * MIN_EXP;
+                      dTcen_dVg = dTcen_dVb = 0.0;
+                  }
+                  else
+                  {   Tcen = self.size_params.ldeb * MAX_EXP;
+                      dTcen_dVg = dTcen_dVb = 0.0;
+                  }
+
+                  LINK = 1.0e-3 * here->BSIM4toxp;
+                  V3 = self.size_params.ldeb - Tcen - LINK;
+                  V4 = sqrt(V3 * V3 + 4.0 * LINK * self.size_params.ldeb);
+                  Tcen = self.size_params.ldeb - 0.5 * (V3 + V4);
+                  T1 = 0.5 * (1.0 + V3 / V4);
+                  dTcen_dVg *= T1;
+                  dTcen_dVb *= T1;
+
+                  Ccen = epssub / Tcen;
+                  T2 = Cox / (Cox + Ccen);
+                  Coxeff = T2 * Ccen;
+                  T3 = -Ccen / Tcen;
+                  dCoxeff_dVg = T2 * T2 * T3;
+                  dCoxeff_dVb = dCoxeff_dVg * dTcen_dVb;
+                  dCoxeff_dVg *= dTcen_dVg;
+                  CoxWLcen = CoxWL * Coxeff / self.model.coxe;
+
+                  Qac0 = CoxWLcen * (Vfbeff - self.intp.vfbzb);
+                  QovCox = Qac0 / Coxeff;
+                  dQac0_dVg = CoxWLcen * dVfbeff_dVg
+                            + QovCox * dCoxeff_dVg;
+                  dQac0_dVb = CoxWLcen * dVfbeff_dVb
+			    + QovCox * dCoxeff_dVb;
+
+                  T0 = 0.5 * self.size_params.k1ox;
+                  T3 = Vgs_eff - Vfbeff - VbseffCV - Vgsteff;
+                  if self.size_params.k1ox == 0.0 {
+                      T1 = 0.0;
+                      T2 = 0.0;
+                  }
+                  else if T3 < 0.0 {
+                      T1 = T0 + T3 / self.size_params.k1ox;
+                      T2 = CoxWLcen;
+                  }
+                  else
+                  {   T1 = sqrt(T0 * T0 + T3);
+                      T2 = CoxWLcen * T0 / T1;
+                  }
+
+                  Qsub0 = CoxWLcen * self.size_params.k1ox * (T1 - T0);
+                  QovCox = Qsub0 / Coxeff;
+                  dQsub0_dVg = T2 * (dVgs_eff_dVg - dVfbeff_dVg - dVgsteff_dVg)
+                             + QovCox * dCoxeff_dVg;
+                  dQsub0_dVd = -T2 * dVgsteff_dVd;
+                  dQsub0_dVb = -T2 * (dVfbeff_dVb + dVbseffCV_dVb + dVgsteff_dVb)
+                             + QovCox * dCoxeff_dVb;
+
+    /* Gate-bias dependent delta Phis begins */
+		  if self.size_params.k1ox <= 0.0 {
+		      Denomi = 0.25 * self.size_params.moin * Vtm;
+                      T0 = 0.5 * self.size_params.sqrtPhi;
+		  }
+		  else
+		  {   Denomi = self.size_params.moin * Vtm
+			     * self.size_params.k1ox * self.size_params.k1ox;
+                      T0 = self.size_params.k1ox * self.size_params.sqrtPhi;
+		  }
+                  T1 = 2.0 * T0 + Vgsteff;
+
+		  DeltaPhi = Vtm * log(1.0 + T1 * Vgsteff / Denomi);
+		  dDeltaPhi_dVg = 2.0 * Vtm * (T1 -T0) / (Denomi + T1 * Vgsteff);
+    /* End of delta Phis */
+
+    /* VgDP = Vgsteff - DeltaPhi */
+		  T0 = Vgsteff - DeltaPhi - 0.001;
+		  dT0_dVg = 1.0 - dDeltaPhi_dVg;
+		  T1 = sqrt(T0 * T0 + Vgsteff * 0.004);
+		  VgDP = 0.5 * (T0 + T1);
+		  dVgDP_dVg = 0.5 * (dT0_dVg + (T0 * dT0_dVg + 0.002) / T1);                  
+                  
+                  Tox += Tox;
+                  T0 = (Vgsteff + self.intp.vtfbphi2) / Tox;
+                  tmp = exp(self.model.bdos * 0.7 * log(T0));
+                  T1 = 1.0 + tmp;
+                  T2 = self.model.bdos * 0.7 * tmp / (T0 * Tox);
+                  Tcen = self.model.ados * 1.9e-9 / T1;
+                  dTcen_dVg = -Tcen * T2 / T1;
+                  dTcen_dVd = dTcen_dVg * dVgsteff_dVd;
+                  dTcen_dVb = dTcen_dVg * dVgsteff_dVb;
+                  dTcen_dVg *= dVgsteff_dVg;
+
+		  Ccen = epssub / Tcen;
+		  T0 = Cox / (Cox + Ccen);
+		  Coxeff = T0 * Ccen;
+		  T1 = -Ccen / Tcen;
+		  dCoxeff_dVg = T0 * T0 * T1;
+		  dCoxeff_dVd = dCoxeff_dVg * dTcen_dVd;
+		  dCoxeff_dVb = dCoxeff_dVg * dTcen_dVb;
+		  dCoxeff_dVg *= dTcen_dVg;
+		  CoxWLcen = CoxWL * Coxeff / self.model.coxe;
+
+                  AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
+                  dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb;
+                  VdsatCV = VgDP / AbulkCV;
+
+                  T0 = VdsatCV - Vds - DELTA_4;
+                  dT0_dVg = dVgDP_dVg / AbulkCV;
+                  dT0_dVb = -VdsatCV * dAbulkCV_dVb / AbulkCV;
+                  T1 = sqrt(T0 * T0 + 4.0 * DELTA_4 * VdsatCV);
+                  dT1_dVg = (T0 + DELTA_4 + DELTA_4) / T1;
+                  dT1_dVd = -T0 / T1;
+                  dT1_dVb = dT1_dVg * dT0_dVb;
+                  dT1_dVg *= dT0_dVg;
+                  if T0 >= 0.0 {
+                      VdseffCV = VdsatCV - 0.5 * (T0 + T1);
+                      dVdseffCV_dVg = 0.5 * (dT0_dVg - dT1_dVg);
+                      dVdseffCV_dVd = 0.5 * (1.0 - dT1_dVd);
+                      dVdseffCV_dVb = 0.5 * (dT0_dVb - dT1_dVb);
+                  }
+                  else
+                  {   T3 = (DELTA_4 + DELTA_4) / (T1 - T0);
+                      T4 = 1.0 - T3;
+                      T5 = VdsatCV * T3 / (T1 - T0);
+                      VdseffCV = VdsatCV * T4;
+                      dVdseffCV_dVg = dT0_dVg * T4 + T5 * (dT1_dVg - dT0_dVg);
+                      dVdseffCV_dVd = T5 * (dT1_dVd + 1.0);
+                      dVdseffCV_dVb = dT0_dVb * (T4 - T5) + T5 * dT1_dVb;
+                  }
+
+                  if Vds == 0.0 {
+                     VdseffCV = 0.0;
+                     dVdseffCV_dVg = 0.0;
+                     dVdseffCV_dVb = 0.0;
+                  }
+
+                  T0 = AbulkCV * VdseffCV;
+		  T1 = VgDP;
+                  T2 = 12.0 * (T1 - 0.5 * T0 + 1.0e-20);
+                  T3 = T0 / T2;
+                  T4 = 1.0 - 12.0 * T3 * T3;
+                  T5 = AbulkCV * (6.0 * T0 * (4.0 * T1 - T0) / (T2 * T2) - 0.5);
+		  T6 = T5 * VdseffCV / AbulkCV;
+
+                  qgate = CoxWLcen * (T1 - T0 * (0.5 - T3));
+		  QovCox = qgate / Coxeff;
+		  Cgg1 = CoxWLcen * (T4 * dVgDP_dVg
+		       + T5 * dVdseffCV_dVg);
+		  Cgd1 = CoxWLcen * T5 * dVdseffCV_dVd + Cgg1
+		       * dVgsteff_dVd + QovCox * dCoxeff_dVd;
+		  Cgb1 = CoxWLcen * (T5 * dVdseffCV_dVb + T6 * dAbulkCV_dVb)
+		       + Cgg1 * dVgsteff_dVb + QovCox * dCoxeff_dVb;
+		  Cgg1 = Cgg1 * dVgsteff_dVg + QovCox * dCoxeff_dVg;
+
+
+                  T7 = 1.0 - AbulkCV;
+                  T8 = T2 * T2;
+                  T9 = 12.0 * T7 * T0 * T0 / (T8 * AbulkCV);
+                  T10 = T9 * dVgDP_dVg;
+                  T11 = -T7 * T5 / AbulkCV;
+                  T12 = -(T9 * T1 / AbulkCV + VdseffCV * (0.5 - T0 / T2));
+
+		  qbulk = CoxWLcen * T7 * (0.5 * VdseffCV - T0 * VdseffCV / T2);
+		  QovCox = qbulk / Coxeff;
+		  Cbg1 = CoxWLcen * (T10 + T11 * dVdseffCV_dVg);
+		  Cbd1 = CoxWLcen * T11 * dVdseffCV_dVd + Cbg1
+		       * dVgsteff_dVd + QovCox * dCoxeff_dVd;
+		  Cbb1 = CoxWLcen * (T11 * dVdseffCV_dVb + T12 * dAbulkCV_dVb)
+		       + Cbg1 * dVgsteff_dVb + QovCox * dCoxeff_dVb;
+		  Cbg1 = Cbg1 * dVgsteff_dVg + QovCox * dCoxeff_dVg;
+
+                  if self.model.xpart > 0.5 {
+    /* 0/100 partition */
+		      qsrc = -CoxWLcen * (T1 / 2.0 + T0 / 4.0
+			   - 0.5 * T0 * T0 / T2);
+		      QovCox = qsrc / Coxeff;
+		      T2 += T2;
+		      T3 = T2 * T2;
+		      T7 = -(0.25 - 12.0 * T0 * (4.0 * T1 - T0) / T3);
+		      T4 = -(0.5 + 24.0 * T0 * T0 / T3) * dVgDP_dVg;
+		      T5 = T7 * AbulkCV;
+		      T6 = T7 * VdseffCV;
+
+		      Csg = CoxWLcen * (T4 + T5 * dVdseffCV_dVg);
+		      Csd = CoxWLcen * T5 * dVdseffCV_dVd + Csg * dVgsteff_dVd
+			  + QovCox * dCoxeff_dVd;
+		      Csb = CoxWLcen * (T5 * dVdseffCV_dVb + T6 * dAbulkCV_dVb)
+			  + Csg * dVgsteff_dVb + QovCox * dCoxeff_dVb;
+		      Csg = Csg * dVgsteff_dVg + QovCox * dCoxeff_dVg;
+                  }
+		  else if self.model.xpart < 0.5 {
+    /* 40/60 partition */
+		      T2 = T2 / 12.0;
+		      T3 = 0.5 * CoxWLcen / (T2 * T2);
+                      T4 = T1 * (2.0 * T0 * T0 / 3.0 + T1 * (T1 - 4.0
+                         * T0 / 3.0)) - 2.0 * T0 * T0 * T0 / 15.0;
+		      qsrc = -T3 * T4;
+		      QovCox = qsrc / Coxeff;
+		      T8 = 4.0 / 3.0 * T1 * (T1 - T0) + 0.4 * T0 * T0;
+		      T5 = -2.0 * qsrc / T2 - T3 * (T1 * (3.0 * T1 - 8.0
+			 * T0 / 3.0) + 2.0 * T0 * T0 / 3.0);
+		      T6 = AbulkCV * (qsrc / T2 + T3 * T8);
+		      T7 = T6 * VdseffCV / AbulkCV;
+
+		      Csg = T5 * dVgDP_dVg + T6 * dVdseffCV_dVg;
+		      Csd = Csg * dVgsteff_dVd + T6 * dVdseffCV_dVd
+			  + QovCox * dCoxeff_dVd;
+		      Csb = Csg * dVgsteff_dVb + T6 * dVdseffCV_dVb
+		          + T7 * dAbulkCV_dVb + QovCox * dCoxeff_dVb;
+		      Csg = Csg * dVgsteff_dVg + QovCox * dCoxeff_dVg;
+                  }
+		  else
+{
+    /* 50/50 partition */
+                      qsrc = -0.5 * qgate;
+                      Csg = -0.5 * Cgg1;
+                      Csd = -0.5 * Cgd1;
+                      Csb = -0.5 * Cgb1;
+                  }
+
+		  qgate += Qac0 + Qsub0 - qbulk;
+		  qbulk -= (Qac0 + Qsub0);
+                  qdrn = -(qgate + qbulk + qsrc);
+
+		  Cbg = Cbg1 - dQac0_dVg - dQsub0_dVg;
+		  Cbd = Cbd1 - dQsub0_dVd;
+		  Cbb = Cbb1 - dQac0_dVb - dQsub0_dVb;
+
+                  Cgg = Cgg1 - Cbg;
+                  Cgd = Cgd1 - Cbd;
+                  Cgb = Cgb1 - Cbb;
+
+		  Cgb *= dVbseff_dVb;
+		  Cbb *= dVbseff_dVb;
+		  Csb *= dVbseff_dVb;
+
+                  newop.cggb = Cgg;
+	          newop.cgsb = -(Cgg + Cgd + Cgb);
+	          newop.cgdb = Cgd;
+                  newop.cdgb = -(Cgg + Cbg + Csg);
+	          newop.cdsb = (Cgg + Cgd + Cgb + Cbg + Cbd + Cbb
+			          + Csg + Csd + Csb);
+	          newop.cddb = -(Cgd + Cbd + Csd);
+                  newop.cbgb = Cbg;
+	          newop.cbsb = -(Cbg + Cbd + Cbb);
+	          newop.cbdb = Cbd;
+} /* End of CTM */
+          }
+
+          newop.csgb = - here->BSIM4cggb - here->BSIM4cdgb - here->BSIM4cbgb;
+          newop.csdb = - here->BSIM4cgdb - here->BSIM4cddb - here->BSIM4cbdb;
+          newop.cssb = - here->BSIM4cgsb - here->BSIM4cdsb - here->BSIM4cbsb;
+          newop.cgbb = - here->BSIM4cgdb - here->BSIM4cggb - here->BSIM4cgsb;
+          newop.cdbb = - here->BSIM4cddb - here->BSIM4cdgb - here->BSIM4cdsb;
+          newop.cbbb = - here->BSIM4cbgb - here->BSIM4cbdb - here->BSIM4cbsb;
+          newop.csbb = - here->BSIM4cgbb - here->BSIM4cdbb - here->BSIM4cbbb;
+          newop.qgate = qgate;
+          newop.qbulk = qbulk;
+          newop.qdrn = qdrn;
+          newop.qsrc = -(qgate + qbulk + qdrn);
+
+    /* NQS begins */
+          if (self.intp.trnqsMod) || (self.intp.acnqsMod) {
+              newop.qchqs = qcheq = -(qbulk + qgate);
+              newop.cqgb = -(here->BSIM4cggb + here->BSIM4cbgb);
+              newop.cqdb = -(here->BSIM4cgdb + here->BSIM4cbdb);
+              newop.cqsb = -(here->BSIM4cgsb + here->BSIM4cbsb);
+              newop.cqbb = -(here->BSIM4cqgb + here->BSIM4cqdb
+                              + here->BSIM4cqsb);
+
+              CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
+                    * self.size_params.leffCV;
+T1 = here->BSIM4gcrg / CoxWL; /* 1 / tau */
+              newop.gtau = T1 * ScalingFactor;
+
+	      if (self.intp.acnqsMod)
+                  newop.taunet = 1.0 / T1;
+
+              newop.qcheq = qcheq;
+
+	      if self.intp.trnqsMod {
+                  error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qcheq);
+                  if (error)
+                      return(error);
+	      }
+          }
+
+
+finished:
+
+    /* Calculate junction C-V */
+          if ChargeComputationNeeded {
+czbd = self.model.DunitAreaTempJctCap * self.intp.Adeff; /* bug fix */
+              czbs = self.model.SunitAreaTempJctCap * self.intp.Aseff;
+              czbdsw = self.model.DunitLengthSidewallTempJctCap * self.intp.Pdeff;
+              czbdswg = self.model.DunitLengthGateSidewallTempJctCap
+                      * self.size_params.weffCJ * self.intp.nf;
+              czbssw = self.model.SunitLengthSidewallTempJctCap * self.intp.Pseff;
+              czbsswg = self.model.SunitLengthGateSidewallTempJctCap
+                      * self.size_params.weffCJ * self.intp.nf;
+
+              MJS = self.model.SbulkJctBotGradingCoeff;
+              MJSWS = self.model.SbulkJctSideGradingCoeff;
+	      MJSWGS = self.model.SbulkJctGateSideGradingCoeff;
+
+              MJD = self.model.DbulkJctBotGradingCoeff;
+              MJSWD = self.model.DbulkJctSideGradingCoeff;
+              MJSWGD = self.model.DbulkJctGateSideGradingCoeff;
+
+    /* Source Bulk Junction */
+	      if vbs_jct == 0.0 {
+	          newop.qbs = 0.0;
+                  newop.capbs = czbs + czbssw + czbsswg;
+	      }
+	      else if vbs_jct < 0.0 {
+	          if czbs > 0.0 {
+		      arg = 1.0 - vbs_jct / self.model.PhiBS;
+		      if (MJS == 0.5)
+                          sarg = 1.0 / sqrt(arg);
+		      else
+                          sarg = exp(-MJS * log(arg));
+                      newop.qbs = self.model.PhiBS * czbs
+			               * (1.0 - arg * sarg) / (1.0 - MJS);
+		      newop.capbs = czbs * sarg;
+		  }
+		  else
+		  {   newop.qbs = 0.0;
+		      newop.capbs = 0.0;
+		  }
+		  if czbssw > 0.0 {
+		      arg = 1.0 - vbs_jct / self.model.PhiBSWS;
+		      if (MJSWS == 0.5)
+                          sarg = 1.0 / sqrt(arg);
+		      else
+                          sarg = exp(-MJSWS * log(arg));
+                      newop.qbs += self.model.PhiBSWS * czbssw
+				       * (1.0 - arg * sarg) / (1.0 - MJSWS);
+                      here->BSIM4capbs += czbssw * sarg;
+		  }
+		  if czbsswg > 0.0 {
+		      arg = 1.0 - vbs_jct / self.model.PhiBSWGS;
+		      if (MJSWGS == 0.5)
+                          sarg = 1.0 / sqrt(arg);
+		      else
+                          sarg = exp(-MJSWGS * log(arg));
+                      newop.qbs += self.model.PhiBSWGS * czbsswg
+				       * (1.0 - arg * sarg) / (1.0 - MJSWGS);
+                      here->BSIM4capbs += czbsswg * sarg;
+		  }
+
+              }
+	      else
+	      {   T0 = czbs + czbssw + czbsswg;
+                  T1 = vbs_jct * (czbs * MJS / self.model.PhiBS + czbssw * MJSWS
+                     / self.model.PhiBSWS + czbsswg * MJSWGS / self.model.PhiBSWGS);    
+                  newop.qbs = vbs_jct * (T0 + 0.5 * T1);
+                  newop.capbs = T0 + T1;
+              }
+
+    /* Drain Bulk Junction */
+	      if vbd_jct == 0.0 {
+	          newop.qbd = 0.0;
+                  newop.capbd = czbd + czbdsw + czbdswg;
+	      }
+	      else if vbd_jct < 0.0 {
+	          if czbd > 0.0 {
+		      arg = 1.0 - vbd_jct / self.model.PhiBD;
+		      if (MJD == 0.5)
+                          sarg = 1.0 / sqrt(arg);
+		      else
+                          sarg = exp(-MJD * log(arg));
+                      newop.qbd = self.model.PhiBD* czbd
+			               * (1.0 - arg * sarg) / (1.0 - MJD);
+                      newop.capbd = czbd * sarg;
+		  }
+		  else
+		  {   newop.qbd = 0.0;
+                      newop.capbd = 0.0;
+		  }
+		  if czbdsw > 0.0 {
+		      arg = 1.0 - vbd_jct / self.model.PhiBSWD;
+		      if (MJSWD == 0.5)
+                          sarg = 1.0 / sqrt(arg);
+		      else
+                          sarg = exp(-MJSWD * log(arg));
+                      newop.qbd += self.model.PhiBSWD * czbdsw
+			               * (1.0 - arg * sarg) / (1.0 - MJSWD);
+                      here->BSIM4capbd += czbdsw * sarg;
+		  }
+		  if czbdswg > 0.0 {
+		      arg = 1.0 - vbd_jct / self.model.PhiBSWGD;
+		      if (MJSWGD == 0.5)
+                          sarg = 1.0 / sqrt(arg);
+		      else
+                          sarg = exp(-MJSWGD * log(arg));
+                      newop.qbd += self.model.PhiBSWGD * czbdswg
+				       * (1.0 - arg * sarg) / (1.0 - MJSWGD);
+                      here->BSIM4capbd += czbdswg * sarg;
+		  }
+              }
+	      else
+	      {   T0 = czbd + czbdsw + czbdswg;
+                  T1 = vbd_jct * (czbd * MJD / self.model.PhiBD + czbdsw * MJSWD
+                     / self.model.PhiBSWD + czbdswg * MJSWGD / self.model.PhiBSWGD);
+                  newop.qbd = vbd_jct * (T0 + 0.5 * T1);
+                  newop.capbd = T0 + T1;
+              }
+          }
+
+          newop.vds = vds;
+          newop.vgs = vgs;
+          newop.vbs = vbs;
+          newop.vbd = vbd;
+	  newop.vges = vges;
+	  newop.vgms = vgms;
+          newop.vdbs = vdbs;
+          newop.vdbd = vdbd;
+          newop.vsbs = vsbs;
+          newop.vses = vses;
+          newop.vdes = vdes;
+          newop.qdef = qdef;
+
+
+          if (!ChargeComputationNeeded)
+              goto line850;
+
+	  if self.intp.rgateMod == 3 {
+	     
+	          vgdx = vgmd;
+	          vgsx = vgms;
+	  }  
+else /* For rgateMod == 0, 1 and 2 */
+	  {
+	          vgdx = vgd;
+	          vgsx = vgs;
+	  }
+	  if self.model.capMod == 0 {
+	     
+	          cgdo = self.size_params.cgdo;
+	          qgdo = self.size_params.cgdo * vgdx;
+	          cgso = self.size_params.cgso;
+	          qgso = self.size_params.cgso * vgsx;
+	  }
+else /* For both capMod == 1 and 2 */
+	  {   T0 = vgdx + DELTA_1;
+	      T1 = sqrt(T0 * T0 + 4.0 * DELTA_1);
+	      T2 = 0.5 * (T0 - T1);
+
+	      T3 = self.size_params.weffCV * self.size_params.cgdl;
+	      T4 = sqrt(1.0 - 4.0 * T2 / self.size_params.ckappad);
+	      cgdo = self.size_params.cgdo + T3 - T3 * (1.0 - 1.0 / T4)
+		   * (0.5 - 0.5 * T0 / T1);
+	      qgdo = (self.size_params.cgdo + T3) * vgdx - T3 * (T2
+		   + 0.5 * self.size_params.ckappad * (T4 - 1.0));
+
+	      T0 = vgsx + DELTA_1;
+	      T1 = sqrt(T0 * T0 + 4.0 * DELTA_1);
+	      T2 = 0.5 * (T0 - T1);
+	      T3 = self.size_params.weffCV * self.size_params.cgsl;
+	      T4 = sqrt(1.0 - 4.0 * T2 / self.size_params.ckappas);
+	      cgso = self.size_params.cgso + T3 - T3 * (1.0 - 1.0 / T4)
+		   * (0.5 - 0.5 * T0 / T1);
+	      qgso = (self.size_params.cgso + T3) * vgsx - T3 * (T2
+		   + 0.5 * self.size_params.ckappas * (T4 - 1.0));
+	  }
+
+	  if self.intp.nf != 1.0 {
+	      cgdo *= self.intp.nf;
+	      cgso *= self.intp.nf;
+              qgdo *= self.intp.nf;
+              qgso *= self.intp.nf;
+	  }
+          newop.cgdo = cgdo;
+          newop.qgdo = qgdo;
+          newop.cgso = cgso;
+          newop.qgso = qgso;
+
+
+line755:
+          ag0 = ckt->CKTag[0];
+          if self.guess.mode > 0 {
+              if self.intp.trnqsMod == 0 {
+                  qdrn -= qgdo;
+		  if self.intp.rgateMod == 3 {
+		      gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
+		      gcgmdb = -cgdo * ag0;
+                      gcgmsb = -cgso * ag0;
+                      gcgmbb = -self.size_params.cgbo * ag0;
+
+                      gcdgmb = gcgmdb;
+                      gcsgmb = gcgmsb;
+                      gcbgmb = gcgmbb;
+
+		      gcggb = here->BSIM4cggb * ag0;
+                      gcgdb = here->BSIM4cgdb * ag0;
+                      gcgsb = here->BSIM4cgsb * ag0;  
+                      gcgbb = -(gcggb + gcgdb + gcgsb);
+
+		      gcdgb = here->BSIM4cdgb * ag0;
+		      gcsgb = -(here->BSIM4cggb + here->BSIM4cbgb
+                            + here->BSIM4cdgb) * ag0;
+                      gcbgb = here->BSIM4cbgb * ag0;
+
+                      qgmb = self.size_params.cgbo * vgmb;
+                      qgmid = qgdo + qgso + qgmb;
+                      qbulk -= qgmb;
+                      qsrc = -(qgate + qgmid + qbulk + qdrn);
+		  }
+	  	  else
+		  {   gcggb = (here->BSIM4cggb + cgdo + cgso
+                            + self.size_params.cgbo ) * ag0;
+                      gcgdb = (here->BSIM4cgdb - cgdo) * ag0;
+                      gcgsb = (here->BSIM4cgsb - cgso) * ag0;
+                      gcgbb = -(gcggb + gcgdb + gcgsb);
+
+		      gcdgb = (here->BSIM4cdgb - cgdo) * ag0;
+                      gcsgb = -(here->BSIM4cggb + here->BSIM4cbgb
+                            + here->BSIM4cdgb + cgso) * ag0;
+                      gcbgb = (here->BSIM4cbgb - self.size_params.cgbo) * ag0;
+
+		      gcdgmb = gcsgmb = gcbgmb = 0.0;
+
+                      qgb = self.size_params.cgbo * vgb;
+                      qgate += qgdo + qgso + qgb;
+                      qbulk -= qgb;
+                      qsrc = -(qgate + qbulk + qdrn);
+		  }
+                  gcddb = (here->BSIM4cddb + here->BSIM4capbd + cgdo) * ag0;
+                  gcdsb = here->BSIM4cdsb * ag0;
+
+                  gcsdb = -(here->BSIM4cgdb + here->BSIM4cbdb
+                        + here->BSIM4cddb) * ag0;
+                  gcssb = (here->BSIM4capbs + cgso - (here->BSIM4cgsb
+                        + here->BSIM4cbsb + here->BSIM4cdsb)) * ag0;
+
+                  if !self.intp.rbodyMod {
+                      gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
+                      gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
+                      gcbdb = (here->BSIM4cbdb - here->BSIM4capbd) * ag0;
+                      gcbsb = (here->BSIM4cbsb - here->BSIM4capbs) * ag0;
+                      gcdbdb = 0.0; gcsbsb = 0.0;
+                  }
+                  else
+                  {   gcdbb  = -(here->BSIM4cddb + here->BSIM4cdgb
+                             + here->BSIM4cdsb) * ag0;
+                      gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb)
+			    + here->BSIM4capbs * ag0;
+                      gcbdb = here->BSIM4cbdb * ag0;
+                      gcbsb = here->BSIM4cbsb * ag0;
+
+                      gcdbdb = -here->BSIM4capbd * ag0;
+                      gcsbsb = -here->BSIM4capbs * ag0;
+                  }
+		  gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
+
+                  ggtg = ggtd = ggtb = ggts = 0.0;
+		  sxpart = 0.6;
+                  dxpart = 0.4;
+		  ddxpart_dVd = ddxpart_dVg = ddxpart_dVb = ddxpart_dVs = 0.0;
+		  dsxpart_dVd = dsxpart_dVg = dsxpart_dVb = dsxpart_dVs = 0.0;
+              }
+              else
+              {   qcheq = here->BSIM4qchqs;
+                  CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
+                        * self.size_params.leffCV;
+                  T0 = qdef * ScalingFactor / CoxWL;
+
+                  ggtg = newop.gtg = T0 * here->BSIM4gcrgg;
+                  ggtd = newop.gtd = T0 * here->BSIM4gcrgd;
+                  ggts = newop.gts = T0 * here->BSIM4gcrgs;
+                  ggtb = newop.gtb = T0 * here->BSIM4gcrgb;
+		  gqdef = ScalingFactor * ag0;
+
+                  gcqgb = here->BSIM4cqgb * ag0;
+                  gcqdb = here->BSIM4cqdb * ag0;
+                  gcqsb = here->BSIM4cqsb * ag0;
+                  gcqbb = here->BSIM4cqbb * ag0;
+
+                  if fabs(qcheq) <= 1.0e-5 * CoxWL {
+                      if self.model.xpart < 0.5 {
+                          dxpart = 0.4;
+                      }
+                      else if self.model.xpart > 0.5 {
+                          dxpart = 0.0;
+                      }
+                      else
+                      {   dxpart = 0.5;
+                      }
+                      ddxpart_dVd = ddxpart_dVg = ddxpart_dVb
+                                  = ddxpart_dVs = 0.0;
+                  }
+                  else
+                  {   dxpart = qdrn / qcheq;
+                      Cdd = here->BSIM4cddb;
+                      Csd = -(here->BSIM4cgdb + here->BSIM4cddb
+                          + here->BSIM4cbdb);
+                      ddxpart_dVd = (Cdd - dxpart * (Cdd + Csd)) / qcheq;
+                      Cdg = here->BSIM4cdgb;
+                      Csg = -(here->BSIM4cggb + here->BSIM4cdgb
+                          + here->BSIM4cbgb);
+                      ddxpart_dVg = (Cdg - dxpart * (Cdg + Csg)) / qcheq;
+
+                      Cds = here->BSIM4cdsb;
+                      Css = -(here->BSIM4cgsb + here->BSIM4cdsb
+                          + here->BSIM4cbsb);
+                      ddxpart_dVs = (Cds - dxpart * (Cds + Css)) / qcheq;
+
+                      ddxpart_dVb = -(ddxpart_dVd + ddxpart_dVg + ddxpart_dVs);
+                  }
+                  sxpart = 1.0 - dxpart;
+                  dsxpart_dVd = -ddxpart_dVd;
+                  dsxpart_dVg = -ddxpart_dVg;
+                  dsxpart_dVs = -ddxpart_dVs;
+                  dsxpart_dVb = -(dsxpart_dVd + dsxpart_dVg + dsxpart_dVs);
+
+                  if self.intp.rgateMod == 3 {
+                      gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
+                      gcgmdb = -cgdo * ag0;
+                      gcgmsb = -cgso * ag0;
+                      gcgmbb = -self.size_params.cgbo * ag0;
+
+                      gcdgmb = gcgmdb;
+                      gcsgmb = gcgmsb;
+                      gcbgmb = gcgmbb;
+
+                      gcdgb = gcsgb = gcbgb = 0.0;
+		      gcggb = gcgdb = gcgsb = gcgbb = 0.0;
+
+                      qgmb = self.size_params.cgbo * vgmb;
+                      qgmid = qgdo + qgso + qgmb;
+		      qgate = 0.0;
+                      qbulk = -qgmb;
+		      qdrn = -qgdo;
+                      qsrc = -(qgmid + qbulk + qdrn);
+                  }
+                  else
+                  {   gcggb = (cgdo + cgso + self.size_params.cgbo ) * ag0;
+                      gcgdb = -cgdo * ag0;
+                      gcgsb = -cgso * ag0;
+		      gcgbb = -self.size_params.cgbo * ag0;
+
+                      gcdgb = gcgdb;
+                      gcsgb = gcgsb;
+                      gcbgb = gcgbb;
+                      gcdgmb = gcsgmb = gcbgmb = 0.0;
+
+                      qgb = self.size_params.cgbo * vgb;
+                      qgate = qgdo + qgso + qgb;
+                      qbulk = -qgb;
+		      qdrn = -qgdo;
+                      qsrc = -(qgate + qbulk + qdrn);
+                  }
+
+                  gcddb = (here->BSIM4capbd + cgdo) * ag0;
+                  gcdsb = gcsdb = 0.0;
+                  gcssb = (here->BSIM4capbs + cgso) * ag0;
+
+                  if !self.intp.rbodyMod {
+                      gcdbb = -(gcdgb + gcddb + gcdgmb);
+                      gcsbb = -(gcsgb + gcssb + gcsgmb);
+                      gcbdb = -here->BSIM4capbd * ag0;
+                      gcbsb = -here->BSIM4capbs * ag0;
+                      gcdbdb = 0.0; gcsbsb = 0.0;
+                  }
+                  else
+                  {   gcdbb = gcsbb = gcbdb = gcbsb = 0.0;
+                      gcdbdb = -here->BSIM4capbd * ag0;
+                      gcsbsb = -here->BSIM4capbs * ag0;
+                  }
+                  gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
+              }
+          }
+          else
+          {   if self.intp.trnqsMod == 0 {
+                  qsrc = qdrn - qgso;
+		  if self.intp.rgateMod == 3 {
+		      gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
+		      gcgmdb = -cgdo * ag0;
+    		      gcgmsb = -cgso * ag0;
+    		      gcgmbb = -self.size_params.cgbo * ag0;
+
+                      gcdgmb = gcgmdb;
+                      gcsgmb = gcgmsb;
+                      gcbgmb = gcgmbb;
+
+                      gcggb = here->BSIM4cggb * ag0;
+                      gcgdb = here->BSIM4cgsb * ag0;
+                      gcgsb = here->BSIM4cgdb * ag0;
+                      gcgbb = -(gcggb + gcgdb + gcgsb);
+
+                      gcdgb = -(here->BSIM4cggb + here->BSIM4cbgb
+                            + here->BSIM4cdgb) * ag0;
+                      gcsgb = here->BSIM4cdgb * ag0;
+                      gcbgb = here->BSIM4cbgb * ag0;
+
+                      qgmb = self.size_params.cgbo * vgmb;
+                      qgmid = qgdo + qgso + qgmb;
+                      qbulk -= qgmb;
+                      qdrn = -(qgate + qgmid + qbulk + qsrc);
+		  }
+		  else
+		  {   gcggb = (here->BSIM4cggb + cgdo + cgso
+                            + self.size_params.cgbo ) * ag0;
+                      gcgdb = (here->BSIM4cgsb - cgdo) * ag0;
+                      gcgsb = (here->BSIM4cgdb - cgso) * ag0;
+                      gcgbb = -(gcggb + gcgdb + gcgsb);
+
+                      gcdgb = -(here->BSIM4cggb + here->BSIM4cbgb
+                            + here->BSIM4cdgb + cgdo) * ag0;
+                      gcsgb = (here->BSIM4cdgb - cgso) * ag0;
+                      gcbgb = (here->BSIM4cbgb - self.size_params.cgbo) * ag0;
+
+                      gcdgmb = gcsgmb = gcbgmb = 0.0;
+
+                      qgb = self.size_params.cgbo * vgb;
+                      qgate += qgdo + qgso + qgb;
+                      qbulk -= qgb;
+                      qdrn = -(qgate + qbulk + qsrc);
+ 		  }
+                  gcddb = (here->BSIM4capbd + cgdo - (here->BSIM4cgsb
+                        + here->BSIM4cbsb + here->BSIM4cdsb)) * ag0;
+                  gcdsb = -(here->BSIM4cgdb + here->BSIM4cbdb
+                        + here->BSIM4cddb) * ag0;
+
+                  gcsdb = here->BSIM4cdsb * ag0;
+                  gcssb = (here->BSIM4cddb + here->BSIM4capbs + cgso) * ag0;
+
+		  if !self.intp.rbodyMod {
+		      gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
+                      gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
+                      gcbdb = (here->BSIM4cbsb - here->BSIM4capbd) * ag0;
+                      gcbsb = (here->BSIM4cbdb - here->BSIM4capbs) * ag0;
+                      gcdbdb = 0.0; gcsbsb = 0.0;
+                  }
+                  else
+                  {   gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb)
+			    + here->BSIM4capbd * ag0;
+                      gcsbb = -(here->BSIM4cddb + here->BSIM4cdgb
+                            + here->BSIM4cdsb) * ag0;
+                      gcbdb = here->BSIM4cbsb * ag0;
+                      gcbsb = here->BSIM4cbdb * ag0;
+                      gcdbdb = -here->BSIM4capbd * ag0;
+		      gcsbsb = -here->BSIM4capbs * ag0;
+                  }
+		  gcbbb = -(gcbgb + gcbdb + gcbsb + gcbgmb);
+
+                  ggtg = ggtd = ggtb = ggts = 0.0;
+		  sxpart = 0.4;
+                  dxpart = 0.6;
+		  ddxpart_dVd = ddxpart_dVg = ddxpart_dVb = ddxpart_dVs = 0.0;
+		  dsxpart_dVd = dsxpart_dVg = dsxpart_dVb = dsxpart_dVs = 0.0;
+              }
+              else
+              {   qcheq = here->BSIM4qchqs;
+                  CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
+                        * self.size_params.leffCV;
+                  T0 = qdef * ScalingFactor / CoxWL;
+                  ggtg = newop.gtg = T0 * here->BSIM4gcrgg;
+                  ggts = newop.gts = T0 * here->BSIM4gcrgd;
+                  ggtd = newop.gtd = T0 * here->BSIM4gcrgs;
+                  ggtb = newop.gtb = T0 * here->BSIM4gcrgb;
+		            gqdef = ScalingFactor * ag0;
+
+                  gcqgb = here->BSIM4cqgb * ag0;
+                  gcqdb = here->BSIM4cqsb * ag0;
+                  gcqsb = here->BSIM4cqdb * ag0;
+                  gcqbb = here->BSIM4cqbb * ag0;
+
+                  if fabs(qcheq) <= 1.0e-5 * CoxWL {
+                      if self.model.xpart < 0.5 {
+                          sxpart = 0.4;
+                      }
+                      else if self.model.xpart > 0.5 {
+                          sxpart = 0.0;
+                      }
+                      else
+                      {   sxpart = 0.5;
+                      }
+                      dsxpart_dVd = dsxpart_dVg = dsxpart_dVb
+                                  = dsxpart_dVs = 0.0;
+                  }
+                  else
+                  {   sxpart = qdrn / qcheq;
+                      Css = here->BSIM4cddb;
+                      Cds = -(here->BSIM4cgdb + here->BSIM4cddb
+                          + here->BSIM4cbdb);
+                      dsxpart_dVs = (Css - sxpart * (Css + Cds)) / qcheq;
+                      Csg = here->BSIM4cdgb;
+                      Cdg = -(here->BSIM4cggb + here->BSIM4cdgb
+                          + here->BSIM4cbgb);
+                      dsxpart_dVg = (Csg - sxpart * (Csg + Cdg)) / qcheq;
+
+                      Csd = here->BSIM4cdsb;
+                      Cdd = -(here->BSIM4cgsb + here->BSIM4cdsb
+                          + here->BSIM4cbsb);
+                      dsxpart_dVd = (Csd - sxpart * (Csd + Cdd)) / qcheq;
+
+                      dsxpart_dVb = -(dsxpart_dVd + dsxpart_dVg + dsxpart_dVs);
+                  }
+                  dxpart = 1.0 - sxpart;
+                  ddxpart_dVd = -dsxpart_dVd;
+                  ddxpart_dVg = -dsxpart_dVg;
+                  ddxpart_dVs = -dsxpart_dVs;
+                  ddxpart_dVb = -(ddxpart_dVd + ddxpart_dVg + ddxpart_dVs);
+
+                  if self.intp.rgateMod == 3 {
+                      gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
+                      gcgmdb = -cgdo * ag0;
+                      gcgmsb = -cgso * ag0;
+                      gcgmbb = -self.size_params.cgbo * ag0;
+
+                      gcdgmb = gcgmdb;
+                      gcsgmb = gcgmsb;
+                      gcbgmb = gcgmbb;
+
+                      gcdgb = gcsgb = gcbgb = 0.0;
+                      gcggb = gcgdb = gcgsb = gcgbb = 0.0;
+
+                      qgmb = self.size_params.cgbo * vgmb;
+                      qgmid = qgdo + qgso + qgmb;
+                      qgate = 0.0;
+                      qbulk = -qgmb;
+                      qdrn = -qgdo;
+                      qsrc = -qgso;
+                  }
+                  else
+                  {   gcggb = (cgdo + cgso + self.size_params.cgbo ) * ag0;
+                      gcgdb = -cgdo * ag0;
+                      gcgsb = -cgso * ag0;
+                      gcgbb = -self.size_params.cgbo * ag0;
+
+                      gcdgb = gcgdb;
+                      gcsgb = gcgsb;
+                      gcbgb = gcgbb;
+                      gcdgmb = gcsgmb = gcbgmb = 0.0;
+
+                      qgb = self.size_params.cgbo * vgb;
+                      qgate = qgdo + qgso + qgb;
+                      qbulk = -qgb;
+                      qdrn = -qgdo;
+                      qsrc = -qgso;
+                  }
+
+                  gcddb = (here->BSIM4capbd + cgdo) * ag0;
+                  gcdsb = gcsdb = 0.0;
+                  gcssb = (here->BSIM4capbs + cgso) * ag0;
+                  if !self.intp.rbodyMod {
+                      gcdbb = -(gcdgb + gcddb + gcdgmb);
+                      gcsbb = -(gcsgb + gcssb + gcsgmb);
+                      gcbdb = -here->BSIM4capbd * ag0;
+                      gcbsb = -here->BSIM4capbs * ag0;
+                      gcdbdb = 0.0; gcsbsb = 0.0;
+                  }
+                  else
+                  {   gcdbb = gcsbb = gcbdb = gcbsb = 0.0;
+                      gcdbdb = -here->BSIM4capbd * ag0;
+                      gcsbsb = -here->BSIM4capbs * ag0;
+                  }
+                  gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
+              }
+          }
+
+
+          if self.intp.trnqsMod {
+              newop.qcdump = qdef * ScalingFactor;
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qcdump);
+              if (error)
+                  return(error);
+          }
+
+          newop.qg = qgate;
+          newop.qd = qdrn - newop.qbd;
+          newop.qs = qsrc - newop.qbs;
+	  if (self.intp.rgateMod == 3)
+	      newop.qgmid = qgmid;
+
+          if self.intp.rbodyMod != 0 {
+              newop.qb = qbulk + newop.qbd + newop.qbs;
+          }
+          else{
+              newop.qb = qbulk;
+            }
+
+
+          if (!ChargeComputationNeeded)
+              goto line850;
+
+
+          error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qb);
+          if (error)
+              return(error);
+          error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qg);
+          if (error)
+              return(error);
+          error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qd);
+          if (error)
+              return(error);
+
+          if self.intp.rgateMod == 3 {
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qgmid);
+              if (error) return(error);
+          }
+
+          if self.intp.rbodyMod {
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qbs);
+              if (error)
+                  return(error);
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qbd);
+              if (error)
+                  return(error);
+          }
+
+          goto line860;
+
+
+line850:
+    /* Zero gcap and ceqcap if (!ChargeComputationNeeded) */
+          ceqqg = ceqqb = ceqqd = 0.0;
+          ceqqjd = ceqqjs = 0.0;
+          cqcheq = cqdef = 0.0;
+
+          gcdgb = gcddb = gcdsb = gcdbb = 0.0;
+          gcsgb = gcsdb = gcssb = gcsbb = 0.0;
+          gcggb = gcgdb = gcgsb = gcgbb = 0.0;
+          gcbdb = gcbgb = gcbsb = gcbbb = 0.0;
+
+	  gcgmgmb = gcgmdb = gcgmsb = gcgmbb = 0.0;
+	  gcdgmb = gcsgmb = gcbgmb = ceqqgmid = 0.0;
+          gcdbdb = gcsbsb = 0.0;
+
+	  gqdef = gcqgb = gcqdb = gcqsb = gcqbb = 0.0;
+          ggtg = ggtd = ggtb = ggts = 0.0;
+          sxpart = (1.0 - (dxpart = (self.guess.mode > 0) ? 0.4 : 0.6));
+	  ddxpart_dVd = ddxpart_dVg = ddxpart_dVb = ddxpart_dVs = 0.0;
+	  dsxpart_dVd = dsxpart_dVg = dsxpart_dVb = dsxpart_dVs = 0.0;
+
+          if self.intp.trnqsMod {
+              CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
+                    * self.size_params.leffCV;
+              T1 = here->BSIM4gcrg / CoxWL;
+              newop.gtau = T1 * ScalingFactor;
+          }
+	  else
+              newop.gtau = 0.0;
+
+          goto line900;
+
+            
+line860:
+    /* Calculate equivalent charge current */
+
+          cqgate = newop.cqg;
+          cqbody = newop.cqb;
+          cqdrn = newop.cqd;
+
+          ceqqg = cqgate - gcggb * vgb + gcgdb * vbd + gcgsb * vbs;
+          ceqqd = cqdrn - gcdgb * vgb - gcdgmb * vgmb + (gcddb + gcdbdb)
+	        * vbd - gcdbdb * vbd_jct + gcdsb * vbs;
+	  ceqqb = cqbody - gcbgb * vgb - gcbgmb * vgmb
+                + gcbdb * vbd + gcbsb * vbs;
+
+
+          if (self.intp.rgateMod == 3)
+              ceqqgmid = newop.cqgmid
+                       + gcgmdb * vbd + gcgmsb * vbs - gcgmgmb * vgmb;
+	  else
+ 	      ceqqgmid = 0.0;
+
+          if self.intp.rbodyMod {
+              ceqqjs = newop.cqbs + gcsbsb * vbs_jct;
+              ceqqjd = newop.cqbd + gcdbdb * vbd_jct;
+          }
+
+          if self.intp.trnqsMod {
+              T0 = ggtg * vgb - ggtd * vbd - ggts * vbs;
+              ceqqg += T0;
+	      T1 = qdef * self.intp.gtau;
+              ceqqd -= dxpart * T0 + T1 * (ddxpart_dVg * vgb - ddxpart_dVd
+		     * vbd - ddxpart_dVs * vbs);
+              cqdef = newop.cqcdump - gqdef * qdef;
+              cqcheq = newop.cqcheq
+                     - (gcqgb * vgb - gcqdb * vbd - gcqsb * vbs) + T0;
+          }
+
+
+
+    /*
+     *  Load current vector
+     */
+
+line900:
+          if self.guess.mode >= 0 {
+	      Gm = newop.gm;
+              Gmbs = newop.gmbs;
+              FwdSum = Gm + Gmbs;
+              RevSum = 0.0;
+
+              ceqdrn = self.model.p() * (cdrain - newop.gds * vds
+	             - Gm * vgs - Gmbs * vbs);
+              ceqbd = self.model.p() * (newop.csub + newop.Igidl
+                    - (newop.gbds + newop.ggidld) * vds
+		    - (newop.gbgs + newop.ggidlg) * vgs
+		    - (newop.gbbs + newop.ggidlb) * vbs);
+              ceqbs = self.model.p() * (newop.Igisl + newop.ggisls * vds
+              	    - newop.ggislg * vgd - newop.ggislb * vbd);
+
+              gbbdp = -(newop.gbds);
+              gbbsp = newop.gbds + newop.gbgs + newop.gbbs;
+		    
+              gbdpg = newop.gbgs;
+              gbdpdp = newop.gbds;
+              gbdpb = newop.gbbs;
+              gbdpsp = -(gbdpg + gbdpdp + gbdpb);
+
+              gbspg = 0.0;
+              gbspdp = 0.0;
+              gbspb = 0.0;
+              gbspsp = 0.0;
+
+              if self.model.igcMod {
+	          gIstotg = newop.gIgsg + newop.gIgcsg;
+		  gIstotd = newop.gIgcsd;
+                  gIstots = newop.gIgss + newop.gIgcss;
+                  gIstotb = newop.gIgcsb;
+ 	          Istoteq = self.model.p() * (newop.Igs + newop.Igcs
+		  	  - gIstotg * vgs - newop.gIgcsd * vds
+			  - newop.gIgcsb * vbs);
+
+                  gIdtotg = newop.gIgdg + newop.gIgcdg;
+                  gIdtotd = newop.gIgdd + newop.gIgcdd;
+                  gIdtots = newop.gIgcds;
+                  gIdtotb = newop.gIgcdb;
+                  Idtoteq = self.model.p() * (newop.Igd + newop.Igcd
+                          - newop.gIgdg * vgd - newop.gIgcdg * vgs
+			  - newop.gIgcdd * vds - newop.gIgcdb * vbs);
+	      }
+	      else
+	      {   gIstotg = gIstotd = gIstots = gIstotb = Istoteq = 0.0;
+		  gIdtotg = gIdtotd = gIdtots = gIdtotb = Idtoteq = 0.0;
+	      }
+
+              if self.model.igbMod {
+                  gIbtotg = newop.gIgbg;
+                  gIbtotd = newop.gIgbd;
+                  gIbtots = newop.gIgbs;
+                  gIbtotb = newop.gIgbb;
+                  Ibtoteq = self.model.p() * (newop.Igb
+                          - newop.gIgbg * vgs - newop.gIgbd * vds
+                          - newop.gIgbb * vbs);
+              }
+              else
+                  gIbtotg = gIbtotd = gIbtots = gIbtotb = Ibtoteq = 0.0;
+
+              if (self.model.igcMod != 0) || (self.model.igbMod != 0) {
+                  gIgtotg = gIstotg + gIdtotg + gIbtotg;
+                  gIgtotd = gIstotd + gIdtotd + gIbtotd ;
+                  gIgtots = gIstots + gIdtots + gIbtots;
+                  gIgtotb = gIstotb + gIdtotb + gIbtotb;
+                  Igtoteq = Istoteq + Idtoteq + Ibtoteq;
+	      }
+	      else
+	          gIgtotg = gIgtotd = gIgtots = gIgtotb = Igtoteq = 0.0;
+
+
+              if (self.intp.rgateMod == 2)
+                  T0 = vges - vgs;
+              else if (self.intp.rgateMod == 3)
+                  T0 = vgms - vgs;
+              if self.intp.rgateMod > 1 {
+                  gcrgd = newop.gcrgd * T0;
+                  gcrgg = newop.gcrgg * T0;
+                  gcrgs = newop.gcrgs * T0;
+                  gcrgb = newop.gcrgb * T0;
+                  ceqgcrg = -(gcrgd * vds + gcrgg * vgs
+                          + gcrgb * vbs);
+                  gcrgg -= newop.gcrg;
+                  gcrg = newop.gcrg;
+              }
+              else
+	          ceqgcrg = gcrg = gcrgd = gcrgg = gcrgs = gcrgb = 0.0;
+          }
+	  else
+	  {   Gm = -newop.gm;
+              Gmbs = -newop.gmbs;
+              FwdSum = 0.0;
+              RevSum = -(Gm + Gmbs);
+
+              ceqdrn = -self.model.p() * (cdrain + newop.gds * vds
+                     + Gm * vgd + Gmbs * vbd);
+
+              ceqbs = self.model.p() * (newop.csub + newop.Igisl
+                    + (newop.gbds + newop.ggisls) * vds
+		    - (newop.gbgs + newop.ggislg) * vgd
+                    - (newop.gbbs + newop.ggislb) * vbd);
+              ceqbd = self.model.p() * (newop.Igidl - newop.ggidld * vds
+              		- newop.ggidlg * vgs - newop.ggidlb * vbs);
+
+              gbbsp = -(newop.gbds);
+              gbbdp = newop.gbds + newop.gbgs + newop.gbbs;
+
+              gbdpg = 0.0;
+              gbdpsp = 0.0;
+              gbdpb = 0.0;
+              gbdpdp = 0.0;
+
+              gbspg = newop.gbgs;
+              gbspsp = newop.gbds;
+              gbspb = newop.gbbs;
+              gbspdp = -(gbspg + gbspsp + gbspb);
+
+              if self.model.igcMod {
+                  gIstotg = newop.gIgsg + newop.gIgcdg;
+                  gIstotd = newop.gIgcds;
+                  gIstots = newop.gIgss + newop.gIgcdd;
+                  gIstotb = newop.gIgcdb;
+                  Istoteq = self.model.p() * (newop.Igs + newop.Igcd
+                          - newop.gIgsg * vgs - newop.gIgcdg * vgd
+			  + newop.gIgcdd * vds - newop.gIgcdb * vbd);
+
+                  gIdtotg = newop.gIgdg + newop.gIgcsg;
+                  gIdtotd = newop.gIgdd + newop.gIgcss;
+                  gIdtots = newop.gIgcsd;
+                  gIdtotb = newop.gIgcsb;
+                  Idtoteq = self.model.p() * (newop.Igd + newop.Igcs
+                          - (newop.gIgdg + newop.gIgcsg) * vgd
+                          + newop.gIgcsd * vds - newop.gIgcsb * vbd);
+              }
+              else
+              {   gIstotg = gIstotd = gIstots = gIstotb = Istoteq = 0.0;
+                  gIdtotg = gIdtotd = gIdtots = gIdtotb = Idtoteq = 0.0;
+              }
+
+              if self.model.igbMod {
+                  gIbtotg = newop.gIgbg;
+                  gIbtotd = newop.gIgbs;
+                  gIbtots = newop.gIgbd;
+                  gIbtotb = newop.gIgbb;
+                  Ibtoteq = self.model.p() * (newop.Igb
+                          - newop.gIgbg * vgd + newop.gIgbd * vds
+                          - newop.gIgbb * vbd);
+              }
+              else
+                  gIbtotg = gIbtotd = gIbtots = gIbtotb = Ibtoteq = 0.0;
+
+              if (self.model.igcMod != 0) || (self.model.igbMod != 0) {
+                  gIgtotg = gIstotg + gIdtotg + gIbtotg;
+                  gIgtotd = gIstotd + gIdtotd + gIbtotd ;
+                  gIgtots = gIstots + gIdtots + gIbtots;
+                  gIgtotb = gIstotb + gIdtotb + gIbtotb;
+                  Igtoteq = Istoteq + Idtoteq + Ibtoteq;
+              }
+              else
+                  gIgtotg = gIgtotd = gIgtots = gIgtotb = Igtoteq = 0.0;
+
+
+              if (self.intp.rgateMod == 2)
+                  T0 = vges - vgs;
+              else if (self.intp.rgateMod == 3)
+                  T0 = vgms - vgs;
+              if self.intp.rgateMod > 1 {
+                  gcrgd = newop.gcrgs * T0;
+                  gcrgg = newop.gcrgg * T0;
+                  gcrgs = newop.gcrgd * T0;
+                  gcrgb = newop.gcrgb * T0;
+                  ceqgcrg = -(gcrgg * vgd - gcrgs * vds
+                          + gcrgb * vbd);
+                  gcrgg -= newop.gcrg;
+                  gcrg = newop.gcrg;
+              }
+              else
+                  ceqgcrg = gcrg = gcrgd = gcrgg = gcrgs = gcrgb = 0.0;
+          }
+
+          if self.model.rdsMod == 1 {
+              ceqgstot = self.model.p() * (newop.gstotd * vds
+                       + newop.gstotg * vgs + newop.gstotb * vbs);
+              gstot = newop.gstot;
+              gstotd = newop.gstotd;
+              gstotg = newop.gstotg;
+              gstots = newop.gstots - gstot;
+              gstotb = newop.gstotb;
+
+              ceqgdtot = -self.model.p() * (newop.gdtotd * vds
+                       + newop.gdtotg * vgs + newop.gdtotb * vbs);
+              gdtot = newop.gdtot;
+              gdtotd = newop.gdtotd - gdtot;
+              gdtotg = newop.gdtotg;
+              gdtots = newop.gdtots;
+              gdtotb = newop.gdtotb;
+          }
+          else
+          {   gstot = gstotd = gstotg = gstots = gstotb = ceqgstot = 0.0;
+              gdtot = gdtotd = gdtotg = gdtots = gdtotb = ceqgdtot = 0.0;
+          }
+
+	   if self.model.p() > 0 {
+               ceqjs = (newop.cbs - newop.gbs * vbs_jct);
+               ceqjd = (newop.cbd - newop.gbd * vbd_jct);
+           }
+	   else
+           {   ceqjs = -(newop.cbs - newop.gbs * vbs_jct);
+               ceqjd = -(newop.cbd - newop.gbd * vbd_jct);
+               ceqqg = -ceqqg;
+               ceqqd = -ceqqd;
+               ceqqb = -ceqqb;
+	       ceqgcrg = -ceqgcrg;
+
+               if self.intp.trnqsMod {
+                   cqdef = -cqdef;
+                   cqcheq = -cqcheq;
+	       }
+
+               if self.intp.rbodyMod {
+                   ceqqjs = -ceqqjs;
+                   ceqqjd = -ceqqjd;
+               }
+
+	       if (self.intp.rgateMod == 3)
+		   ceqqgmid = -ceqqgmid;
+	   }
+
+
+    // Gather up RHS current-vector terms
+
+            let mut b: Vec<(Option<VarIndex>, f64)> = vec![];
+
+            b.push((self.ports.dNodePrime , (ceqjd - ceqbd + ceqgdtot - ceqdrn - ceqqd + Idtoteq)));
+           b.push((self.ports.gNodePrime, -( ceqqg - ceqgcrg + Igtoteq)));
+
+           if (self.intp.rgateMod == 2)
+           b.push((self.ports.gNodeExt, - ceqgcrg));
+           else if (self.intp.rgateMod == 3) {
+            b.push((self.ports.gNodeMid, - (ceqqgmid + ceqgcrg)));
+            }
+
+           if !self.intp.rbodyMod {
+            b.push((self.ports.bNodePrime, (ceqbd + ceqbs - ceqjd
+                                                        - ceqjs - ceqqb + Ibtoteq)));
+               b.push((self.ports.sNodePrime , (ceqdrn - ceqbs + ceqjs
+                              + ceqqg + ceqqb + ceqqd + ceqqgmid - ceqgstot + Istoteq)));
+           }
+           else {  
+            b.push((self.ports.dbNode, -(ceqjd + ceqqjd)));
+                b.push((self.ports.bNodePrime, (ceqbd + ceqbs - ceqqb + Ibtoteq)));
+               b.push((self.ports.sbNode, - (ceqjs + ceqqjs)));
+               b.push((self.ports.sNodePrime, (ceqdrn - ceqbs + ceqjs + ceqqd
+                + ceqqg + ceqqb + ceqqjd + ceqqjs + ceqqgmid - ceqgstot + Istoteq)));
+           }
+
+           if self.model.rdsMod {
+            b.push((self.ports.dNode, -ceqgdtot));
+            b.push((self.ports.sNode, ceqgstot));
+	    }
+
+           if (self.intp.trnqsMod) {
+                b.push((self.ports.qNode, cqcheq - cqdef));
+            }
+
+
+    // Gather up matrix Jacobian terms
+           let mut j: Vec<(Option<Eindex>, f64)> = vec![];
+
+	   if !self.intp.rbodyMod {
+               gjbd = newop.gbd;
+               gjbs = newop.gbs;
+           }
+           else
+               gjbd = gjbs = 0.0;
+
+           if !self.model.rdsMod {
+               gdpr = here->BSIM4drainConductance;
+               gspr = here->BSIM4sourceConductance;
+           }
+           else
+               gdpr = gspr = 0.0;
+
+	   geltd = here->BSIM4grgeltd;
+
+           T1 = qdef * self.intp.gtau;
+
+           if self.intp.rgateMod == 1 {
+               (*(self.matps.GEgePtr) += geltd);
+               (*(self.matps.GPgePtr) -= geltd);
+               (*(self.matps.GEgpPtr) -= geltd);
+  	       (*(self.matps.GPgpPtr) += gcggb + geltd - ggtg + gIgtotg);
+  	       (*(self.matps.GPdpPtr) += gcgdb - ggtd + gIgtotd);
+   	       (*(self.matps.GPspPtr) += gcgsb - ggts + gIgtots);
+	       (*(self.matps.GPbpPtr) += gcgbb - ggtb + gIgtotb);
+           }
+           else if self.intp.rgateMod == 2 {
+	       (*(self.matps.GEgePtr) += gcrg);
+               (*(self.matps.GEgpPtr) += gcrgg);
+               (*(self.matps.GEdpPtr) += gcrgd);
+               (*(self.matps.GEspPtr) += gcrgs);
+	       (*(self.matps.GEbpPtr) += gcrgb);
+
+               (*(self.matps.GPgePtr) -= gcrg);
+  	       (*(self.matps.GPgpPtr) += gcggb  - gcrgg - ggtg + gIgtotg);
+	       (*(self.matps.GPdpPtr) += gcgdb - gcrgd - ggtd + gIgtotd);
+	       (*(self.matps.GPspPtr) += gcgsb - gcrgs - ggts + gIgtots);
+  	       (*(self.matps.GPbpPtr) += gcgbb - gcrgb - ggtb + gIgtotb);
+	   }
+	   else if self.intp.rgateMod == 3 {
+	       (*(self.matps.GEgePtr) += geltd);
+               (*(self.matps.GEgmPtr) -= geltd);
+               (*(self.matps.GMgePtr) -= geltd);
+               (*(self.matps.GMgmPtr) += geltd + gcrg + gcgmgmb);
+
+               (*(self.matps.GMdpPtr) += gcrgd + gcgmdb);
+               (*(self.matps.GMgpPtr) += gcrgg);
+               (*(self.matps.GMspPtr) += gcrgs + gcgmsb);
+               (*(self.matps.GMbpPtr) += gcrgb + gcgmbb);
+
+               (*(self.matps.DPgmPtr) += gcdgmb);
+               (*(self.matps.GPgmPtr) -= gcrg);
+               (*(self.matps.SPgmPtr) += gcsgmb);
+               (*(self.matps.BPgmPtr) += gcbgmb);
+
+               (*(self.matps.GPgpPtr) += gcggb - gcrgg - ggtg + gIgtotg);
+               (*(self.matps.GPdpPtr) += gcgdb - gcrgd - ggtd + gIgtotd);
+               (*(self.matps.GPspPtr) += gcgsb - gcrgs - ggts + gIgtots);
+               (*(self.matps.GPbpPtr) += gcgbb - gcrgb - ggtb + gIgtotb);
+	   }
+ 	   else
+	   {   (*(self.matps.GPgpPtr) += gcggb - ggtg + gIgtotg);
+  	       (*(self.matps.GPdpPtr) += gcgdb - ggtd + gIgtotd);
+               (*(self.matps.GPspPtr) += gcgsb - ggts + gIgtots);
+	       (*(self.matps.GPbpPtr) += gcgbb - ggtb + gIgtotb);
+	   }
+
+	   if self.model.rdsMod {
+	       (*(self.matps.DgpPtr) += gdtotg);
+	       (*(self.matps.DspPtr) += gdtots);
+               (*(self.matps.DbpPtr) += gdtotb);
+               (*(self.matps.SdpPtr) += gstotd);
+               (*(self.matps.SgpPtr) += gstotg);
+               (*(self.matps.SbpPtr) += gstotb);
+	   }
+
+           (*(self.matps.DPdpPtr) += gdpr + newop.gds + newop.gbd + T1 * ddxpart_dVd
+                                   - gdtotd + RevSum + gcddb + gbdpdp + dxpart * ggtd - gIdtotd);
+           (*(self.matps.DPdPtr) -= gdpr + gdtot);
+           (*(self.matps.DPgpPtr) += Gm + gcdgb - gdtotg + gbdpg - gIdtotg
+				   + dxpart * ggtg + T1 * ddxpart_dVg);
+           (*(self.matps.DPspPtr) -= newop.gds + gdtots - dxpart * ggts + gIdtots
+				   - T1 * ddxpart_dVs + FwdSum - gcdsb - gbdpsp);
+           (*(self.matps.DPbpPtr) -= gjbd + gdtotb - Gmbs - gcdbb - gbdpb + gIdtotb
+				   - T1 * ddxpart_dVb - dxpart * ggtb);
+
+           (*(self.matps.DdpPtr) -= gdpr - gdtotd);
+           (*(self.matps.DdPtr) += gdpr + gdtot);
+
+           (*(self.matps.SPdpPtr) -= newop.gds + gstotd + RevSum - gcsdb - gbspdp
+				   - T1 * dsxpart_dVd - sxpart * ggtd + gIstotd);
+           (*(self.matps.SPgpPtr) += gcsgb - Gm - gstotg + gbspg + sxpart * ggtg
+				   + T1 * dsxpart_dVg - gIstotg);
+           (*(self.matps.SPspPtr) += gspr + newop.gds + newop.gbs + T1 * dsxpart_dVs
+                                   - gstots + FwdSum + gcssb + gbspsp + sxpart * ggts - gIstots);
+           (*(self.matps.SPsPtr) -= gspr + gstot);
+           (*(self.matps.SPbpPtr) -= gjbs + gstotb + Gmbs - gcsbb - gbspb - sxpart * ggtb
+				   - T1 * dsxpart_dVb + gIstotb);
+
+           (*(self.matps.SspPtr) -= gspr - gstots);
+           (*(self.matps.SsPtr) += gspr + gstot);
+
+           (*(self.matps.BPdpPtr) += gcbdb - gjbd + gbbdp - gIbtotd);
+           (*(self.matps.BPgpPtr) += gcbgb - newop.gbgs - gIbtotg);
+           (*(self.matps.BPspPtr) += gcbsb - gjbs + gbbsp - gIbtots);
+           (*(self.matps.BPbpPtr) += gjbd + gjbs + gcbbb - newop.gbbs
+				   - gIbtotb);
+
+           ggidld = newop.ggidld;
+           ggidlg = newop.ggidlg;
+           ggidlb = newop.ggidlb;
+           ggislg = newop.ggislg;
+           ggisls = newop.ggisls;
+           ggislb = newop.ggislb;
+
+    /* stamp gidl */
+           (*(self.matps.DPdpPtr) += ggidld);
+           (*(self.matps.DPgpPtr) += ggidlg);
+           (*(self.matps.DPspPtr) -= (ggidlg + ggidld + ggidlb));
+           (*(self.matps.DPbpPtr) += ggidlb);
+           (*(self.matps.BPdpPtr) -= ggidld);
+           (*(self.matps.BPgpPtr) -= ggidlg);
+           (*(self.matps.BPspPtr) += (ggidlg + ggidld + ggidlb));
+           (*(self.matps.BPbpPtr) -= ggidlb);
+    /* stamp gisl */
+           (*(self.matps.SPdpPtr) -= (ggisls + ggislg + ggislb));
+           (*(self.matps.SPgpPtr) += ggislg);
+           (*(self.matps.SPspPtr) += ggisls);
+           (*(self.matps.SPbpPtr) += ggislb);
+           (*(self.matps.BPdpPtr) += (ggislg + ggisls + ggislb));
+           (*(self.matps.BPgpPtr) -= ggislg);
+           (*(self.matps.BPspPtr) -= ggisls);
+           (*(self.matps.BPbpPtr) -= ggislb);
+
+
+           if self.intp.rbodyMod != 0 {
+               (*(self.matps.DPdbPtr) += gcdbdb - newop.gbd);
+               (*(self.matps.SPsbPtr) -= newop.gbs - gcsbsb);
+
+               (*(self.matps.DBdpPtr) += gcdbdb - newop.gbd);
+               (*(self.matps.DBdbPtr) += newop.gbd - gcdbdb
+                                       + newop.grbpd + newop.grbdb);
+               (*(self.matps.DBbpPtr) -= newop.grbpd);
+               (*(self.matps.DBbPtr) -= newop.grbdb);
+
+               (*(self.matps.BPdbPtr) -= newop.grbpd);
+               (*(self.matps.BPbPtr) -= newop.grbpb);
+               (*(self.matps.BPsbPtr) -= newop.grbps);
+               (*(self.matps.BPbpPtr) += newop.grbpd + newop.grbps
+                                       + newop.grbpb);
+
+               (*(self.matps.SBspPtr) += gcsbsb - newop.gbs);
+               (*(self.matps.SBbpPtr) -= newop.grbps);
+               (*(self.matps.SBbPtr) -= newop.grbsb);
+               (*(self.matps.SBsbPtr) += newop.gbs - gcsbsb
+                                       + newop.grbps + newop.grbsb);
+
+               (*(self.matps.BdbPtr) -= newop.grbdb);
+               (*(self.matps.BbpPtr) -= newop.grbpb);
+               (*(self.matps.BsbPtr) -= newop.grbsb);
+               (*(self.matps.BbPtr) += newop.grbsb + newop.grbdb
+                                     + newop.grbpb);
+           }
+
+           if self.intp.trnqsMod {
+               (*(self.matps.QqPtr) += gqdef + self.intp.gtau);
+               (*(self.matps.QgpPtr) += ggtg - gcqgb);
+               (*(self.matps.QdpPtr) += ggtd - gcqdb);
+               (*(self.matps.QspPtr) += ggts - gcqsb);
+               (*(self.matps.QbpPtr) += ggtb - gcqbb);
+
+               (*(self.matps.DPqPtr) += dxpart * self.intp.gtau);
+               (*(self.matps.SPqPtr) += sxpart * self.intp.gtau);
+               (*(self.matps.GPqPtr) -= self.intp.gtau);
+           }
+    // Update our best-guess operating point
+    self.guess = newop;
+    // And return our matrix stamps
+    return Stamps { j, b };
+}
+
+/// compute poly depletion effect
+fn BSIM4polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -> (f64, f64) {
+    if (ngate > 1.0e18) && (ngate < 1.0e25) && (Vgs > phi) && (epsgate != 0.0) {
+        let T1 = 1.0e6 * CHARGE * epsgate * ngate / (coxe * coxe);
+        let T8 = Vgs - phi;
+        let T4 = sqrt(1.0 + 2.0 * T8 / T1);
+        let T2 = 2.0 * T8 / (T4 + 1.0);
+        let T3 = 0.5 * T2 * T2 / T1; /* T3 = Vpoly */
+        let T7 = 1.12 - T3 - 0.05;
+        let T6 = sqrt(T7 * T7 + 0.224);
+        let T5 = 1.12 - 0.5 * (T7 + T6);
+        let Vgs_eff = Vgs - T5;
+        let dVgs_eff_dVg = 1.0 - (0.5 - 0.5 / T4) * (1.0 + T7 / T6);
+        (Vgs_eff, dVgs_eff_dVg)
+    } else {
+        (Vgs, 1.0)
+    }
 }

@@ -18,6 +18,7 @@ pub(crate) use diode::{Diode, DiodeInstParams, DiodeModel};
 pub mod mos;
 pub(crate) use mos::*;
 pub mod bsim4;
+pub mod bsim4defs;
 pub(crate) use bsim4::*;
 
 /// Constants
