@@ -433,13 +433,17 @@ impl Default for NumericalIntegration {
     }
 }
 
+/// # TranState
+/// 
+/// Internal state of transient analysis 
+/// Often passed to Components for timesteps etc 
 #[derive(Default)]
 pub(crate) struct TranState {
-    t: f64,
-    dt: f64,
-    vic: Vec<usize>,
-    ric: Vec<usize>,
-    ni: NumericalIntegration,
+    pub(crate) t: f64,
+    pub(crate) dt: f64,
+    pub(crate) vic: Vec<usize>,
+    pub(crate) ric: Vec<usize>,
+    pub(crate) ni: NumericalIntegration,
 }
 
 impl TranState {

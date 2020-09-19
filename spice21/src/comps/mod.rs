@@ -28,6 +28,7 @@ pub mod consts {
     pub const KB_OVER_Q: f64 = KB / Q;
     pub const KELVIN_TO_C: f64 = 273.15;
     pub const TEMP_REF: f64 = KELVIN_TO_C + 27.0;
+    pub const VT_REF: f64 = KB * TEMP_REF / Q;
     pub const SIO2_PERMITTIVITY: f64 = 3.9 * 8.854214871e-12;
 }
 
