@@ -20,11 +20,114 @@ impl Bsim4Model {
     }
 }
 
-pub struct Bsim4Ports {}
+pub struct Bsim4Ports {
+    dNode: Option<VarIndex>,
+    gNodeExt: Option<VarIndex>,
+    sNode: Option<VarIndex>,
+    bNode: Option<VarIndex>,
+    dNodePrime: Option<VarIndex>,
+    gNodePrime: Option<VarIndex>,
+    gNodeMid: Option<VarIndex>,
+    sNodePrime: Option<VarIndex>,
+    bNodePrime: Option<VarIndex>,
+    dbNode: Option<VarIndex>,
+    sbNode: Option<VarIndex>,
+    qNode: Option<VarIndex>,
+}
 
 pub struct Bsim4InternalParams {}
 
 pub struct Bsim4SizeDepParams {}
+
+/// # BSIM4 Matrix Pointers
+struct Bsim4MatrixPointers {
+    GEgePtr: Option<Eindex>,
+    GPgePtr: Option<Eindex>,
+    GEgpPtr: Option<Eindex>,
+    GPgpPtr: Option<Eindex>,
+    GPdpPtr: Option<Eindex>,
+    GPspPtr: Option<Eindex>,
+    GPbpPtr: Option<Eindex>,
+    GEdpPtr: Option<Eindex>,
+    GEspPtr: Option<Eindex>,
+    GEbpPtr: Option<Eindex>,
+
+    GEgmPtr: Option<Eindex>,
+    GMgePtr: Option<Eindex>,
+    GMgmPtr: Option<Eindex>,
+
+    GMdpPtr: Option<Eindex>,
+    GMgpPtr: Option<Eindex>,
+    GMspPtr: Option<Eindex>,
+    GMbpPtr: Option<Eindex>,
+
+    DPgmPtr: Option<Eindex>,
+    GPgmPtr: Option<Eindex>,
+    SPgmPtr: Option<Eindex>,
+    BPgmPtr: Option<Eindex>,
+
+    DgpPtr: Option<Eindex>,
+    DspPtr: Option<Eindex>,
+    DbpPtr: Option<Eindex>,
+    SdpPtr: Option<Eindex>,
+    SgpPtr: Option<Eindex>,
+    SbpPtr: Option<Eindex>,
+
+    DPdpPtr: Option<Eindex>,
+    DPdPtr: Option<Eindex>,
+    DPgpPtr: Option<Eindex>,
+    DPspPtr: Option<Eindex>,
+    DPbpPtr: Option<Eindex>,
+
+    DdpPtr: Option<Eindex>,
+    DdPtr: Option<Eindex>,
+
+    SPdpPtr: Option<Eindex>,
+    SPgpPtr: Option<Eindex>,
+    SPspPtr: Option<Eindex>,
+    SPsPtr: Option<Eindex>,
+    SPbpPtr: Option<Eindex>,
+
+    SspPtr: Option<Eindex>,
+    SsPtr: Option<Eindex>,
+
+    BPdpPtr: Option<Eindex>,
+    BPgpPtr: Option<Eindex>,
+    BPspPtr: Option<Eindex>,
+    BPbpPtr: Option<Eindex>,
+
+    DPdbPtr: Option<Eindex>,
+    SPsbPtr: Option<Eindex>,
+
+    DBdpPtr: Option<Eindex>,
+    DBdbPtr: Option<Eindex>,
+    DBbpPtr: Option<Eindex>,
+    DBbPtr: Option<Eindex>,
+
+    BPdbPtr: Option<Eindex>,
+    BPbPtr: Option<Eindex>,
+    BPsbPtr: Option<Eindex>,
+
+    SBspPtr: Option<Eindex>,
+    SBbpPtr: Option<Eindex>,
+    SBbPtr: Option<Eindex>,
+    SBsbPtr: Option<Eindex>,
+
+    BdbPtr: Option<Eindex>,
+    BbpPtr: Option<Eindex>,
+    BsbPtr: Option<Eindex>,
+    BbPtr: Option<Eindex>,
+
+    QqPtr: Option<Eindex>,
+    QgpPtr: Option<Eindex>,
+    QdpPtr: Option<Eindex>,
+    QspPtr: Option<Eindex>,
+    QbpPtr: Option<Eindex>,
+
+    DPqPtr: Option<Eindex>,
+    SPqPtr: Option<Eindex>,
+    GPqPtr: Option<Eindex>,
+}
 
 /// BSIM4 MOSFET Solver
 pub struct Bsim4 {
@@ -35,7 +138,7 @@ pub struct Bsim4 {
     pub intp: Bsim4InternalParams,
     pub guess: Bsim4OpPoint,
     pub op: Bsim4OpPoint,
-    // pub matps: MosMatrixPointers,
+    pub matps: Bsim4MatrixPointers,
 }
 
 // #define MAX_EXPL 2.688117142e+43
@@ -341,8 +444,6 @@ impl Component for Bsim4 {
         let mut Vfb: f64;
         let mut dVbs_dVb: f64;
         let mut Vth_NarrowW: f64;
-        /* let mut Vgd_eff: f64;
-        let mut dVgd_eff_dVg: f64; 	 v4.7.0 */
         let mut Phis: f64;
         let mut dPhis_dVb: f64;
         let mut sqrtPhis: f64;
@@ -799,75 +900,76 @@ impl Component for Bsim4 {
             delvsbs
         };
 
-        if self.guess.mode >= 0 {
-            Idtot = self.guess.cd + self.guess.csub - self.guess.cbd + self.guess.Igidl;
-            cdhat = Idtot - self.guess.gbd * delvbd_jct
-                + (self.guess.gmbs + self.guess.gbbs + self.guess.ggidlb) * delvbs
-                + (self.guess.gm + self.guess.gbgs + self.guess.ggidlg) * delvgs
-                + (self.guess.gds + self.guess.gbds + self.guess.ggidld) * delvds;
-            Ibtot = self.guess.cbs + self.guess.cbd
-                - self.guess.Igidl
-                - self.guess.Igisl
-                - self.guess.csub;
-            cbhat = Ibtot + self.guess.gbd * delvbd_jct + self.guess.gbs * delvbs_jct
-                - (self.guess.gbbs + self.guess.ggidlb) * delvbs
-                - (self.guess.gbgs + self.guess.ggidlg) * delvgs
-                - (self.guess.gbds + self.guess.ggidld - self.guess.ggisls) * delvds
-                - self.guess.ggislg * delvgd
-                - self.guess.ggislb * delvbd;
+        // Convergence/ LTE criteria - to be moved elsewhere
+        // if self.guess.mode >= 0 {
+        //     Idtot = self.guess.cd + self.guess.csub - self.guess.cbd + self.guess.Igidl;
+        //     cdhat = Idtot - self.guess.gbd * delvbd_jct
+        //         + (self.guess.gmbs + self.guess.gbbs + self.guess.ggidlb) * delvbs
+        //         + (self.guess.gm + self.guess.gbgs + self.guess.ggidlg) * delvgs
+        //         + (self.guess.gds + self.guess.gbds + self.guess.ggidld) * delvds;
+        //     Ibtot = self.guess.cbs + self.guess.cbd
+        //         - self.guess.Igidl
+        //         - self.guess.Igisl
+        //         - self.guess.csub;
+        //     cbhat = Ibtot + self.guess.gbd * delvbd_jct + self.guess.gbs * delvbs_jct
+        //         - (self.guess.gbbs + self.guess.ggidlb) * delvbs
+        //         - (self.guess.gbgs + self.guess.ggidlg) * delvgs
+        //         - (self.guess.gbds + self.guess.ggidld - self.guess.ggisls) * delvds
+        //         - self.guess.ggislg * delvgd
+        //         - self.guess.ggislb * delvbd;
 
-            Igstot = self.guess.Igs + self.guess.Igcs;
-            cgshat = Igstot
-                + (self.guess.gIgsg + self.guess.gIgcsg) * delvgs
-                + self.guess.gIgcsd * delvds
-                + self.guess.gIgcsb * delvbs;
+        //     Igstot = self.guess.Igs + self.guess.Igcs;
+        //     cgshat = Igstot
+        //         + (self.guess.gIgsg + self.guess.gIgcsg) * delvgs
+        //         + self.guess.gIgcsd * delvds
+        //         + self.guess.gIgcsb * delvbs;
 
-            Igdtot = self.guess.Igd + self.guess.Igcd;
-            cgdhat = Igdtot
-                + self.guess.gIgdg * delvgd
-                + self.guess.gIgcdg * delvgs
-                + self.guess.gIgcdd * delvds
-                + self.guess.gIgcdb * delvbs;
+        //     Igdtot = self.guess.Igd + self.guess.Igcd;
+        //     cgdhat = Igdtot
+        //         + self.guess.gIgdg * delvgd
+        //         + self.guess.gIgcdg * delvgs
+        //         + self.guess.gIgcdd * delvds
+        //         + self.guess.gIgcdb * delvbs;
 
-            Igbtot = self.guess.Igb;
-            cgbhat = self.guess.Igb
-                + self.guess.gIgbg * delvgs
-                + self.guess.gIgbd * delvds
-                + self.guess.gIgbb * delvbs;
-        } else {
-            Idtot = self.guess.cd + self.guess.cbd - self.guess.Igidl;
-            cdhat = Idtot
-                + self.guess.gbd * delvbd_jct
-                + self.guess.gmbs * delvbd
-                + self.guess.gm * delvgd
-                - (self.guess.gds + self.guess.ggidls) * delvds
-                - self.guess.ggidlg * delvgs
-                - self.guess.ggidlb * delvbs;
-            Ibtot = self.guess.cbs + self.guess.cbd
-                - self.guess.Igidl
-                - self.guess.Igisl
-                - self.guess.csub;
-            cbhat = Ibtot + self.guess.gbs * delvbs_jct + self.guess.gbd * delvbd_jct
-                - (self.guess.gbbs + self.guess.ggislb) * delvbd
-                - (self.guess.gbgs + self.guess.ggislg) * delvgd
-                + (self.guess.gbds + self.guess.ggisld - self.guess.ggidls) * delvds
-                - self.guess.ggidlg * delvgs
-                - self.guess.ggidlb * delvbs;
+        //     Igbtot = self.guess.Igb;
+        //     cgbhat = self.guess.Igb
+        //         + self.guess.gIgbg * delvgs
+        //         + self.guess.gIgbd * delvds
+        //         + self.guess.gIgbb * delvbs;
+        // } else {
+        //     Idtot = self.guess.cd + self.guess.cbd - self.guess.Igidl;
+        //     cdhat = Idtot
+        //         + self.guess.gbd * delvbd_jct
+        //         + self.guess.gmbs * delvbd
+        //         + self.guess.gm * delvgd
+        //         - (self.guess.gds + self.guess.ggidls) * delvds
+        //         - self.guess.ggidlg * delvgs
+        //         - self.guess.ggidlb * delvbs;
+        //     Ibtot = self.guess.cbs + self.guess.cbd
+        //         - self.guess.Igidl
+        //         - self.guess.Igisl
+        //         - self.guess.csub;
+        //     cbhat = Ibtot + self.guess.gbs * delvbs_jct + self.guess.gbd * delvbd_jct
+        //         - (self.guess.gbbs + self.guess.ggislb) * delvbd
+        //         - (self.guess.gbgs + self.guess.ggislg) * delvgd
+        //         + (self.guess.gbds + self.guess.ggisld - self.guess.ggidls) * delvds
+        //         - self.guess.ggidlg * delvgs
+        //         - self.guess.ggidlb * delvbs;
 
-            Igstot = self.guess.Igs + self.guess.Igcd;
-            cgshat = Igstot + self.guess.gIgsg * delvgs + self.guess.gIgcdg * delvgd
-                - self.guess.gIgcdd * delvds
-                + self.guess.gIgcdb * delvbd;
+        //     Igstot = self.guess.Igs + self.guess.Igcd;
+        //     cgshat = Igstot + self.guess.gIgsg * delvgs + self.guess.gIgcdg * delvgd
+        //         - self.guess.gIgcdd * delvds
+        //         + self.guess.gIgcdb * delvbd;
 
-            Igdtot = self.guess.Igd + self.guess.Igcs;
-            cgdhat = Igdtot + (self.guess.gIgdg + self.guess.gIgcsg) * delvgd
-                - self.guess.gIgcsd * delvds
-                + self.guess.gIgcsb * delvbd;
+        //     Igdtot = self.guess.Igd + self.guess.Igcs;
+        //     cgdhat = Igdtot + (self.guess.gIgdg + self.guess.gIgcsg) * delvgd
+        //         - self.guess.gIgcsd * delvds
+        //         + self.guess.gIgcsb * delvbd;
 
-            Igbtot = self.guess.Igb;
-            cgbhat = self.guess.Igb + self.guess.gIgbg * delvgd - self.guess.gIgbd * delvds
-                + self.guess.gIgbb * delvbd;
-        }
+        //     Igbtot = self.guess.Igb;
+        //     cgbhat = self.guess.Igb + self.guess.gIgbg * delvgd - self.guess.gIgbd * delvds
+        //         + self.guess.gIgbb * delvbd;
+        // }
 
         Isestot = self.guess.gstot * self.guess.vses;
         cseshat = Isestot
@@ -926,28 +1028,27 @@ impl Component for Bsim4 {
         }
 
         if vds >= 0.0 {
-            vbs = DEVpnjlim(vbs, self.guess.vbs, CONSTvt0, self.model.vcrit);
+            vbs = DEVpnjlim(vbs, self.guess.vbs, CONSTvt0, self.intp.vcrit);
             vbd = vbs - vds;
-            if self.intp.rbodyMod {
-                vdbs = DEVpnjlim(vdbs, self.guess.vdbs, CONSTvt0, self.model.vcrit);
+            if self.intp.rbodyMod != 0 {
+                vdbs = DEVpnjlim(vdbs, self.guess.vdbs, CONSTvt0, self.intp.vcrit);
                 vdbd = vdbs - vds;
-                vsbs = DEVpnjlim(vsbs, self.guess.vsbs, CONSTvt0, self.model.vcrit);
+                vsbs = DEVpnjlim(vsbs, self.guess.vsbs, CONSTvt0, self.intp.vcrit);
             }
         } else {
-            vbd = DEVpnjlim(vbd, self.guess.vbd, CONSTvt0, self.model.vcrit);
+            vbd = DEVpnjlim(vbd, self.guess.vbd, CONSTvt0, self.intp.vcrit);
             vbs = vbd + vds;
-            if self.intp.rbodyMod {
-                vdbd = DEVpnjlim(vdbd, self.guess.vdbd, CONSTvt0, self.model.vcrit);
+            if self.intp.rbodyMod != 0 {
+                vdbd = DEVpnjlim(vdbd, self.guess.vdbd, CONSTvt0, self.intp.vcrit);
                 vdbs = vdbd + vds;
                 vsbdo = self.guess.vsbs - self.guess.vds;
                 vsbd = vsbs - vds;
-                vsbd = DEVpnjlim(vsbd, vsbdo, CONSTvt0, self.model.vcrit);
+                vsbd = DEVpnjlim(vsbd, vsbdo, CONSTvt0, self.intp.vcrit);
                 vsbs = vsbd + vds;
             }
         }
-    }
 
-    /* Calculate DC currents and their derivatives */
+        /* Calculate DC currents and their derivatives */
         vbd = vbs - vds;
         vgd = vgs - vds;
         vgb = vgs - vbs;
@@ -963,49 +1064,48 @@ impl Component for Bsim4 {
           Nvtms = self.model.vtm * self.model.SjctEmissionCoeff;
           if (self.intp.Aseff <= 0.0) && (self.intp.Pseff <= 0.0) {
 	     SourceSatCurrent = 0.0;
-	  }
-          else
-          {   SourceSatCurrent = self.intp.Aseff * self.model.SjctTempSatCurDensity
+	  } else {   
+          SourceSatCurrent = self.intp.Aseff * self.model.SjctTempSatCurDensity
                                + self.intp.Pseff * self.model.SjctSidewallTempSatCurDensity
                                + self.size_params.weffCJ * self.intp.nf
                                * self.model.SjctGateSidewallTempSatCurDensity;
           }
 
 	  if SourceSatCurrent <= 0.0 {
-	     newop.gbs = gmin;
+	        newop.gbs = gmin;
               newop.cbs = newop.gbs * vbs_jct;
-          }
-          else
-	  {   switch(self.model.dioMod)
-              {   case 0:
+          } else {   
+              match self.model.dioMod {   
+                  0 => {
                       evbs = exp(vbs_jct / Nvtms);
                       T1 = self.model.xjbvs * exp(-(self.model.bvs + vbs_jct) / Nvtms);
 
-		      newop.gbs = SourceSatCurrent * (evbs + T1) / Nvtms + gmin;
-		      newop.cbs = SourceSatCurrent * (evbs + self.intp.XExpBVS
-				     - T1 - 1.0) + gmin * vbs_jct;
-		      break;
-                  case 1:
-		      T2 = vbs_jct / Nvtms;
-	              if T2 < -EXP_THRESHOLD {
-		         newop.gbs = gmin;
-                          newop.cbs = SourceSatCurrent * (MIN_EXP - 1.0)
-                                         + gmin * vbs_jct;
+                    newop.gbs = SourceSatCurrent * (evbs + T1) / Nvtms + gmin;
+                    newop.cbs = SourceSatCurrent * (evbs + self.intp.XExpBVS - T1 - 1.0) + gmin * vbs_jct;
+                  }
+
+                  1 => {
+
+                      T2 = vbs_jct / Nvtms;
+                          if T2 < -EXP_THRESHOLD {
+                         newop.gbs = gmin;
+                                  newop.cbs = SourceSatCurrent * (MIN_EXP - 1.0)
+                                                 + gmin * vbs_jct;
+                              }
+                      else if vbs_jct <= self.intp.vjsmFwd {
+                         evbs = exp(T2);
+                      newop.gbs = SourceSatCurrent * evbs / Nvtms + gmin;
+                                  newop.cbs = SourceSatCurrent * (evbs - 1.0)
+                                                 + gmin * vbs_jct;
+                          }
+                      else
+                      {   T0 = self.intp.IVjsmFwd / Nvtms;
+                                  newop.gbs = T0 + gmin;
+                                  newop.cbs = self.intp.IVjsmFwd - SourceSatCurrent + T0
+                             * (vbs_jct - self.intp.vjsmFwd) + gmin * vbs_jct;
                       }
-		      else if vbs_jct <= self.intp.vjsmFwd {
-		         evbs = exp(T2);
-			  newop.gbs = SourceSatCurrent * evbs / Nvtms + gmin;
-                          newop.cbs = SourceSatCurrent * (evbs - 1.0)
-                                         + gmin * vbs_jct;
-	              }
-		      else
-		      {   T0 = self.intp.IVjsmFwd / Nvtms;
-                          newop.gbs = T0 + gmin;
-                          newop.cbs = self.intp.IVjsmFwd - SourceSatCurrent + T0
-					 * (vbs_jct - self.intp.vjsmFwd) + gmin * vbs_jct;
-		      }
-                      break;
-                  case 2:
+                  }
+                  2 => {
                       if vbs_jct < self.intp.vjsmRev {
                          T0 = vbs_jct / Nvtms;
                           if T0 < -EXP_THRESHOLD {
@@ -1053,8 +1153,8 @@ impl Component for Bsim4 {
                           newop.cbs = self.intp.IVjsmFwd + self.intp.SslpFwd * (vbs_jct
 					 - self.intp.vjsmFwd) + gmin * vbs_jct;
 		      }
-                      break;
-                  default: break;
+            }
+            _ => panic!("Invalid dioMod!")
               }
 	  }
 
@@ -1072,19 +1172,18 @@ impl Component for Bsim4 {
 
 	  if DrainSatCurrent <= 0.0 {
 	     newop.gbd = gmin;
-              newop.cbd = here->BSIM4gbd * vbd_jct;
+              newop.cbd = newop.gbd * vbd_jct;
           }
           else
-          {   switch(self.model.dioMod)
-              {   case 0:
+          {   match self.model.dioMod {   
+                0 => {
                       evbd = exp(vbd_jct / Nvtmd);
                       T1 = self.model.xjbvd * exp(-(self.model.bvd + vbd_jct) / Nvtmd);
-    /* WDLiu: Magic T1 in this form; different from BSIM4 beta. */
                       newop.gbd = DrainSatCurrent * (evbd + T1) / Nvtmd + gmin;
                       newop.cbd = DrainSatCurrent * (evbd + self.intp.XExpBVD
                                      - T1 - 1.0) + gmin * vbd_jct;
-                      break;
-                  case 1:
+                      }
+                  1 => {
 		      T2 = vbd_jct / Nvtmd;
                       if T2 < -EXP_THRESHOLD {
                          newop.gbd = gmin;
@@ -1103,8 +1202,8 @@ impl Component for Bsim4 {
                           newop.cbd = self.intp.IVjdmFwd - DrainSatCurrent + T0
                                          * (vbd_jct - self.intp.vjdmFwd) + gmin * vbd_jct;
                       }
-                      break;
-                  case 2:
+                      }
+                  2 => {
                       if vbd_jct < self.intp.vjdmRev {
                          T0 = vbd_jct / Nvtmd;
                           if T0 < -EXP_THRESHOLD {
@@ -1152,8 +1251,8 @@ impl Component for Bsim4 {
                           newop.cbd = self.intp.IVjdmFwd + self.intp.DslpFwd * (vbd_jct
                                          - self.intp.vjdmFwd) + gmin * vbd_jct;
                       }
-                      break;
-                  default: break;
+                      }
+                      _ => panic!("Invalid dioMod!")
               }
           }
 
@@ -1243,16 +1342,16 @@ impl Component for Bsim4 {
           dT6_dVb = T10 * dT0_dVb;
         }
 
-	  here->BSIM4gbs += self.intp.SjctTempRevSatCur * dT1_dVb
+	  newop.gbs += self.intp.SjctTempRevSatCur * dT1_dVb
 	  			+ self.intp.SswTempRevSatCur * dT3_dVb
 	  			+ self.intp.SswgTempRevSatCur * dT5_dVb;
-	  here->BSIM4cbs -= self.intp.SjctTempRevSatCur * (T1 - 1.0)
+	  newop.cbs -= self.intp.SjctTempRevSatCur * (T1 - 1.0)
 	  			+ self.intp.SswTempRevSatCur * (T3 - 1.0)
 	  			+ self.intp.SswgTempRevSatCur * (T5 - 1.0);
-	  here->BSIM4gbd += self.intp.DjctTempRevSatCur * dT2_dVb
+	  newop.gbd += self.intp.DjctTempRevSatCur * dT2_dVb
 	  			+ self.intp.DswTempRevSatCur * dT4_dVb
 	  			+ self.intp.DswgTempRevSatCur * dT6_dVb;
-	  here->BSIM4cbd -= self.intp.DjctTempRevSatCur * (T2 - 1.0)
+	  newop.cbd -= self.intp.DjctTempRevSatCur * (T2 - 1.0)
 	  			+ self.intp.DswTempRevSatCur * (T4 - 1.0)
 	  			+ self.intp.DswgTempRevSatCur * (T6 - 1.0);
 
@@ -1290,16 +1389,16 @@ impl Component for Bsim4 {
 	   }
 
 
-	  T0 = Vbs - here->BSIM4vbsc - 0.001;
-	  T1 = sqrt(T0 * T0 - 0.004 * here->BSIM4vbsc);
+	  T0 = Vbs - self.intp.vbsc - 0.001;
+	  T1 = sqrt(T0 * T0 - 0.004 * self.intp.vbsc);
 	  if T0 >= 0.0 {
-	     Vbseff = here->BSIM4vbsc + 0.5 * (T0 + T1);
+	     Vbseff = self.intp.vbsc + 0.5 * (T0 + T1);
               dVbseff_dVb = 0.5 * (1.0 + T0 / T1);
 	  }
 	  else
 	  {   T2 = -0.002 / (T1 - T0);
-	      Vbseff = here->BSIM4vbsc * (1.0 + T2);
-	      dVbseff_dVb = T2 * here->BSIM4vbsc / T1;
+	      Vbseff = self.intp.vbsc * (1.0 + T2);
+	      dVbseff_dVb = T2 * self.intp.vbsc / T1;
 	  }
 
     /* JX: Correction to forward body bias  */
@@ -1366,7 +1465,7 @@ impl Component for Bsim4 {
               dTheta0_dVb = 0.0;
           }
           newop.thetavth = self.size_params.dvt0 * Theta0;
-          Delt_vth = here->BSIM4thetavth * V0;
+          Delt_vth = self.intp.thetavth * V0;
           dDelt_vth_dVb = self.size_params.dvt0 * dTheta0_dVb * V0;
 
           T0 = self.size_params.dvt1w * self.size_params.weff * Leff / ltw;
@@ -1395,7 +1494,7 @@ impl Component for Bsim4 {
           Vth_NarrowW = toxe * self.size_params.phi
 	              / (self.size_params.weff + self.size_params.w0);
 
-	  T3 = here->BSIM4eta0 + self.size_params.etab * Vbseff;
+	  T3 = self.intp.eta0 + self.size_params.etab * Vbseff;
 	  if T3 < 1.0e-4 {
 	     T9 = 1.0 / (3.0 - 2.0e4 * T3);
 	      T3 = (2.0e-4 - T3) * T9;
@@ -1411,10 +1510,10 @@ impl Component for Bsim4 {
 
           Vth = self.model.p() * self.intp.vth0 + (self.size_params.k1ox * sqrtPhis
 	      - self.size_params.k1 * self.size_params.sqrtPhi) * Lpe_Vb
-              - here->BSIM4k2ox * Vbseff - Delt_vth - T2 + (self.size_params.k3
+              - self.intp.k2ox * Vbseff - Delt_vth - T2 + (self.size_params.k3
               + self.size_params.k3b * Vbseff) * Vth_NarrowW + T1 - DIBL_Sft;
 
-          dVth_dVb = Lpe_Vb * self.size_params.k1ox * dsqrtPhis_dVb - here->BSIM4k2ox
+          dVth_dVb = Lpe_Vb * self.size_params.k1ox * dsqrtPhis_dVb - self.intp.k2ox
                    - dDelt_vth_dVb - dT2_dVb + self.size_params.k3b * Vth_NarrowW
                    - self.size_params.etab * Vds * self.size_params.theta0vb0 * T4
                    + self.size_params.kt2 * self.intp.TempRatio;
@@ -1500,13 +1599,13 @@ impl Component for Bsim4 {
 
 	 
     /* Poly Gate Si Depletion Effect */
-	  T0 = here->BSIM4vfb + self.size_params.phi;
+	  T0 = self.intp.vfb + self.size_params.phi;
 	  if(self.model.mtrlMod == 0)                
 	    T1 = EPSSI;
 	  else
 	    T1 = self.model.epsrgate * EPS0;
-    	  let (vgs_eff, dvgs_eff_dvg) = BSIM4polyDepletion(T0, self.size_params.ngate, T1, self.model.coxe, vgs);
-    	  let (vgd_eff, dvgd_eff_dvg) = BSIM4polyDepletion(T0, self.size_params.ngate, T1, self.model.coxe, vgd);
+    	  let (vgs_eff, dvgs_eff_dvg) = polyDepletion(T0, self.size_params.ngate, T1, self.model.coxe, vgs);
+    	  let (vgd_eff, dvgd_eff_dvg) = polyDepletion(T0, self.size_params.ngate, T1, self.model.coxe, vgd);
     	 
     	  if(self.guess.mode>0) {
     	  	Vgs_eff = vgs_eff;
@@ -1625,7 +1724,7 @@ newop.grdsw = 1.0 / Rds* self.intp.nf; /*4.6.2*/
 	 
     /* Calculate Abulk */
 	  T9 = 0.5 * self.size_params.k1ox * Lpe_Vb / sqrtPhis;
-          T1 = T9 + here->BSIM4k2ox - self.size_params.k3b * Vth_NarrowW;
+          T1 = T9 + self.intp.k2ox - self.size_params.k3b * Vth_NarrowW;
           dT1_dVb = -T9 / sqrtPhis * dsqrtPhis_dVb;
 
           T9 = sqrt(self.size_params.xj * Xdep);
@@ -1837,17 +1936,17 @@ else if (self.model.mobMod == 6) /* Synopsys 08/30/2013 modify */
 	  }
 	 
 
-          newop.ueff = ueff = here->BSIM4u0temp / Denomi;
+          newop.ueff = ueff = self.intp.u0temp / Denomi;
 	  T9 = -ueff / Denomi;
           dueff_dVg = T9 * dDenomi_dVg;
           dueff_dVd = T9 * dDenomi_dVd;
           dueff_dVb = T9 * dDenomi_dVb;
 
     /* Saturation Drain Voltage  Vdsat */
-          WVCox = Weff * here->BSIM4vsattemp * self.model.coxe;
+          WVCox = Weff * self.intp.vsattemp * self.model.coxe;
           WVCoxRds = WVCox * Rds;
 
-          Esat = 2.0 * here->BSIM4vsattemp / ueff;
+          Esat = 2.0 * self.intp.vsattemp / ueff;
           newop.EsatL = EsatL = Esat * Leff;
           T0 = -EsatL /ueff;
           dEsatL_dVg = T0 * dueff_dVg;
@@ -2056,7 +2155,7 @@ Esat = EsatL / Leff; /* bugfix by Wenwei Yang (4.6.4) */
     /* Calculate Idl first */
 	     
           tmp1 = self.intp.vtfbphi2;
-          tmp2 = 2.0e8 * here->BSIM4toxp;
+          tmp2 = 2.0e8 * self.intp.toxp;
           dT0_dVg = 1.0 / tmp2;
           T0 = (Vgsteff + tmp1) * dT0_dVg;
 
@@ -2066,8 +2165,8 @@ Esat = EsatL / Leff; /* bugfix by Wenwei Yang (4.6.4) */
           Tcen = self.model.ados * 1.9e-9 / T1;
           dTcen_dVg = -Tcen * T2 * dT0_dVg / T1;
 
-          Coxeff = epssub * here->BSIM4coxp
-                 / (epssub + here->BSIM4coxp * Tcen);
+          Coxeff = epssub * self.intp.coxp
+                 / (epssub + self.intp.coxp * Tcen);
 	  newop.Coxeff = Coxeff;
           dCoxeff_dVg = -Coxeff * Coxeff * dTcen_dVg / epssub;
 
@@ -2444,16 +2543,16 @@ vs = cdrain * T11; /* vs */
 	      }
 
               if self.intp.rgateMod == 2 {
-                  T10 = here->BSIM4grgeltd * here->BSIM4grgeltd;
-		  T11 = here->BSIM4grgeltd + here->BSIM4gcrg;
-		  newop.gcrg = here->BSIM4grgeltd * here->BSIM4gcrg / T11;
+                  T10 = self.intp.grgeltd * self.intp.grgeltd;
+		  T11 = self.intp.grgeltd + newop.gcrg;
+		  newop.gcrg = self.intp.grgeltd * newop.gcrg / T11;
                   T12 = T10 / T11 / T11;
-                  here->BSIM4gcrgg *= T12;
-                  here->BSIM4gcrgd *= T12;
-                  here->BSIM4gcrgb *= T12;
+                  newop.gcrgg *= T12;
+                  newop.gcrgd *= T12;
+                  newop.gcrgb *= T12;
               }
-              newop.gcrgs = -(here->BSIM4gcrgg + here->BSIM4gcrgd
-			       + here->BSIM4gcrgb);
+              newop.gcrgs = -(newop.gcrgg + newop.gcrgd
+			       + newop.gcrgb);
 	  }
 
 
@@ -2481,10 +2580,10 @@ vs = cdrain * T11; /* vs */
               dRs_dvg = T4 * dT3_dvg;
               dRs_dvb = T4 * dT3_dvb;
 
-              T0 = 1.0 + here->BSIM4sourceConductance * Rs;
-              newop.gstot = here->BSIM4sourceConductance / T0;
-              T0 = -here->BSIM4gstot * here->BSIM4gstot;
-dgstot_dvd = 0.0; /* place holder */
+              T0 = 1.0 + self.intp.sourceConductance * Rs;
+              newop.gstot = self.intp.sourceConductance / T0;
+              T0 = -newop.gstot * newop.gstot;
+                dgstot_dvd = 0.0; 
               dgstot_dvg = T0 * dRs_dvg;
               dgstot_dvb = T0 * dRs_dvb;
               dgstot_dvs = -(dgstot_dvg + dgstot_dvb + dgstot_dvd);
@@ -2511,9 +2610,9 @@ dgstot_dvd = 0.0; /* place holder */
               dRd_dvg = T4 * dT3_dvg;
               dRd_dvb = T4 * dT3_dvb;
 
-              T0 = 1.0 + here->BSIM4drainConductance * Rd;
-              newop.gdtot = here->BSIM4drainConductance / T0;
-              T0 = -here->BSIM4gdtot * here->BSIM4gdtot;
+              T0 = 1.0 + self.intp.drainConductance * Rd;
+              newop.gdtot = self.intp.drainConductance / T0;
+              T0 = -newop.gdtot * newop.gdtot;
               dgdtot_dvs = 0.0;
               dgdtot_dvg = T0 * dRd_dvg;
               dgdtot_dvb = T0 * dRd_dvb;
@@ -2546,10 +2645,10 @@ else /* WDLiu: for bypass */
 	 
     /* Calculate GIDL current */
 
-	  vgs_eff = here->BSIM4vgs_eff;
-          dvgs_eff_dvg = here->BSIM4dvgs_eff_dvg;
-	  vgd_eff = here->BSIM4vgd_eff;
-          dvgd_eff_dvg = here->BSIM4dvgd_eff_dvg;
+	  vgs_eff = newop.vgs_eff;
+          dvgs_eff_dvg = newop.dvgs_eff_dvg;
+	  vgd_eff = newop.vgd_eff;
+          dvgd_eff_dvg = newop.dvgd_eff_dvg;
 
 	  if (self.model.gidlMod==0){
           
@@ -2810,9 +2909,9 @@ else /* self.model.tempMod = 2, 3*/
                     dVaux_dVb = 0.0;
               	}
 	      } else if (self.model.igcMod == 2) {
-                VxNVt = (Vgs_eff - here->BSIM4von) / T0;
+                VxNVt = (Vgs_eff - newop.von) / T0;
                 if VxNVt > EXP_THRESHOLD {
-                    Vaux = Vgs_eff - here->BSIM4von;
+                    Vaux = Vgs_eff - newop.von;
                     dVaux_dVg = dVgs_eff_dVg;
                     dVaux_dVd = -dVth_dVd;
                     dVaux_dVb = -dVth_dVb;
@@ -3018,9 +3117,9 @@ T7 = -Pigcd * Vdseff; /* bugfix */
               newop.gIgdd = dIgd_dVd;
           }
           else
-          {   newop.Igcs = newop.gIgcsg = here->BSIM4gIgcsd
+          {   newop.Igcs = newop.gIgcsg = newop.gIgcsd
  			      = newop.gIgcsb = 0.0;
-              newop.Igcd = newop.gIgcdg = here->BSIM4gIgcdd
+              newop.Igcd = newop.gIgcdg = newop.gIgcdd
               		      = newop.gIgcdb = 0.0;
               newop.Igs = newop.gIgsg = newop.gIgss = 0.0;
               newop.Igd = newop.gIgdg = newop.gIgdd = 0.0;
@@ -3139,11 +3238,9 @@ T7 = -Pigcd * Vdseff; /* bugfix */
               newop.gIgbg = dIgbinv_dVg + dIgbacc_dVg;
               newop.gIgbd = dIgbinv_dVd;
               newop.gIgbb = (dIgbinv_dVb + dIgbacc_dVb) * dVbseff_dVb;
-          }
-          else
-          {  newop.Igb = newop.gIgbg = here->BSIM4gIgbd
-			    = newop.gIgbs = newop.gIgbb = 0.0;  
-} /* End of Gate current */
+          } else {  
+              newop.Igb = newop.gIgbg = newop.gIgbd = newop.gIgbs = newop.gIgbb = 0.0;  
+    } /* End of Gate current */
 
 	  if self.intp.nf != 1.0 {
               cdrain *= self.intp.nf;
@@ -3243,16 +3340,14 @@ T7 = -Pigcd * Vdseff; /* bugfix */
                               = newop.cqbb = 0.0;
               newop.gtau = 0.0;
               goto finished;
-          }
-	  else if self.model.capMod == 0 {
+          } else if self.model.capMod == 0 {
 	   
               if Vbseff < 0.0 {
-VbseffCV = Vbs; /*4.6.2*/
+                    VbseffCV = Vbs; /*4.6.2*/
                   dVbseffCV_dVb = 1.0;
-              }
-	      else
-	      {   VbseffCV = self.size_params.phi - Phis;
-dVbseffCV_dVb = -dPhis_dVb * dVbseff_dVb; /*4.6.2*/
+              } else {   
+                  VbseffCV = self.size_params.phi - Phis;
+                dVbseffCV_dVb = -dPhis_dVb * dVbseff_dVb; /*4.6.2*/
               }
 
               Vfb = self.size_params.vfbcv;
@@ -3299,9 +3394,9 @@ dVth_dVb = self.size_params.k1ox * dsqrtPhis_dVb *dVbseff_dVb; /*4.6.2*/
                   newop.cddb = 0.0;
                   newop.cdsb = 0.0;
 
-                  newop.cbgb = -here->BSIM4cggb;
+                  newop.cbgb = -newop.cggb;
                   newop.cbdb = 0.0;
-                  newop.cbsb = -here->BSIM4cgsb;
+                  newop.cbsb = -newop.cgsb;
 } /* Vgst <= 0.0, end of depletion */
 	      else
 	      {   One_Third_CoxWL = CoxWL / 3.0;
@@ -3328,18 +3423,18 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 	                  newop.cggb = One_Third_CoxWL * (3.0
 					  - dVdsat_dVg) * dVgs_eff_dVg;
 	                  T2 = -One_Third_CoxWL * dVdsat_dVb;
-	                  newop.cgsb = -(here->BSIM4cggb + T2);
+	                  newop.cgsb = -(newop.cggb + T2);
                           newop.cgdb = 0.0;
       
                           newop.cdgb = 0.0;
                           newop.cddb = 0.0;
                           newop.cdsb = 0.0;
 
-	                  newop.cbgb = -(here->BSIM4cggb
+	                  newop.cbgb = -(newop.cggb
 					  - Two_Third_CoxWL * dVgs_eff_dVg);
 	                  T3 = -(T2 + Two_Third_CoxWL * dVth_dVb);
-	                  newop.cbsb = -(here->BSIM4cbgb + T3);
-                          newop.cbdb = 0.0;
+	                  newop.cbsb = -(newop.cbgb + T3);
+                        newop.cbdb = 0.0;
 	              }
 		      else
 {
@@ -3359,38 +3454,30 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 	                  qbulk = -(qgate + qdrn + T10);
   
                           T5 = T3 / T1;
-                          newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg)
-					  * dVgs_eff_dVg;
+                          newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg) * dVgs_eff_dVg;
                           T11 = -CoxWL * T5 * dVdsat_dVb;
                           newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
-                          newop.cgsb = -(here->BSIM4cggb + T11
-                                          + here->BSIM4cgdb);
+                          newop.cgsb = -(newop.cggb + T11 + newop.cgdb);
                           T6 = 1.0 / Vdsat;
                           dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
                           dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
                           T7 = T9 * T7;
                           T8 = T9 * T8;
                           T9 = 2.0 * T4 * (1.0 - 3.0 * T5);
-                          newop.cdgb = (T7 * dAlphaz_dVg - T9
-					  * dVdsat_dVg) * dVgs_eff_dVg;
+                          newop.cdgb = (T7 * dAlphaz_dVg - T9 * dVdsat_dVg) * dVgs_eff_dVg;
                           T12 = T7 * dAlphaz_dVb - T9 * dVdsat_dVb;
                           newop.cddb = T4 * (3.0 - 6.0 * T2 - 3.0 * T5);
-                          newop.cdsb = -(here->BSIM4cdgb + T12
-                                          + here->BSIM4cddb);
+                          newop.cdsb = -(newop.cdgb + T12 + newop.cddb);
 
                           T9 = 2.0 * T4 * (1.0 + T5);
-                          T10 = (T8 * dAlphaz_dVg - T9 * dVdsat_dVg)
-			      * dVgs_eff_dVg;
+                          T10 = (T8 * dAlphaz_dVg - T9 * dVdsat_dVg) * dVgs_eff_dVg;
                           T11 = T8 * dAlphaz_dVb - T9 * dVdsat_dVb;
                           T12 = T4 * (2.0 * T2 + T5 - 1.0);
                           T0 = -(T10 + T11 + T12);
 
-                          newop.cbgb = -(here->BSIM4cggb
-					  + here->BSIM4cdgb + T10);
-                          newop.cbdb = -(here->BSIM4cgdb
-					  + here->BSIM4cddb + T12);
-                          newop.cbsb = -(here->BSIM4cgsb
-					  + here->BSIM4cdsb + T0);
+                          newop.cbgb = -(newop.cggb + newop.cdgb + T10);
+                          newop.cbdb = -(newop.cgdb + newop.cddb + T12);
+                          newop.cbsb = -(newop.cgsb + newop.cdsb + T0);
                       }
                   }
 		  else if self.model.xpart < 0.5 {
@@ -3398,32 +3485,27 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 		      if Vds >= Vdsat {
     /* saturation region */
 	                  T1 = Vdsat / 3.0;
-	                  qgate = CoxWL * (Vgs_eff - Vfb
-			        - self.size_params.phi - T1);
+	                  qgate = CoxWL * (Vgs_eff - Vfb - self.size_params.phi - T1);
 	                  T2 = -Two_Third_CoxWL * Vgst;
 	                  qbulk = -(qgate + T2);
 	                  qdrn = 0.4 * T2;
 
-	                  newop.cggb = One_Third_CoxWL * (3.0
-					  - dVdsat_dVg) * dVgs_eff_dVg;
+	                  newop.cggb = One_Third_CoxWL * (3.0 - dVdsat_dVg) * dVgs_eff_dVg;
 	                  T2 = -One_Third_CoxWL * dVdsat_dVb;
-	                  newop.cgsb = -(here->BSIM4cggb + T2);
+	                  newop.cgsb = -(newop.cggb + T2);
         	          newop.cgdb = 0.0;
       
 			  T3 = 0.4 * Two_Third_CoxWL;
                           newop.cdgb = -T3 * dVgs_eff_dVg;
                           newop.cddb = 0.0;
 			  T4 = T3 * dVth_dVb;
-                          newop.cdsb = -(T4 + here->BSIM4cdgb);
+                          newop.cdsb = -(T4 + newop.cdgb);
 
-	                  newop.cbgb = -(here->BSIM4cggb
-					  - Two_Third_CoxWL * dVgs_eff_dVg);
+	                  newop.cbgb = -(newop.cggb - Two_Third_CoxWL * dVgs_eff_dVg);
 	                  T3 = -(T2 + Two_Third_CoxWL * dVth_dVb);
-	                  newop.cbsb = -(here->BSIM4cbgb + T3);
+	                  newop.cbsb = -(newop.cbgb + T3);
                           newop.cbdb = 0.0;
-	              }
-		      else
-{
+	              } else {
     /* linear region  */
 			  Alphaz = Vgst / Vdsat;
 			  T1 = 2.0 * Vdsat - Vds;
@@ -3435,12 +3517,10 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 				- 0.5 * (Vds - T3));
 
 			  T5 = T3 / T1;
-                          newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg)
-					  * dVgs_eff_dVg;
-                          tmp = -CoxWL * T5 * dVdsat_dVb;
-                          newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
-                          newop.cgsb = -(here->BSIM4cggb
-					  + here->BSIM4cgdb + tmp);
+            newop.cggb = CoxWL * (1.0 - T5 * dVdsat_dVg) * dVgs_eff_dVg;
+            tmp = -CoxWL * T5 * dVdsat_dVb;
+            newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
+            newop.cgsb = -(newop.cggb + newop.cgdb + tmp);
 
 			  T6 = 1.0 / Vdsat;
                           dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
@@ -3462,30 +3542,27 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
                           newop.cddb = T4 * (2.0 - (1.0 / (3.0 * T1
 					  * T1) + 2.0 * tmp) * T6 + T8
 					  * (6.0 * Vdsat - 2.4 * Vds));
-                          newop.cdsb = -(here->BSIM4cdgb
-					  + T10 + here->BSIM4cddb);
+                          newop.cdsb = -(newop.cdgb
+					  + T10 + newop.cddb);
 
 			  T7 = 2.0 * (T1 + T3);
 			  qbulk = -(qgate - T4 * T7);
 			  T7 *= T9;
 			  T0 = 4.0 * T4 * (1.0 - T5);
-			  T12 = (-T7 * dAlphaz_dVg - T0 * dVdsat_dVg) * dVgs_eff_dVg
-- here->BSIM4cdgb; /*4.6.2*/
+			  T12 = (-T7 * dAlphaz_dVg - T0 * dVdsat_dVg) * dVgs_eff_dVg - newop.cdgb; /*4.6.2*/
 			  T11 = -T7 * dAlphaz_dVb - T10 - T0 * dVdsat_dVb;
 			  T10 = -4.0 * T4 * (T2 - 0.5 + 0.5 * T5)
-			      - here->BSIM4cddb;
+			      - newop.cddb;
                           tmp = -(T10 + T11 + T12);
 
-                          newop.cbgb = -(here->BSIM4cggb
-					  + here->BSIM4cdgb + T12);
-                          newop.cbdb = -(here->BSIM4cgdb
-					  + here->BSIM4cddb + T10);  
-                          newop.cbsb = -(here->BSIM4cgsb
-					  + here->BSIM4cdsb + tmp);
+                          newop.cbgb = -(newop.cggb
+					  + newop.cdgb + T12);
+                          newop.cbdb = -(newop.cgdb
+					  + newop.cddb + T10);  
+                          newop.cbsb = -(newop.cgsb
+					  + newop.cdsb + tmp);
                       }
-                  }
-		  else
-{
+                  } else {
     /* 50/50 partitioning */
 		      if Vds >= Vdsat {
     /* saturation region */
@@ -3499,22 +3576,20 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 	                  newop.cggb = One_Third_CoxWL * (3.0
 					  - dVdsat_dVg) * dVgs_eff_dVg;
 	                  T2 = -One_Third_CoxWL * dVdsat_dVb;
-	                  newop.cgsb = -(here->BSIM4cggb + T2);
+	                  newop.cgsb = -(newop.cggb + T2);
         	          newop.cgdb = 0.0;
       
                           newop.cdgb = -One_Third_CoxWL * dVgs_eff_dVg;
                           newop.cddb = 0.0;
 			  T4 = One_Third_CoxWL * dVth_dVb;
-                          newop.cdsb = -(T4 + here->BSIM4cdgb);
+                          newop.cdsb = -(T4 + newop.cdgb);
 
-	                  newop.cbgb = -(here->BSIM4cggb
+	                  newop.cbgb = -(newop.cggb
 					  - Two_Third_CoxWL * dVgs_eff_dVg);
 	                  T3 = -(T2 + Two_Third_CoxWL * dVth_dVb);
-	                  newop.cbsb = -(here->BSIM4cbgb + T3);
+	                  newop.cbsb = -(newop.cbgb + T3);
                           newop.cbdb = 0.0;
-	              }
-		      else
-{
+	              } else {
     /* linear region */
 			  Alphaz = Vgst / Vdsat;
 			  T1 = 2.0 * Vdsat - Vds;
@@ -3530,8 +3605,7 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 					  * dVgs_eff_dVg;
                           tmp = -CoxWL * T5 * dVdsat_dVb;
                           newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
-                          newop.cgsb =  -(here->BSIM4cggb
-					  + here->BSIM4cgdb + tmp);
+                          newop.cgsb =  -(newop.cggb + newop.cgdb + tmp);
 
 			  T6 = 1.0 / Vdsat;
                           dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
@@ -3543,19 +3617,13 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 			  T7 *= T9;
 			  T0 = T4 * (2.0 * T5 - 2.0);
 
-                          newop.cdgb =  (T0 * dVdsat_dVg - T7
-					  * dAlphaz_dVg) * dVgs_eff_dVg;
-			  T12 = T0 * dVdsat_dVb - T7 * dAlphaz_dVb;
+                          newop.cdgb =  (T0 * dVdsat_dVg - T7 * dAlphaz_dVg) * dVgs_eff_dVg;
+			                T12 = T0 * dVdsat_dVb - T7 * dAlphaz_dVb;
                           newop.cddb =  T4 * (1.0 - 2.0 * T2 - T5);
-                          newop.cdsb = -(here->BSIM4cdgb + T12
-                                          + here->BSIM4cddb);
-
-                          newop.cbgb = -(here->BSIM4cggb
-					  + 2.0 * here->BSIM4cdgb);
-                          newop.cbdb = -(here->BSIM4cgdb
-					  + 2.0 * here->BSIM4cddb);
-                          newop.cbsb = -(here->BSIM4cgsb
-					  + 2.0 * here->BSIM4cdsb);
+                          newop.cdsb = -(newop.cdgb + T12 + newop.cddb);
+                          newop.cbgb = -(newop.cggb + 2.0 * newop.cdgb);
+                          newop.cbdb = -(newop.cgdb + 2.0 * newop.cddb);
+                          newop.cbsb = -(newop.cgsb + 2.0 * newop.cdsb);
 } /* end of linear region */
 } /* end of 50/50 partition */
 } /* end of inversion */
@@ -3867,8 +3935,8 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 		  dVfbeff_dVg = T1 * dVgs_eff_dVg;
 		  dVfbeff_dVb = -T1 * dVbseffCV_dVb;
 
-                  Cox = here->BSIM4coxp;
-                  Tox = 1.0e8 * here->BSIM4toxp;
+                  Cox = self.intp.coxp;
+                  Tox = 1.0e8 * self.intp.toxp;
                   T0 = (Vgs_eff - VbseffCV - self.intp.vfbzb) / Tox;
                   dT0_dVg = dVgs_eff_dVg / Tox;
                   dT0_dVb = -dVbseffCV_dVb / Tox;
@@ -3889,7 +3957,7 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
                       dTcen_dVg = dTcen_dVb = 0.0;
                   }
 
-                  LINK = 1.0e-3 * here->BSIM4toxp;
+                  LINK = 1.0e-3 * self.intp.toxp;
                   V3 = self.size_params.ldeb - Tcen - LINK;
                   V4 = sqrt(V3 * V3 + 4.0 * LINK * self.size_params.ldeb);
                   Tcen = self.size_params.ldeb - 0.5 * (V3 + V4);
@@ -4089,8 +4157,7 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 		          + T7 * dAbulkCV_dVb + QovCox * dCoxeff_dVb;
 		      Csg = Csg * dVgsteff_dVg + QovCox * dCoxeff_dVg;
                   }
-		  else
-{
+		  else {
     /* 50/50 partition */
                       qsrc = -0.5 * qgate;
                       Csg = -0.5 * Cgg1;
@@ -4127,13 +4194,13 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
 } /* End of CTM */
           }
 
-          newop.csgb = - here->BSIM4cggb - here->BSIM4cdgb - here->BSIM4cbgb;
-          newop.csdb = - here->BSIM4cgdb - here->BSIM4cddb - here->BSIM4cbdb;
-          newop.cssb = - here->BSIM4cgsb - here->BSIM4cdsb - here->BSIM4cbsb;
-          newop.cgbb = - here->BSIM4cgdb - here->BSIM4cggb - here->BSIM4cgsb;
-          newop.cdbb = - here->BSIM4cddb - here->BSIM4cdgb - here->BSIM4cdsb;
-          newop.cbbb = - here->BSIM4cbgb - here->BSIM4cbdb - here->BSIM4cbsb;
-          newop.csbb = - here->BSIM4cgbb - here->BSIM4cdbb - here->BSIM4cbbb;
+          newop.csgb = - newop.cggb - newop.cdgb - newop.cbgb;
+          newop.csdb = - newop.cgdb - newop.cddb - newop.cbdb;
+          newop.cssb = - newop.cgsb - newop.cdsb - newop.cbsb;
+          newop.cgbb = - newop.cgdb - newop.cggb - newop.cgsb;
+          newop.cdbb = - newop.cddb - newop.cdgb - newop.cdsb;
+          newop.cbbb = - newop.cbgb - newop.cbdb - newop.cbsb;
+          newop.csbb = - newop.cgbb - newop.cdbb - newop.cbbb;
           newop.qgate = qgate;
           newop.qbulk = qbulk;
           newop.qdrn = qdrn;
@@ -4142,28 +4209,26 @@ dVdsat_dVg = 1.0 / AbulkCV; /*4.6.2*/
     /* NQS begins */
           if (self.intp.trnqsMod) || (self.intp.acnqsMod) {
               newop.qchqs = qcheq = -(qbulk + qgate);
-              newop.cqgb = -(here->BSIM4cggb + here->BSIM4cbgb);
-              newop.cqdb = -(here->BSIM4cgdb + here->BSIM4cbdb);
-              newop.cqsb = -(here->BSIM4cgsb + here->BSIM4cbsb);
-              newop.cqbb = -(here->BSIM4cqgb + here->BSIM4cqdb
-                              + here->BSIM4cqsb);
+              newop.cqgb = -(newop.cggb + newop.cbgb);
+              newop.cqdb = -(newop.cgdb + newop.cbdb);
+              newop.cqsb = -(newop.cgsb + newop.cbsb);
+              newop.cqbb = -(newop.cqgb + newop.cqdb
+                              + newop.cqsb);
 
-              CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
-                    * self.size_params.leffCV;
-T1 = here->BSIM4gcrg / CoxWL; /* 1 / tau */
+              CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
+            T1 = newop.gcrg / CoxWL; /* 1 / tau */
               newop.gtau = T1 * ScalingFactor;
 
-	      if (self.intp.acnqsMod)
-                  newop.taunet = 1.0 / T1;
+	      if self.intp.acnqsMod {
+                      newop.taunet = 1.0 / T1;
+                }
 
               newop.qcheq = qcheq;
 
 	      if self.intp.trnqsMod {
-                  error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qcheq);
-                  if (error)
-                      return(error);
+                  error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qcheq);
 	      }
-          }
+        }
 
 
 finished:
@@ -4215,7 +4280,7 @@ czbd = self.model.DunitAreaTempJctCap * self.intp.Adeff; /* bug fix */
                           sarg = exp(-MJSWS * log(arg));
                       newop.qbs += self.model.PhiBSWS * czbssw
 				       * (1.0 - arg * sarg) / (1.0 - MJSWS);
-                      here->BSIM4capbs += czbssw * sarg;
+                      newop.capbs += czbssw * sarg;
 		  }
 		  if czbsswg > 0.0 {
 		      arg = 1.0 - vbs_jct / self.model.PhiBSWGS;
@@ -4225,7 +4290,7 @@ czbd = self.model.DunitAreaTempJctCap * self.intp.Adeff; /* bug fix */
                           sarg = exp(-MJSWGS * log(arg));
                       newop.qbs += self.model.PhiBSWGS * czbsswg
 				       * (1.0 - arg * sarg) / (1.0 - MJSWGS);
-                      here->BSIM4capbs += czbsswg * sarg;
+                      newop.capbs += czbsswg * sarg;
 		  }
 
               }
@@ -4265,7 +4330,7 @@ czbd = self.model.DunitAreaTempJctCap * self.intp.Adeff; /* bug fix */
                           sarg = exp(-MJSWD * log(arg));
                       newop.qbd += self.model.PhiBSWD * czbdsw
 			               * (1.0 - arg * sarg) / (1.0 - MJSWD);
-                      here->BSIM4capbd += czbdsw * sarg;
+                      newop.capbd += czbdsw * sarg;
 		  }
 		  if czbdswg > 0.0 {
 		      arg = 1.0 - vbd_jct / self.model.PhiBSWGD;
@@ -4275,7 +4340,7 @@ czbd = self.model.DunitAreaTempJctCap * self.intp.Adeff; /* bug fix */
                           sarg = exp(-MJSWGD * log(arg));
                       newop.qbd += self.model.PhiBSWGD * czbdswg
 				       * (1.0 - arg * sarg) / (1.0 - MJSWGD);
-                      here->BSIM4capbd += czbdswg * sarg;
+                      newop.capbd += czbdswg * sarg;
 		  }
               }
 	      else
@@ -4355,8 +4420,6 @@ else /* For both capMod == 1 and 2 */
           newop.cgso = cgso;
           newop.qgso = qgso;
 
-
-line755:
           ag0 = ckt->CKTag[0];
           if self.guess.mode > 0 {
               if self.intp.trnqsMod == 0 {
@@ -4371,15 +4434,15 @@ line755:
                       gcsgmb = gcgmsb;
                       gcbgmb = gcgmbb;
 
-		      gcggb = here->BSIM4cggb * ag0;
-                      gcgdb = here->BSIM4cgdb * ag0;
-                      gcgsb = here->BSIM4cgsb * ag0;  
+		      gcggb = newop.cggb * ag0;
+                      gcgdb = newop.cgdb * ag0;
+                      gcgsb = newop.cgsb * ag0;  
                       gcgbb = -(gcggb + gcgdb + gcgsb);
 
-		      gcdgb = here->BSIM4cdgb * ag0;
-		      gcsgb = -(here->BSIM4cggb + here->BSIM4cbgb
-                            + here->BSIM4cdgb) * ag0;
-                      gcbgb = here->BSIM4cbgb * ag0;
+		      gcdgb = newop.cdgb * ag0;
+		      gcsgb = -(newop.cggb + newop.cbgb
+                            + newop.cdgb) * ag0;
+                      gcbgb = newop.cbgb * ag0;
 
                       qgmb = self.size_params.cgbo * vgmb;
                       qgmid = qgdo + qgso + qgmb;
@@ -4387,16 +4450,16 @@ line755:
                       qsrc = -(qgate + qgmid + qbulk + qdrn);
 		  }
 	  	  else
-		  {   gcggb = (here->BSIM4cggb + cgdo + cgso
+		  {   gcggb = (newop.cggb + cgdo + cgso
                             + self.size_params.cgbo ) * ag0;
-                      gcgdb = (here->BSIM4cgdb - cgdo) * ag0;
-                      gcgsb = (here->BSIM4cgsb - cgso) * ag0;
+                      gcgdb = (newop.cgdb - cgdo) * ag0;
+                      gcgsb = (newop.cgsb - cgso) * ag0;
                       gcgbb = -(gcggb + gcgdb + gcgsb);
 
-		      gcdgb = (here->BSIM4cdgb - cgdo) * ag0;
-                      gcsgb = -(here->BSIM4cggb + here->BSIM4cbgb
-                            + here->BSIM4cdgb + cgso) * ag0;
-                      gcbgb = (here->BSIM4cbgb - self.size_params.cgbo) * ag0;
+		      gcdgb = (newop.cdgb - cgdo) * ag0;
+                      gcsgb = -(newop.cggb + newop.cbgb
+                            + newop.cdgb + cgso) * ag0;
+                      gcbgb = (newop.cbgb - self.size_params.cgbo) * ag0;
 
 		      gcdgmb = gcsgmb = gcbgmb = 0.0;
 
@@ -4405,31 +4468,31 @@ line755:
                       qbulk -= qgb;
                       qsrc = -(qgate + qbulk + qdrn);
 		  }
-                  gcddb = (here->BSIM4cddb + here->BSIM4capbd + cgdo) * ag0;
-                  gcdsb = here->BSIM4cdsb * ag0;
+                  gcddb = (newop.cddb + newop.capbd + cgdo) * ag0;
+                  gcdsb = newop.cdsb * ag0;
 
-                  gcsdb = -(here->BSIM4cgdb + here->BSIM4cbdb
-                        + here->BSIM4cddb) * ag0;
-                  gcssb = (here->BSIM4capbs + cgso - (here->BSIM4cgsb
-                        + here->BSIM4cbsb + here->BSIM4cdsb)) * ag0;
+                  gcsdb = -(newop.cgdb + newop.cbdb
+                        + newop.cddb) * ag0;
+                  gcssb = (newop.capbs + cgso - (newop.cgsb
+                        + newop.cbsb + newop.cdsb)) * ag0;
 
                   if !self.intp.rbodyMod {
                       gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
                       gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
-                      gcbdb = (here->BSIM4cbdb - here->BSIM4capbd) * ag0;
-                      gcbsb = (here->BSIM4cbsb - here->BSIM4capbs) * ag0;
+                      gcbdb = (newop.cbdb - newop.capbd) * ag0;
+                      gcbsb = (newop.cbsb - newop.capbs) * ag0;
                       gcdbdb = 0.0; gcsbsb = 0.0;
                   }
                   else
-                  {   gcdbb  = -(here->BSIM4cddb + here->BSIM4cdgb
-                             + here->BSIM4cdsb) * ag0;
+                  {   gcdbb  = -(newop.cddb + newop.cdgb
+                             + newop.cdsb) * ag0;
                       gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb)
-			    + here->BSIM4capbs * ag0;
-                      gcbdb = here->BSIM4cbdb * ag0;
-                      gcbsb = here->BSIM4cbsb * ag0;
+			    + newop.capbs * ag0;
+                      gcbdb = newop.cbdb * ag0;
+                      gcbsb = newop.cbsb * ag0;
 
-                      gcdbdb = -here->BSIM4capbd * ag0;
-                      gcsbsb = -here->BSIM4capbs * ag0;
+                      gcdbdb = -newop.capbd * ag0;
+                      gcsbsb = -newop.capbs * ag0;
                   }
 		  gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
 
@@ -4440,21 +4503,21 @@ line755:
 		  dsxpart_dVd = dsxpart_dVg = dsxpart_dVb = dsxpart_dVs = 0.0;
               }
               else
-              {   qcheq = here->BSIM4qchqs;
+              {   qcheq = newop.qchqs;
                   CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
                         * self.size_params.leffCV;
                   T0 = qdef * ScalingFactor / CoxWL;
 
-                  ggtg = newop.gtg = T0 * here->BSIM4gcrgg;
-                  ggtd = newop.gtd = T0 * here->BSIM4gcrgd;
-                  ggts = newop.gts = T0 * here->BSIM4gcrgs;
-                  ggtb = newop.gtb = T0 * here->BSIM4gcrgb;
+                  ggtg = newop.gtg = T0 * newop.gcrgg;
+                  ggtd = newop.gtd = T0 * newop.gcrgd;
+                  ggts = newop.gts = T0 * newop.gcrgs;
+                  ggtb = newop.gtb = T0 * newop.gcrgb;
 		  gqdef = ScalingFactor * ag0;
 
-                  gcqgb = here->BSIM4cqgb * ag0;
-                  gcqdb = here->BSIM4cqdb * ag0;
-                  gcqsb = here->BSIM4cqsb * ag0;
-                  gcqbb = here->BSIM4cqbb * ag0;
+                  gcqgb = newop.cqgb * ag0;
+                  gcqdb = newop.cqdb * ag0;
+                  gcqsb = newop.cqsb * ag0;
+                  gcqbb = newop.cqbb * ag0;
 
                   if fabs(qcheq) <= 1.0e-5 * CoxWL {
                       if self.model.xpart < 0.5 {
@@ -4471,18 +4534,18 @@ line755:
                   }
                   else
                   {   dxpart = qdrn / qcheq;
-                      Cdd = here->BSIM4cddb;
-                      Csd = -(here->BSIM4cgdb + here->BSIM4cddb
-                          + here->BSIM4cbdb);
+                      Cdd = newop.cddb;
+                      Csd = -(newop.cgdb + newop.cddb
+                          + newop.cbdb);
                       ddxpart_dVd = (Cdd - dxpart * (Cdd + Csd)) / qcheq;
-                      Cdg = here->BSIM4cdgb;
-                      Csg = -(here->BSIM4cggb + here->BSIM4cdgb
-                          + here->BSIM4cbgb);
+                      Cdg = newop.cdgb;
+                      Csg = -(newop.cggb + newop.cdgb
+                          + newop.cbgb);
                       ddxpart_dVg = (Cdg - dxpart * (Cdg + Csg)) / qcheq;
 
-                      Cds = here->BSIM4cdsb;
-                      Css = -(here->BSIM4cgsb + here->BSIM4cdsb
-                          + here->BSIM4cbsb);
+                      Cds = newop.cdsb;
+                      Css = -(newop.cgsb + newop.cdsb
+                          + newop.cbsb);
                       ddxpart_dVs = (Cds - dxpart * (Cds + Css)) / qcheq;
 
                       ddxpart_dVb = -(ddxpart_dVd + ddxpart_dVg + ddxpart_dVs);
@@ -4531,21 +4594,21 @@ line755:
                       qsrc = -(qgate + qbulk + qdrn);
                   }
 
-                  gcddb = (here->BSIM4capbd + cgdo) * ag0;
+                  gcddb = (newop.capbd + cgdo) * ag0;
                   gcdsb = gcsdb = 0.0;
-                  gcssb = (here->BSIM4capbs + cgso) * ag0;
+                  gcssb = (newop.capbs + cgso) * ag0;
 
                   if !self.intp.rbodyMod {
                       gcdbb = -(gcdgb + gcddb + gcdgmb);
                       gcsbb = -(gcsgb + gcssb + gcsgmb);
-                      gcbdb = -here->BSIM4capbd * ag0;
-                      gcbsb = -here->BSIM4capbs * ag0;
+                      gcbdb = -newop.capbd * ag0;
+                      gcbsb = -newop.capbs * ag0;
                       gcdbdb = 0.0; gcsbsb = 0.0;
                   }
                   else
                   {   gcdbb = gcsbb = gcbdb = gcbsb = 0.0;
-                      gcdbdb = -here->BSIM4capbd * ag0;
-                      gcsbsb = -here->BSIM4capbs * ag0;
+                      gcdbdb = -newop.capbd * ag0;
+                      gcsbsb = -newop.capbs * ag0;
                   }
                   gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
               }
@@ -4563,15 +4626,15 @@ line755:
                       gcsgmb = gcgmsb;
                       gcbgmb = gcgmbb;
 
-                      gcggb = here->BSIM4cggb * ag0;
-                      gcgdb = here->BSIM4cgsb * ag0;
-                      gcgsb = here->BSIM4cgdb * ag0;
+                      gcggb = newop.cggb * ag0;
+                      gcgdb = newop.cgsb * ag0;
+                      gcgsb = newop.cgdb * ag0;
                       gcgbb = -(gcggb + gcgdb + gcgsb);
 
-                      gcdgb = -(here->BSIM4cggb + here->BSIM4cbgb
-                            + here->BSIM4cdgb) * ag0;
-                      gcsgb = here->BSIM4cdgb * ag0;
-                      gcbgb = here->BSIM4cbgb * ag0;
+                      gcdgb = -(newop.cggb + newop.cbgb
+                            + newop.cdgb) * ag0;
+                      gcsgb = newop.cdgb * ag0;
+                      gcbgb = newop.cbgb * ag0;
 
                       qgmb = self.size_params.cgbo * vgmb;
                       qgmid = qgdo + qgso + qgmb;
@@ -4579,16 +4642,16 @@ line755:
                       qdrn = -(qgate + qgmid + qbulk + qsrc);
 		  }
 		  else
-		  {   gcggb = (here->BSIM4cggb + cgdo + cgso
+		  {   gcggb = (newop.cggb + cgdo + cgso
                             + self.size_params.cgbo ) * ag0;
-                      gcgdb = (here->BSIM4cgsb - cgdo) * ag0;
-                      gcgsb = (here->BSIM4cgdb - cgso) * ag0;
+                      gcgdb = (newop.cgsb - cgdo) * ag0;
+                      gcgsb = (newop.cgdb - cgso) * ag0;
                       gcgbb = -(gcggb + gcgdb + gcgsb);
 
-                      gcdgb = -(here->BSIM4cggb + here->BSIM4cbgb
-                            + here->BSIM4cdgb + cgdo) * ag0;
-                      gcsgb = (here->BSIM4cdgb - cgso) * ag0;
-                      gcbgb = (here->BSIM4cbgb - self.size_params.cgbo) * ag0;
+                      gcdgb = -(newop.cggb + newop.cbgb
+                            + newop.cdgb + cgdo) * ag0;
+                      gcsgb = (newop.cdgb - cgso) * ag0;
+                      gcbgb = (newop.cbgb - self.size_params.cgbo) * ag0;
 
                       gcdgmb = gcsgmb = gcbgmb = 0.0;
 
@@ -4597,30 +4660,30 @@ line755:
                       qbulk -= qgb;
                       qdrn = -(qgate + qbulk + qsrc);
  		  }
-                  gcddb = (here->BSIM4capbd + cgdo - (here->BSIM4cgsb
-                        + here->BSIM4cbsb + here->BSIM4cdsb)) * ag0;
-                  gcdsb = -(here->BSIM4cgdb + here->BSIM4cbdb
-                        + here->BSIM4cddb) * ag0;
+                  gcddb = (newop.capbd + cgdo - (newop.cgsb
+                        + newop.cbsb + newop.cdsb)) * ag0;
+                  gcdsb = -(newop.cgdb + newop.cbdb
+                        + newop.cddb) * ag0;
 
-                  gcsdb = here->BSIM4cdsb * ag0;
-                  gcssb = (here->BSIM4cddb + here->BSIM4capbs + cgso) * ag0;
+                  gcsdb = newop.cdsb * ag0;
+                  gcssb = (newop.cddb + newop.capbs + cgso) * ag0;
 
 		  if !self.intp.rbodyMod {
 		      gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
                       gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
-                      gcbdb = (here->BSIM4cbsb - here->BSIM4capbd) * ag0;
-                      gcbsb = (here->BSIM4cbdb - here->BSIM4capbs) * ag0;
+                      gcbdb = (newop.cbsb - newop.capbd) * ag0;
+                      gcbsb = (newop.cbdb - newop.capbs) * ag0;
                       gcdbdb = 0.0; gcsbsb = 0.0;
                   }
                   else
                   {   gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb)
-			    + here->BSIM4capbd * ag0;
-                      gcsbb = -(here->BSIM4cddb + here->BSIM4cdgb
-                            + here->BSIM4cdsb) * ag0;
-                      gcbdb = here->BSIM4cbsb * ag0;
-                      gcbsb = here->BSIM4cbdb * ag0;
-                      gcdbdb = -here->BSIM4capbd * ag0;
-		      gcsbsb = -here->BSIM4capbs * ag0;
+			    + newop.capbd * ag0;
+                      gcsbb = -(newop.cddb + newop.cdgb
+                            + newop.cdsb) * ag0;
+                      gcbdb = newop.cbsb * ag0;
+                      gcbsb = newop.cbdb * ag0;
+                      gcdbdb = -newop.capbd * ag0;
+		      gcsbsb = -newop.capbs * ag0;
                   }
 		  gcbbb = -(gcbgb + gcbdb + gcbsb + gcbgmb);
 
@@ -4631,20 +4694,20 @@ line755:
 		  dsxpart_dVd = dsxpart_dVg = dsxpart_dVb = dsxpart_dVs = 0.0;
               }
               else
-              {   qcheq = here->BSIM4qchqs;
+              {   qcheq = newop.qchqs;
                   CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
                         * self.size_params.leffCV;
                   T0 = qdef * ScalingFactor / CoxWL;
-                  ggtg = newop.gtg = T0 * here->BSIM4gcrgg;
-                  ggts = newop.gts = T0 * here->BSIM4gcrgd;
-                  ggtd = newop.gtd = T0 * here->BSIM4gcrgs;
-                  ggtb = newop.gtb = T0 * here->BSIM4gcrgb;
+                  ggtg = newop.gtg = T0 * newop.gcrgg;
+                  ggts = newop.gts = T0 * newop.gcrgd;
+                  ggtd = newop.gtd = T0 * newop.gcrgs;
+                  ggtb = newop.gtb = T0 * newop.gcrgb;
 		            gqdef = ScalingFactor * ag0;
 
-                  gcqgb = here->BSIM4cqgb * ag0;
-                  gcqdb = here->BSIM4cqsb * ag0;
-                  gcqsb = here->BSIM4cqdb * ag0;
-                  gcqbb = here->BSIM4cqbb * ag0;
+                  gcqgb = newop.cqgb * ag0;
+                  gcqdb = newop.cqsb * ag0;
+                  gcqsb = newop.cqdb * ag0;
+                  gcqbb = newop.cqbb * ag0;
 
                   if fabs(qcheq) <= 1.0e-5 * CoxWL {
                       if self.model.xpart < 0.5 {
@@ -4661,18 +4724,18 @@ line755:
                   }
                   else
                   {   sxpart = qdrn / qcheq;
-                      Css = here->BSIM4cddb;
-                      Cds = -(here->BSIM4cgdb + here->BSIM4cddb
-                          + here->BSIM4cbdb);
+                      Css = newop.cddb;
+                      Cds = -(newop.cgdb + newop.cddb
+                          + newop.cbdb);
                       dsxpart_dVs = (Css - sxpart * (Css + Cds)) / qcheq;
-                      Csg = here->BSIM4cdgb;
-                      Cdg = -(here->BSIM4cggb + here->BSIM4cdgb
-                          + here->BSIM4cbgb);
+                      Csg = newop.cdgb;
+                      Cdg = -(newop.cggb + newop.cdgb
+                          + newop.cbgb);
                       dsxpart_dVg = (Csg - sxpart * (Csg + Cdg)) / qcheq;
 
-                      Csd = here->BSIM4cdsb;
-                      Cdd = -(here->BSIM4cgsb + here->BSIM4cdsb
-                          + here->BSIM4cbsb);
+                      Csd = newop.cdsb;
+                      Cdd = -(newop.cgsb + newop.cdsb
+                          + newop.cbs);
                       dsxpart_dVd = (Csd - sxpart * (Csd + Cdd)) / qcheq;
 
                       dsxpart_dVb = -(dsxpart_dVd + dsxpart_dVg + dsxpart_dVs);
@@ -4721,20 +4784,20 @@ line755:
                       qsrc = -qgso;
                   }
 
-                  gcddb = (here->BSIM4capbd + cgdo) * ag0;
+                  gcddb = (newop.capbd + cgdo) * ag0;
                   gcdsb = gcsdb = 0.0;
-                  gcssb = (here->BSIM4capbs + cgso) * ag0;
+                  gcssb = (newop.capbs + cgso) * ag0;
                   if !self.intp.rbodyMod {
                       gcdbb = -(gcdgb + gcddb + gcdgmb);
                       gcsbb = -(gcsgb + gcssb + gcsgmb);
-                      gcbdb = -here->BSIM4capbd * ag0;
-                      gcbsb = -here->BSIM4capbs * ag0;
+                      gcbdb = -newop.capbd * ag0;
+                      gcbsb = -newop.capbs * ag0;
                       gcdbdb = 0.0; gcsbsb = 0.0;
                   }
                   else
                   {   gcdbb = gcsbb = gcbdb = gcbsb = 0.0;
-                      gcdbdb = -here->BSIM4capbd * ag0;
-                      gcsbsb = -here->BSIM4capbs * ag0;
+                      gcdbdb = -newop.capbd * ag0;
+                      gcsbsb = -newop.capbs * ag0;
                   }
                   gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
               }
@@ -4743,7 +4806,7 @@ line755:
 
           if self.intp.trnqsMod {
               newop.qcdump = qdef * ScalingFactor;
-              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qcdump);
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qcdump);
               if (error)
                   return(error);
           }
@@ -4766,26 +4829,26 @@ line755:
               goto line850;
 
 
-          error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qb);
+          error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qb);
           if (error)
               return(error);
-          error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qg);
+          error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qg);
           if (error)
               return(error);
-          error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qd);
+          error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qd);
           if (error)
               return(error);
 
           if self.intp.rgateMod == 3 {
-              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qgmid);
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qgmid);
               if (error) return(error);
           }
 
           if self.intp.rbodyMod {
-              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qbs);
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qbs);
               if (error)
                   return(error);
-              error = NIintegrate(ckt, &geq, &ceq, 0.0, here->BSIM4qbd);
+              error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qbd);
               if (error)
                   return(error);
           }
@@ -4817,7 +4880,7 @@ line850:
           if self.intp.trnqsMod {
               CoxWL = self.model.coxe * self.size_params.weffCV * self.intp.nf
                     * self.size_params.leffCV;
-              T1 = here->BSIM4gcrg / CoxWL;
+              T1 = newop.gcrg / CoxWL;
               newop.gtau = T1 * ScalingFactor;
           }
 	  else
@@ -4927,9 +4990,9 @@ line900:
                   Ibtoteq = self.model.p() * (newop.Igb
                           - newop.gIgbg * vgs - newop.gIgbd * vds
                           - newop.gIgbb * vbs);
-              }
-              else
+              } else {
                   gIbtotg = gIbtotd = gIbtots = gIbtotb = Ibtoteq = 0.0;
+                }
 
               if (self.model.igcMod != 0) || (self.model.igbMod != 0) {
                   gIgtotg = gIstotg + gIdtotg + gIbtotg;
@@ -4937,9 +5000,9 @@ line900:
                   gIgtots = gIstots + gIdtots + gIbtots;
                   gIgtotb = gIstotb + gIdtotb + gIbtotb;
                   Igtoteq = Istoteq + Idtoteq + Ibtoteq;
-	      }
-	      else
-	          gIgtotg = gIgtotd = gIgtots = gIgtotb = Igtoteq = 0.0;
+	      } else {
+              gIgtotg = gIgtotd = gIgtots = gIgtotb = Igtoteq = 0.0;
+            }
 
 
               if (self.intp.rgateMod == 2)
@@ -5140,112 +5203,103 @@ line900:
     // Gather up matrix Jacobian terms
            let mut j: Vec<(Option<Eindex>, f64)> = vec![];
 
-	   if !self.intp.rbodyMod {
+	   if self.intp.rbodyMod != 0 {
                gjbd = newop.gbd;
                gjbs = newop.gbs;
-           }
-           else
+           } else {
                gjbd = gjbs = 0.0;
+            }
 
-           if !self.model.rdsMod {
-               gdpr = here->BSIM4drainConductance;
-               gspr = here->BSIM4sourceConductance;
-           }
-           else
+           if self.model.rdsMod != 0 {
+               gdpr = self.intp.drainConductance;
+               gspr = self.intp.sourceConductance;
+           } else {
                gdpr = gspr = 0.0;
+            }
 
-	   geltd = here->BSIM4grgeltd;
-
+	   geltd = self.intp.grgeltd;
            T1 = qdef * self.intp.gtau;
 
            if self.intp.rgateMod == 1 {
-               (*(self.matps.GEgePtr) += geltd);
-               (*(self.matps.GPgePtr) -= geltd);
-               (*(self.matps.GEgpPtr) -= geltd);
-  	       (*(self.matps.GPgpPtr) += gcggb + geltd - ggtg + gIgtotg);
-  	       (*(self.matps.GPdpPtr) += gcgdb - ggtd + gIgtotd);
-   	       (*(self.matps.GPspPtr) += gcgsb - ggts + gIgtots);
-	       (*(self.matps.GPbpPtr) += gcgbb - ggtb + gIgtotb);
+               j.push((GEgePtr, geltd));
+               j.push((GPgePtr, -(geltd)));
+               j.push((GEgpPtr, -(geltd)));
+  	       j.push((GPgpPtr, gcggb + geltd - ggtg + gIgtotg));
+  	       j.push((GPdpPtr, gcgdb - ggtd + gIgtotd));
+   	       j.push((GPspPtr, gcgsb - ggts + gIgtots));
+	       j.push((GPbpPtr, gcgbb - ggtb + gIgtotb));
            }
            else if self.intp.rgateMod == 2 {
-	       (*(self.matps.GEgePtr) += gcrg);
-               (*(self.matps.GEgpPtr) += gcrgg);
-               (*(self.matps.GEdpPtr) += gcrgd);
-               (*(self.matps.GEspPtr) += gcrgs);
-	       (*(self.matps.GEbpPtr) += gcrgb);
+	       j.push((GEgePtr, gcrg));
+               j.push((GEgpPtr, gcrgg));
+               j.push((GEdpPtr, gcrgd));
+               j.push((GEspPtr, gcrgs));
+	       j.push((GEbpPtr, gcrgb));
 
-               (*(self.matps.GPgePtr) -= gcrg);
-  	       (*(self.matps.GPgpPtr) += gcggb  - gcrgg - ggtg + gIgtotg);
-	       (*(self.matps.GPdpPtr) += gcgdb - gcrgd - ggtd + gIgtotd);
-	       (*(self.matps.GPspPtr) += gcgsb - gcrgs - ggts + gIgtots);
-  	       (*(self.matps.GPbpPtr) += gcgbb - gcrgb - ggtb + gIgtotb);
+               j.push((GPgePtr, -(gcrg)));
+  	       j.push((GPgpPtr, gcggb  - gcrgg - ggtg + gIgtotg));
+	       j.push((GPdpPtr, gcgdb - gcrgd - ggtd + gIgtotd));
+	       j.push((GPspPtr, gcgsb - gcrgs - ggts + gIgtots));
+  	       j.push((GPbpPtr, gcgbb - gcrgb - ggtb + gIgtotb));
 	   }
 	   else if self.intp.rgateMod == 3 {
-	       (*(self.matps.GEgePtr) += geltd);
-               (*(self.matps.GEgmPtr) -= geltd);
-               (*(self.matps.GMgePtr) -= geltd);
-               (*(self.matps.GMgmPtr) += geltd + gcrg + gcgmgmb);
+	       j.push((GEgePtr, geltd));
+               j.push((GEgmPtr, -(geltd)));
+               j.push((GMgePtr, -(geltd)));
+               j.push((GMgmPtr, geltd + gcrg + gcgmgmb));
 
-               (*(self.matps.GMdpPtr) += gcrgd + gcgmdb);
-               (*(self.matps.GMgpPtr) += gcrgg);
-               (*(self.matps.GMspPtr) += gcrgs + gcgmsb);
-               (*(self.matps.GMbpPtr) += gcrgb + gcgmbb);
+               j.push((GMdpPtr, gcrgd + gcgmdb));
+               j.push((GMgpPtr, gcrgg));
+               j.push((GMspPtr, gcrgs + gcgmsb));
+               j.push((GMbpPtr, gcrgb + gcgmbb));
 
-               (*(self.matps.DPgmPtr) += gcdgmb);
-               (*(self.matps.GPgmPtr) -= gcrg);
-               (*(self.matps.SPgmPtr) += gcsgmb);
-               (*(self.matps.BPgmPtr) += gcbgmb);
+               j.push((DPgmPtr, gcdgmb));
+               j.push((GPgmPtr, -(gcrg)));
+               j.push((SPgmPtr, gcsgmb));
+               j.push((BPgmPtr, gcbgmb));
 
-               (*(self.matps.GPgpPtr) += gcggb - gcrgg - ggtg + gIgtotg);
-               (*(self.matps.GPdpPtr) += gcgdb - gcrgd - ggtd + gIgtotd);
-               (*(self.matps.GPspPtr) += gcgsb - gcrgs - ggts + gIgtots);
-               (*(self.matps.GPbpPtr) += gcgbb - gcrgb - ggtb + gIgtotb);
+               j.push((GPgpPtr, gcggb - gcrgg - ggtg + gIgtotg));
+               j.push((GPdpPtr, gcgdb - gcrgd - ggtd + gIgtotd));
+               j.push((GPspPtr, gcgsb - gcrgs - ggts + gIgtots));
+               j.push((GPbpPtr, gcgbb - gcrgb - ggtb + gIgtotb));
 	   }
  	   else
-	   {   (*(self.matps.GPgpPtr) += gcggb - ggtg + gIgtotg);
-  	       (*(self.matps.GPdpPtr) += gcgdb - ggtd + gIgtotd);
-               (*(self.matps.GPspPtr) += gcgsb - ggts + gIgtots);
-	       (*(self.matps.GPbpPtr) += gcgbb - ggtb + gIgtotb);
+	   {   j.push((GPgpPtr, gcggb - ggtg + gIgtotg));
+  	       j.push((GPdpPtr, gcgdb - ggtd + gIgtotd));
+               j.push((GPspPtr, gcgsb - ggts + gIgtots));
+	       j.push((GPbpPtr, gcgbb - ggtb + gIgtotb));
 	   }
 
 	   if self.model.rdsMod {
-	       (*(self.matps.DgpPtr) += gdtotg);
-	       (*(self.matps.DspPtr) += gdtots);
-               (*(self.matps.DbpPtr) += gdtotb);
-               (*(self.matps.SdpPtr) += gstotd);
-               (*(self.matps.SgpPtr) += gstotg);
-               (*(self.matps.SbpPtr) += gstotb);
+	       j.push((DgpPtr, gdtotg));
+	       j.push((DspPtr, gdtots));
+               j.push((DbpPtr, gdtotb));
+               j.push((SdpPtr, gstotd));
+               j.push((SgpPtr, gstotg));
+               j.push((SbpPtr, gstotb));
 	   }
 
-           (*(self.matps.DPdpPtr) += gdpr + newop.gds + newop.gbd + T1 * ddxpart_dVd
-                                   - gdtotd + RevSum + gcddb + gbdpdp + dxpart * ggtd - gIdtotd);
-           (*(self.matps.DPdPtr) -= gdpr + gdtot);
-           (*(self.matps.DPgpPtr) += Gm + gcdgb - gdtotg + gbdpg - gIdtotg
-				   + dxpart * ggtg + T1 * ddxpart_dVg);
-           (*(self.matps.DPspPtr) -= newop.gds + gdtots - dxpart * ggts + gIdtots
-				   - T1 * ddxpart_dVs + FwdSum - gcdsb - gbdpsp);
-           (*(self.matps.DPbpPtr) -= gjbd + gdtotb - Gmbs - gcdbb - gbdpb + gIdtotb
-				   - T1 * ddxpart_dVb - dxpart * ggtb);
+           j.push((DPdpPtr, gdpr + newop.gds + newop.gbd + T1 * ddxpart_dVd - gdtotd + RevSum + gcddb + gbdpdp + dxpart * ggtd - gIdtotd));
+           j.push((DPdPtr, -(gdpr + gdtot)));
+           j.push((DPgpPtr, Gm + gcdgb - gdtotg + gbdpg - gIdtotg + dxpart * ggtg + T1 * ddxpart_dVg));
+           j.push((DPspPtr, -(newop.gds + gdtots - dxpart * ggts + gIdtots - T1 * ddxpart_dVs + FwdSum - gcdsb - gbdpsp));
+           j.push((DPbpPtr, -(gjbd + gdtotb - Gmbs - gcdbb - gbdpb + gIdtotb - T1 * ddxpart_dVb - dxpart * ggtb));
 
-           (*(self.matps.DdpPtr) -= gdpr - gdtotd);
-           (*(self.matps.DdPtr) += gdpr + gdtot);
+           j.push((DdpPtr, -(gdpr - gdtotd)));
+           j.push((DdPtr, gdpr + gdtot));
 
-           (*(self.matps.SPdpPtr) -= newop.gds + gstotd + RevSum - gcsdb - gbspdp
-				   - T1 * dsxpart_dVd - sxpart * ggtd + gIstotd);
-           (*(self.matps.SPgpPtr) += gcsgb - Gm - gstotg + gbspg + sxpart * ggtg
-				   + T1 * dsxpart_dVg - gIstotg);
-           (*(self.matps.SPspPtr) += gspr + newop.gds + newop.gbs + T1 * dsxpart_dVs
-                                   - gstots + FwdSum + gcssb + gbspsp + sxpart * ggts - gIstots);
-           (*(self.matps.SPsPtr) -= gspr + gstot);
-           (*(self.matps.SPbpPtr) -= gjbs + gstotb + Gmbs - gcsbb - gbspb - sxpart * ggtb
-				   - T1 * dsxpart_dVb + gIstotb);
+           j.push((SPdpPtr, -(newop.gds + gstotd + RevSum - gcsdb - gbspdp - T1 * dsxpart_dVd - sxpart * ggtd + gIstotd));
+           j.push((SPgpPtr, gcsgb - Gm - gstotg + gbspg + sxpart * ggtg + T1 * dsxpart_dVg - gIstotg));
+           j.push((SPspPtr, gspr + newop.gds + newop.gbs + T1 * dsxpart_dVs - gstots + FwdSum + gcssb + gbspsp + sxpart * ggts - gIstots));
+           j.push((SPsPtr, -(gspr + gstot)));
+           j.push((SPbpPtr, -(gjbs + gstotb + Gmbs - gcsbb - gbspb - sxpart * ggtb - T1 * dsxpart_dVb + gIstotb));
 
-           (*(self.matps.SspPtr) -= gspr - gstots);
-           (*(self.matps.SsPtr) += gspr + gstot);
+           j.push((SspPtr, -(gspr - gstots)));
+           j.push((SsPtr, gspr + gstot));
 
-           (*(self.matps.BPdpPtr) += gcbdb - gjbd + gbbdp - gIbtotd);
-           (*(self.matps.BPgpPtr) += gcbgb - newop.gbgs - gIbtotg);
-           (*(self.matps.BPspPtr) += gcbsb - gjbs + gbbsp - gIbtots);
+           j.push((BPdpPtr, gcbdb - gjbd + gbbdp - gIbtotd));
+           j.push((BPgpPtr, gcbgb - newop.gbgs - gIbtotg));
+           j.push((BPspPtr, gcbsb - gjbs + gbbsp - gIbtots));
            (*(self.matps.BPbpPtr) += gjbd + gjbs + gcbbb - newop.gbbs
 				   - gIbtotb);
 
@@ -5257,73 +5311,72 @@ line900:
            ggislb = newop.ggislb;
 
     /* stamp gidl */
-           (*(self.matps.DPdpPtr) += ggidld);
-           (*(self.matps.DPgpPtr) += ggidlg);
-           (*(self.matps.DPspPtr) -= (ggidlg + ggidld + ggidlb));
-           (*(self.matps.DPbpPtr) += ggidlb);
-           (*(self.matps.BPdpPtr) -= ggidld);
-           (*(self.matps.BPgpPtr) -= ggidlg);
-           (*(self.matps.BPspPtr) += (ggidlg + ggidld + ggidlb));
-           (*(self.matps.BPbpPtr) -= ggidlb);
+           j.push((DPdpPtr, ggidld));
+           j.push((DPgpPtr, ggidlg));
+           j.push((DPspPtr, -((ggidlg + ggidld + ggidlb)));
+           j.push((DPbpPtr, ggidlb));
+           j.push((BPdpPtr, -(ggidld)));
+           j.push((BPgpPtr, -(ggidlg)));
+           j.push((BPspPtr, (ggidlg + ggidld + ggidlb)));
+           j.push((BPbpPtr, -(ggidlb)));
     /* stamp gisl */
-           (*(self.matps.SPdpPtr) -= (ggisls + ggislg + ggislb));
-           (*(self.matps.SPgpPtr) += ggislg);
-           (*(self.matps.SPspPtr) += ggisls);
-           (*(self.matps.SPbpPtr) += ggislb);
-           (*(self.matps.BPdpPtr) += (ggislg + ggisls + ggislb));
-           (*(self.matps.BPgpPtr) -= ggislg);
-           (*(self.matps.BPspPtr) -= ggisls);
-           (*(self.matps.BPbpPtr) -= ggislb);
+           j.push((SPdpPtr, -((ggisls + ggislg + ggislb)));
+           j.push((SPgpPtr, ggislg));
+           j.push((SPspPtr, ggisls));
+           j.push((SPbpPtr, ggislb));
+           j.push((BPdpPtr, (ggislg + ggisls + ggislb)));
+           j.push((BPgpPtr, -(ggislg)));
+           j.push((BPspPtr, -(ggisls)));
+           j.push((BPbpPtr, -(ggislb)));
 
 
            if self.intp.rbodyMod != 0 {
-               (*(self.matps.DPdbPtr) += gcdbdb - newop.gbd);
-               (*(self.matps.SPsbPtr) -= newop.gbs - gcsbsb);
+               j.push((DPdbPtr, gcdbdb - newop.gbd));
+               j.push((SPsbPtr, -(newop.gbs - gcsbsb)));
 
-               (*(self.matps.DBdpPtr) += gcdbdb - newop.gbd);
-               (*(self.matps.DBdbPtr) += newop.gbd - gcdbdb
-                                       + newop.grbpd + newop.grbdb);
-               (*(self.matps.DBbpPtr) -= newop.grbpd);
-               (*(self.matps.DBbPtr) -= newop.grbdb);
+               j.push((DBdpPtr, gcdbdb - newop.gbd));
+               j.push((DBdbPtr, newop.gbd - gcdbdb + newop.grbpd + newop.grbdb));
+               j.push((DBbpPtr, -(newop.grbpd)));
+               j.push((DBbPtr, -(newop.grbdb)));
 
-               (*(self.matps.BPdbPtr) -= newop.grbpd);
-               (*(self.matps.BPbPtr) -= newop.grbpb);
-               (*(self.matps.BPsbPtr) -= newop.grbps);
-               (*(self.matps.BPbpPtr) += newop.grbpd + newop.grbps
-                                       + newop.grbpb);
+               j.push((BPdbPtr, -(newop.grbpd)));
+               j.push((BPbPtr, -(newop.grbpb)));
+               j.push((BPsbPtr, -(newop.grbps)));
+               j.push((BPbpPtr, newop.grbpd + newop.grbps + newop.grbpb));
 
-               (*(self.matps.SBspPtr) += gcsbsb - newop.gbs);
-               (*(self.matps.SBbpPtr) -= newop.grbps);
-               (*(self.matps.SBbPtr) -= newop.grbsb);
-               (*(self.matps.SBsbPtr) += newop.gbs - gcsbsb
-                                       + newop.grbps + newop.grbsb);
+               j.push((SBspPtr, gcsbsb - newop.gbs));
+               j.push((SBbpPtr, -(newop.grbps)));
+               j.push((SBbPtr, -(newop.grbsb)));
+               j.push((SBsbPtr, newop.gbs - gcsbsb + newop.grbps + newop.grbsb));
 
-               (*(self.matps.BdbPtr) -= newop.grbdb);
-               (*(self.matps.BbpPtr) -= newop.grbpb);
-               (*(self.matps.BsbPtr) -= newop.grbsb);
-               (*(self.matps.BbPtr) += newop.grbsb + newop.grbdb
-                                     + newop.grbpb);
+               j.push((BdbPtr, -(newop.grbdb)));
+               j.push((BbpPtr, -(newop.grbpb)));
+               j.push((BsbPtr, -(newop.grbsb)));
+               j.push((BbPtr, newop.grbsb + newop.grbdb + newop.grbpb));
            }
 
            if self.intp.trnqsMod {
-               (*(self.matps.QqPtr) += gqdef + self.intp.gtau);
-               (*(self.matps.QgpPtr) += ggtg - gcqgb);
-               (*(self.matps.QdpPtr) += ggtd - gcqdb);
-               (*(self.matps.QspPtr) += ggts - gcqsb);
-               (*(self.matps.QbpPtr) += ggtb - gcqbb);
+               j.push((QqPtr, gqdef + self.intp.gtau));
+               j.push((QgpPtr, ggtg - gcqgb));
+               j.push((QdpPtr, ggtd - gcqdb));
+               j.push((QspPtr, ggts - gcqsb));
+               j.push((QbpPtr, ggtb - gcqbb));
 
-               (*(self.matps.DPqPtr) += dxpart * self.intp.gtau);
-               (*(self.matps.SPqPtr) += sxpart * self.intp.gtau);
-               (*(self.matps.GPqPtr) -= self.intp.gtau);
+               j.push((DPqPtr, dxpart * self.intp.gtau));
+               j.push((SPqPtr, sxpart * self.intp.gtau));
+               j.push((GPqPtr, -(self.intp.gtau)));
            }
     // Update our best-guess operating point
     self.guess = newop;
     // And return our matrix stamps
     return Stamps { j, b };
+    }
+        }
+    }
 }
 
 /// compute poly depletion effect
-fn BSIM4polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -> (f64, f64) {
+fn polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -> (f64, f64) {
     if (ngate > 1.0e18) && (ngate < 1.0e25) && (Vgs > phi) && (epsgate != 0.0) {
         let T1 = 1.0e6 * CHARGE * epsgate * ngate / (coxe * coxe);
         let T8 = Vgs - phi;
@@ -5339,4 +5392,20 @@ fn BSIM4polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -
     } else {
         (Vgs, 1.0)
     }
+}
+
+// FIXME - implement these here limiting methods!
+fn DEVlimvds(_a: f64, _b: f64) -> f64 {
+    _a
+}
+fn DEVpnjlim(a: f64, b: f64, c: f64, d: f64) -> f64 {
+    a
+}
+
+// Some helper math
+fn sqrt(a: f64) -> f64 {
+    a.sqrt()
+}
+fn log(a: f64) -> f64 {
+    a.ln()
 }
