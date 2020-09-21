@@ -2,33 +2,28 @@
 //! BSIM4 MOSFET Implementation
 //!
 
-use super::consts::{Q, VT_REF};
+pub mod bsim4defs;
+pub mod bsim4modelvals;
+// pub mod bsim4derive;
+// pub mod bsim4inst;
+pub use bsim4defs::*;
+// use super::bsim4derive::*;
+
+use super::consts::*;
 use super::Component;
 use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use crate::sparse21::{Eindex, Matrix};
 use crate::SpNum;
-use std::f64::{MAX_EXP as MAX_EXPI, MIN_EXP as MIN_EXPI};
-
-use super::bsim4defs::*;
 
 // FIXME: get from circuit/ analysis
-const gmin: f64 = 1e-9;
+pub(crate) const gmin: f64 = 1e-9;
 
-const MAX_EXP: f64 = MAX_EXPI as f64;
-const MIN_EXP: f64 = MIN_EXPI as f64;
-const MAX_EXPL: f64 = 2.688117142e+43;
-const MIN_EXPL: f64 = 3.720075976e-44;
-const EXPL_THRESHOLD: f64 = 100.0;
-const EXP_THRESHOLD: f64 = 34.0;
-const EPS0: f64 = 8.85418e-12;
-const EPSSI: f64 = 1.03594e-10;
-const DELTA_1: f64 = 0.02;
-const DELTA_2: f64 = 0.02;
-const DELTA_3: f64 = 0.02;
-const DELTA_4: f64 = 0.02;
-const MM: f64 = 3.0;
+pub(crate) const DELTA_1: f64 = 0.02;
+pub(crate) const DELTA_2: f64 = 0.02;
+pub(crate) const DELTA_3: f64 = 0.02;
+pub(crate) const DELTA_4: f64 = 0.02;
 
-fn DEXPb(A: f64) -> f64 {
+pub(crate) fn dexpb(A: f64) -> f64 {
     if A > EXP_THRESHOLD {
         MAX_EXP * (1.0 + (A) - EXP_THRESHOLD)
     } else if A < -EXP_THRESHOLD {
@@ -37,7 +32,7 @@ fn DEXPb(A: f64) -> f64 {
         exp(A)
     }
 }
-fn DEXPc(A: f64) -> f64 {
+pub(crate) fn dexpc(A: f64) -> f64 {
     if A > EXP_THRESHOLD {
         MAX_EXP
     } else if A < -EXP_THRESHOLD {
@@ -47,9 +42,9 @@ fn DEXPc(A: f64) -> f64 {
     }
 }
 
-impl Bsim4Model {
+impl Bsim4ModelVals {
     /// Polarity function
-    fn p(&self) -> f64 {
+    pub(crate) fn p(&self) -> f64 {
         // FIXME: use mos_type enum
         if self.nmos {
             1.0
@@ -59,7 +54,7 @@ impl Bsim4Model {
     }
 }
 
-pub struct Bsim4Ports {
+pub(crate) struct Bsim4Ports {
     dNode: Option<VarIndex>,
     gNodeExt: Option<VarIndex>,
     sNode: Option<VarIndex>,
@@ -74,575 +69,592 @@ pub struct Bsim4Ports {
     qNode: Option<VarIndex>,
 }
 
-pub struct Bsim4InternalParams {
-    vjsmFwd: f64,
-    vjsmRev: f64,
-    vjdmFwd: f64,
-    vjdmRev: f64,
-    XExpBVS: f64,
-    XExpBVD: f64,
-    SslpFwd: f64,
-    SslpRev: f64,
-    DslpFwd: f64,
-    DslpRev: f64,
-    IVjsmFwd: f64,
-    IVjsmRev: f64,
-    IVjdmFwd: f64,
-    IVjdmRev: f64,
+#[derive(Default)]
+pub(crate) struct Bsim4InternalParams {
+    pub(crate) size_params: Bsim4SizeDepParams,
 
-    grgeltd: f64,
-    Pseff: f64,
-    Pdeff: f64,
-    Aseff: f64,
-    Adeff: f64,
+    pub(crate) vjsmFwd: f64,
+    pub(crate) vjsmRev: f64,
+    pub(crate) vjdmFwd: f64,
+    pub(crate) vjdmRev: f64,
+    pub(crate) XExpBVS: f64,
+    pub(crate) XExpBVD: f64,
+    pub(crate) SslpFwd: f64,
+    pub(crate) SslpRev: f64,
+    pub(crate) DslpFwd: f64,
+    pub(crate) DslpRev: f64,
+    pub(crate) IVjsmFwd: f64,
+    pub(crate) IVjsmRev: f64,
+    pub(crate) IVjdmFwd: f64,
+    pub(crate) IVjdmRev: f64,
 
-    l: f64,
-    w: f64,
-    drainArea: f64,
-    sourceArea: f64,
-    drainSquares: f64,
-    sourceSquares: f64,
-    drainPerimeter: f64,
-    sourcePerimeter: f64,
-    sourceConductance: f64,
-    drainConductance: f64,
+    pub(crate) grgeltd: f64,
+    pub(crate) Pseff: f64,
+    pub(crate) Pdeff: f64,
+    pub(crate) Aseff: f64,
+    pub(crate) Adeff: f64,
+
+    pub(crate) l: f64,
+    pub(crate) w: f64,
+    pub(crate) drainArea: f64,
+    pub(crate) sourceArea: f64,
+    pub(crate) drainSquares: f64,
+    pub(crate) sourceSquares: f64,
+    pub(crate) drainPerimeter: f64,
+    pub(crate) sourcePerimeter: f64,
+    pub(crate) sourceConductance: f64,
+    pub(crate) drainConductance: f64,
     /* stress effect instance param */
-    sa: f64,
-    sb: f64,
-    sd: f64,
-    sca: f64,
-    scb: f64,
-    scc: f64,
-    sc: f64,
+    pub(crate) sa: f64,
+    pub(crate) sb: f64,
+    pub(crate) sd: f64,
+    pub(crate) sca: f64,
+    pub(crate) scb: f64,
+    pub(crate) scc: f64,
+    pub(crate) sc: f64,
 
-    rbdb: f64,
-    rbsb: f64,
-    rbpb: f64,
-    rbps: f64,
-    rbpd: f64,
-    delvto: f64,
-    xgw: f64,
-    ngcon: f64,
+    pub(crate) rbdb: f64,
+    pub(crate) rbsb: f64,
+    pub(crate) rbpb: f64,
+    pub(crate) rbps: f64,
+    pub(crate) rbpd: f64,
+    pub(crate) delvto: f64,
+    pub(crate) xgw: f64,
+    pub(crate) ngcon: f64,
 
     /* added here to account stress effect instance dependence */
-    u0temp: f64,
-    vsattemp: f64,
-    vth0: f64,
-    vfb: f64,
-    vfbzb: f64,
-    vtfbphi1: f64,
-    vtfbphi2: f64,
-    k2: f64,
-    vbsc: f64,
-    k2ox: f64,
-    eta0: f64,
-    toxp: f64,
-    coxp: f64,
+    pub(crate) u0temp: f64,
+    pub(crate) vsattemp: f64,
+    pub(crate) vth0: f64,
+    pub(crate) vfb: f64,
+    pub(crate) vfbzb: f64,
+    pub(crate) vtfbphi1: f64,
+    pub(crate) vtfbphi2: f64,
+    pub(crate) k2: f64,
+    pub(crate) vbsc: f64,
+    pub(crate) k2ox: f64,
+    pub(crate) eta0: f64,
+    
+    pub(crate) icVDS: f64,
+    pub(crate) icVGS: f64,
+    pub(crate) icVBS: f64,
+    pub(crate) nf: f64,
+    
+    pub(crate) off: isize,
+    pub(crate) mode: isize,
+    // trnqsMod: isize,
+    // acnqsMod: isize,
+    // rbodyMod: isize,
+    // rgateMod: isize,
+    // geoMod: isize,
+    // rgeoMod: isize,
+    pub(crate) min: isize,
+    
+    pub(crate) grbsb: f64,
+    pub(crate) grbdb: f64,
+    pub(crate) grbpb: f64,
+    pub(crate) grbps: f64,
+    pub(crate) grbpd: f64,
+    
+    pub(crate) SjctTempRevSatCur: f64,
+    pub(crate) DjctTempRevSatCur: f64,
+    pub(crate) SswTempRevSatCur: f64,
+    pub(crate) DswTempRevSatCur: f64,
+    pub(crate) SswgTempRevSatCur: f64,
+    pub(crate) DswgTempRevSatCur: f64,
 
-    icVDS: f64,
-    icVGS: f64,
-    icVBS: f64,
-    nf: f64,
+    // Note these two are *also* the names of derived model parameters
+    pub(crate) toxp: f64,
+    pub(crate) coxp: f64,
+}
 
-    off: isize,
-    mode: isize,
-    trnqsMod: isize,
-    acnqsMod: isize,
-    rbodyMod: isize,
-    rgateMod: isize,
-    geoMod: isize,
-    rgeoMod: isize,
-    min: isize,
+#[derive(Default)]
+pub(crate) struct Bsim4ModelDerivedParams {
+    // Note these two are *also* the names of internal instance parameters
+    pub(crate) toxp: f64,
+    pub(crate) coxp: f64,
+    // Note these are also model input params (although not with the same values)
+    pub(crate) cgso: f64,
+    pub(crate) cgdo: f64,
+    pub(crate) cgbo: f64,
 
-    SjctTempRevSatCur: f64,
-    DjctTempRevSatCur: f64,
-    SswTempRevSatCur: f64,
-    DswTempRevSatCur: f64,
-    SswgTempRevSatCur: f64,
-    DswgTempRevSatCur: f64,
+    pub(crate) Eg0: f64,
+    pub(crate) vtm: f64,
+    pub(crate) vtm0: f64,
+    pub(crate) coxe: f64,
+    pub(crate) cof1: f64,
+    pub(crate) cof2: f64,
+    pub(crate) cof3: f64,
+    pub(crate) cof4: f64,
+    pub(crate) vcrit: f64,
+    pub(crate) factor1: f64,
+    pub(crate) PhiBS: f64,
+    pub(crate) PhiBSWS: f64,
+    pub(crate) PhiBSWGS: f64,
+    pub(crate) SjctTempSatCurDensity: f64,
+    pub(crate) SjctSidewallTempSatCurDensity: f64,
+    pub(crate) SjctGateSidewallTempSatCurDensity: f64,
+    pub(crate) PhiBD: f64,
+    pub(crate) PhiBSWD: f64,
+    pub(crate) PhiBSWGD: f64,
+    pub(crate) DjctTempSatCurDensity: f64,
+    pub(crate) DjctSidewallTempSatCurDensity: f64,
+    pub(crate) DjctGateSidewallTempSatCurDensity: f64,
+    pub(crate) SunitAreaTempJctCap: f64,
+    pub(crate) DunitAreaTempJctCap: f64,
+    pub(crate) SunitLengthSidewallTempJctCap: f64,
+    pub(crate) DunitLengthSidewallTempJctCap: f64,
+    pub(crate) SunitLengthGateSidewallTempJctCap: f64,
+    pub(crate) DunitLengthGateSidewallTempJctCap: f64,
 
-    // Model-derived; perhaps break out
-    Eg0: f64,
-    vtm: f64,
-    vtm0: f64,
-    coxe: f64,
-    cof1: f64,
-    cof2: f64,
-    cof3: f64,
-    cof4: f64,
-    vcrit: f64,
-    factor1: f64,
-    PhiBS: f64,
-    PhiBSWS: f64,
-    PhiBSWGS: f64,
-    SjctTempSatCurDensity: f64,
-    SjctSidewallTempSatCurDensity: f64,
-    SjctGateSidewallTempSatCurDensity: f64,
-    PhiBD: f64,
-    PhiBSWD: f64,
-    PhiBSWGD: f64,
-    DjctTempSatCurDensity: f64,
-    DjctSidewallTempSatCurDensity: f64,
-    DjctGateSidewallTempSatCurDensity: f64,
-    SunitAreaTempJctCap: f64,
-    DunitAreaTempJctCap: f64,
-    SunitLengthSidewallTempJctCap: f64,
-    DunitLengthSidewallTempJctCap: f64,
-    SunitLengthGateSidewallTempJctCap: f64,
-    DunitLengthGateSidewallTempJctCap: f64,
+    pub(crate) oxideTrapDensityA: f64,
+    pub(crate) oxideTrapDensityB: f64,
+    pub(crate) oxideTrapDensityC: f64,
+    pub(crate) em: f64,
+    pub(crate) ef: f64,
+    pub(crate) af: f64,
+    pub(crate) kf: f64,
+    pub(crate) sheetResistance: f64,
+    pub(crate) SjctSatCurDensity: f64,
+    pub(crate) DjctSatCurDensity: f64,
+    pub(crate) SjctSidewallSatCurDensity: f64,
+    pub(crate) DjctSidewallSatCurDensity: f64,
+    pub(crate) SjctGateSidewallSatCurDensity: f64,
+    pub(crate) DjctGateSidewallSatCurDensity: f64,
+    pub(crate) SbulkJctPotential: f64,
+    pub(crate) DbulkJctPotential: f64,
+    pub(crate) SbulkJctBotGradingCoeff: f64,
+    pub(crate) DbulkJctBotGradingCoeff: f64,
+    pub(crate) SbulkJctSideGradingCoeff: f64,
+    pub(crate) DbulkJctSideGradingCoeff: f64,
+    pub(crate) SbulkJctGateSideGradingCoeff: f64,
+    pub(crate) DbulkJctGateSideGradingCoeff: f64,
+    pub(crate) SsidewallJctPotential: f64,
+    pub(crate) DsidewallJctPotential: f64,
+    pub(crate) SGatesidewallJctPotential: f64,
+    pub(crate) DGatesidewallJctPotential: f64,
+    pub(crate) SunitAreaJctCap: f64,
+    pub(crate) DunitAreaJctCap: f64,
+    pub(crate) SunitLengthSidewallJctCap: f64,
+    pub(crate) DunitLengthSidewallJctCap: f64,
+    pub(crate) SunitLengthGateSidewallJctCap: f64,
+    pub(crate) DunitLengthGateSidewallJctCap: f64,
+    pub(crate) SjctEmissionCoeff: f64,
+    pub(crate) DjctEmissionCoeff: f64,
+    pub(crate) SjctTempExponent: f64,
+    pub(crate) DjctTempExponent: f64,
+    pub(crate) njtsstemp: f64,
+    pub(crate) njtsswstemp: f64,
+    pub(crate) njtsswgstemp: f64,
+    pub(crate) njtsdtemp: f64,
+    pub(crate) njtsswdtemp: f64,
+    pub(crate) njtsswgdtemp: f64,
 
-    oxideTrapDensityA: f64,
-    oxideTrapDensityB: f64,
-    oxideTrapDensityC: f64,
-    em: f64,
-    ef: f64,
-    af: f64,
-    kf: f64,
-    sheetResistance: f64,
-    SjctSatCurDensity: f64,
-    DjctSatCurDensity: f64,
-    SjctSidewallSatCurDensity: f64,
-    DjctSidewallSatCurDensity: f64,
-    SjctGateSidewallSatCurDensity: f64,
-    DjctGateSidewallSatCurDensity: f64,
-    SbulkJctPotential: f64,
-    DbulkJctPotential: f64,
-    SbulkJctBotGradingCoeff: f64,
-    DbulkJctBotGradingCoeff: f64,
-    SbulkJctSideGradingCoeff: f64,
-    DbulkJctSideGradingCoeff: f64,
-    SbulkJctGateSideGradingCoeff: f64,
-    DbulkJctGateSideGradingCoeff: f64,
-    SsidewallJctPotential: f64,
-    DsidewallJctPotential: f64,
-    SGatesidewallJctPotential: f64,
-    DGatesidewallJctPotential: f64,
-    SunitAreaJctCap: f64,
-    DunitAreaJctCap: f64,
-    SunitLengthSidewallJctCap: f64,
-    DunitLengthSidewallJctCap: f64,
-    SunitLengthGateSidewallJctCap: f64,
-    DunitLengthGateSidewallJctCap: f64,
-    SjctEmissionCoeff: f64,
-    DjctEmissionCoeff: f64,
-    SjctTempExponent: f64,
-    DjctTempExponent: f64,
-    njtsstemp: f64,
-    njtsswstemp: f64,
-    njtsswgstemp: f64,
-    njtsdtemp: f64,
-    njtsswdtemp: f64,
-    njtsswgdtemp: f64,
-
-    TempRatio: f64,
+    pub(crate) TempRatio: f64,
 }
 
 #[derive(Default)]
 struct Bsim4OpPoint {
-    mode: isize,
+    pub(crate) mode: isize,
 
-    vbd: f64,
-    vbs: f64,
-    vgs: f64,
-    vds: f64,
-    vdbs: f64,
-    vdbd: f64,
-    vsbs: f64,
-    vges: f64,
-    vgms: f64,
-    vses: f64,
-    vdes: f64,
+    pub(crate) vbd: f64,
+    pub(crate) vbs: f64,
+    pub(crate) vgs: f64,
+    pub(crate) vds: f64,
+    pub(crate) vdbs: f64,
+    pub(crate) vdbd: f64,
+    pub(crate) vsbs: f64,
+    pub(crate) vges: f64,
+    pub(crate) vgms: f64,
+    pub(crate) vses: f64,
+    pub(crate) vdes: f64,
 
-    qb: f64,
-    cqb: f64,
-    qg: f64,
-    cqg: f64,
-    qd: f64,
-    cqd: f64,
-    qgmid: f64,
-    cqgmid: f64,
+    pub(crate) qb: f64,
+    pub(crate) cqb: f64,
+    pub(crate) qg: f64,
+    pub(crate) cqg: f64,
+    pub(crate) qd: f64,
+    pub(crate) cqd: f64,
+    pub(crate) qgmid: f64,
+    pub(crate) cqgmid: f64,
 
-    qbs: f64,
-    cqbs: f64,
-    qbd: f64,
-    cqbd: f64,
+    pub(crate) qbs: f64,
+    pub(crate) cqbs: f64,
+    pub(crate) qbd: f64,
+    pub(crate) cqbd: f64,
 
-    qcheq: f64,
-    cqcheq: f64,
-    qcdump: f64,
-    cqcdump: f64,
-    qdef: f64,
-    qs: f64,
+    pub(crate) qcheq: f64,
+    pub(crate) cqcheq: f64,
+    pub(crate) qcdump: f64,
+    pub(crate) cqcdump: f64,
+    pub(crate) qdef: f64,
+    pub(crate) qs: f64,
 
-    von: f64,
-    vdsat: f64,
-    cgdo: f64,
-    qgdo: f64,
-    cgso: f64,
-    qgso: f64,
-    grbsb: f64,
-    grbdb: f64,
-    grbpb: f64,
-    grbps: f64,
-    grbpd: f64,
+    pub(crate) von: f64,
+    pub(crate) vdsat: f64,
+    pub(crate) cgdo: f64,
+    pub(crate) qgdo: f64,
+    pub(crate) cgso: f64,
+    pub(crate) qgso: f64,
 
-    Vgsteff: f64,
-    vgs_eff: f64,
-    vgd_eff: f64,
-    dvgs_eff_dvg: f64,
-    dvgd_eff_dvg: f64,
-    Vdseff: f64,
-    nstar: f64,
-    qinv: f64,
-    cd: f64,
-    cbs: f64,
-    cbd: f64,
-    csub: f64,
-    Igidl: f64,
-    Igisl: f64,
-    gm: f64,
-    gds: f64,
-    gmbs: f64,
-    gbd: f64,
-    gbs: f64,
-    noiGd0: f64, /* tnoiMod=2 (v4.7) */
-    Coxeff: f64,
+    pub(crate) Vgsteff: f64,
+    pub(crate) vgs_eff: f64,
+    pub(crate) vgd_eff: f64,
+    pub(crate) dvgs_eff_dvg: f64,
+    pub(crate) dvgd_eff_dvg: f64,
+    pub(crate) Vdseff: f64,
+    pub(crate) nstar: f64,
+    pub(crate) qinv: f64,
+    pub(crate) cd: f64,
+    pub(crate) cbs: f64,
+    pub(crate) cbd: f64,
+    pub(crate) csub: f64,
+    pub(crate) Igidl: f64,
+    pub(crate) Igisl: f64,
+    pub(crate) gm: f64,
+    pub(crate) gds: f64,
+    pub(crate) gmbs: f64,
+    pub(crate) gbd: f64,
+    pub(crate) gbs: f64,
+    pub(crate) noiGd0: f64, /* tnoiMod=2 (v4.7) */
+    pub(crate) Coxeff: f64,
 
-    gbbs: f64,
-    gbgs: f64,
-    gbds: f64,
-    ggidld: f64,
-    ggidlg: f64,
-    ggidls: f64,
-    ggidlb: f64,
-    ggisld: f64,
-    ggislg: f64,
-    ggisls: f64,
-    ggislb: f64,
+    pub(crate) gbbs: f64,
+    pub(crate) gbgs: f64,
+    pub(crate) gbds: f64,
+    pub(crate) ggidld: f64,
+    pub(crate) ggidlg: f64,
+    pub(crate) ggidls: f64,
+    pub(crate) ggidlb: f64,
+    pub(crate) ggisld: f64,
+    pub(crate) ggislg: f64,
+    pub(crate) ggisls: f64,
+    pub(crate) ggislb: f64,
 
-    Igcs: f64,
-    gIgcsg: f64,
-    gIgcsd: f64,
-    gIgcss: f64,
-    gIgcsb: f64,
-    Igcd: f64,
-    gIgcdg: f64,
-    gIgcdd: f64,
-    gIgcds: f64,
-    gIgcdb: f64,
+    pub(crate) Igcs: f64,
+    pub(crate) gIgcsg: f64,
+    pub(crate) gIgcsd: f64,
+    pub(crate) gIgcss: f64,
+    pub(crate) gIgcsb: f64,
+    pub(crate) Igcd: f64,
+    pub(crate) gIgcdg: f64,
+    pub(crate) gIgcdd: f64,
+    pub(crate) gIgcds: f64,
+    pub(crate) gIgcdb: f64,
 
-    Igs: f64,
-    gIgsg: f64,
-    gIgss: f64,
-    Igd: f64,
-    gIgdg: f64,
-    gIgdd: f64,
+    pub(crate) Igs: f64,
+    pub(crate) gIgsg: f64,
+    pub(crate) gIgss: f64,
+    pub(crate) Igd: f64,
+    pub(crate) gIgdg: f64,
+    pub(crate) gIgdd: f64,
 
-    Igb: f64,
-    gIgbg: f64,
-    gIgbd: f64,
-    gIgbs: f64,
-    gIgbb: f64,
+    pub(crate) Igb: f64,
+    pub(crate) gIgbg: f64,
+    pub(crate) gIgbd: f64,
+    pub(crate) gIgbs: f64,
+    pub(crate) gIgbb: f64,
 
-    grdsw: f64,
-    IdovVds: f64,
-    gcrg: f64,
-    gcrgd: f64,
-    gcrgg: f64,
-    gcrgs: f64,
-    gcrgb: f64,
+    pub(crate) grdsw: f64,
+    pub(crate) IdovVds: f64,
+    pub(crate) gcrg: f64,
+    pub(crate) gcrgd: f64,
+    pub(crate) gcrgg: f64,
+    pub(crate) gcrgs: f64,
+    pub(crate) gcrgb: f64,
 
-    gstot: f64,
-    gstotd: f64,
-    gstotg: f64,
-    gstots: f64,
-    gstotb: f64,
+    pub(crate) gstot: f64,
+    pub(crate) gstotd: f64,
+    pub(crate) gstotg: f64,
+    pub(crate) gstots: f64,
+    pub(crate) gstotb: f64,
 
-    gdtot: f64,
-    gdtotd: f64,
-    gdtotg: f64,
-    gdtots: f64,
-    gdtotb: f64,
+    pub(crate) gdtot: f64,
+    pub(crate) gdtotd: f64,
+    pub(crate) gdtotg: f64,
+    pub(crate) gdtots: f64,
+    pub(crate) gdtotb: f64,
 
-    cggb: f64,
-    cgdb: f64,
-    cgsb: f64,
-    cbgb: f64,
-    cbdb: f64,
-    cbsb: f64,
-    cdgb: f64,
-    cddb: f64,
-    cdsb: f64,
-    csgb: f64,
-    csdb: f64,
-    cssb: f64,
-    cgbb: f64,
-    cdbb: f64,
-    csbb: f64,
-    cbbb: f64,
-    capbd: f64,
-    capbs: f64,
+    pub(crate) cggb: f64,
+    pub(crate) cgdb: f64,
+    pub(crate) cgsb: f64,
+    pub(crate) cbgb: f64,
+    pub(crate) cbdb: f64,
+    pub(crate) cbsb: f64,
+    pub(crate) cdgb: f64,
+    pub(crate) cddb: f64,
+    pub(crate) cdsb: f64,
+    pub(crate) csgb: f64,
+    pub(crate) csdb: f64,
+    pub(crate) cssb: f64,
+    pub(crate) cgbb: f64,
+    pub(crate) cdbb: f64,
+    pub(crate) csbb: f64,
+    pub(crate) cbbb: f64,
+    pub(crate) capbd: f64,
+    pub(crate) capbs: f64,
 
-    cqgb: f64,
-    cqdb: f64,
-    cqsb: f64,
-    cqbb: f64,
+    pub(crate) cqgb: f64,
+    pub(crate) cqdb: f64,
+    pub(crate) cqsb: f64,
+    pub(crate) cqbb: f64,
 
-    qgate: f64,
-    qbulk: f64,
-    qdrn: f64,
-    qsrc: f64,
+    pub(crate) qgate: f64,
+    pub(crate) qbulk: f64,
+    pub(crate) qdrn: f64,
+    pub(crate) qsrc: f64,
 
-    qchqs: f64,
-    taunet: f64,
-    gtau: f64,
-    gtg: f64,
-    gtd: f64,
-    gts: f64,
-    gtb: f64,
+    pub(crate) qchqs: f64,
+    pub(crate) taunet: f64,
+    pub(crate) gtau: f64,
+    pub(crate) gtg: f64,
+    pub(crate) gtd: f64,
+    pub(crate) gts: f64,
+    pub(crate) gtb: f64,
 
-    thetavth: f64,
-    ueff: f64,
-    Abulk: f64,
-    EsatL: f64,
-    AbovVgst2Vtm: f64,
+    pub(crate) thetavth: f64,
+    pub(crate) ueff: f64,
+    pub(crate) Abulk: f64,
+    pub(crate) EsatL: f64,
+    pub(crate) AbovVgst2Vtm: f64,
 }
 
-pub struct Bsim4SizeDepParams {
-    Width: f64,
-    Length: f64,
-    NFinger: f64,
+#[derive(Default)]
+pub(crate) struct Bsim4SizeDepParams {
+    pub(crate) Width: f64,
+    pub(crate) Length: f64,
+    pub(crate) NFinger: f64,
 
-    cdsc: f64,
-    cdscb: f64,
-    cdscd: f64,
-    cit: f64,
-    nfactor: f64,
-    xj: f64,
-    vsat: f64,
-    at: f64,
-    a0: f64,
-    ags: f64,
-    a1: f64,
-    a2: f64,
-    keta: f64,
-    nsub: f64,
-    ndep: f64,
-    nsd: f64,
-    phin: f64,
-    ngate: f64,
-    gamma1: f64,
-    gamma2: f64,
-    vbx: f64,
-    vbi: f64,
-    vbm: f64,
-    xt: f64,
-    phi: f64,
-    litl: f64,
-    k1: f64,
-    kt1: f64,
-    kt1l: f64,
-    kt2: f64,
-    k2: f64,
-    k3: f64,
-    k3b: f64,
-    w0: f64,
-    dvtp0: f64,
-    dvtp1: f64,
-    dvtp2: f64, /* New DIBL/Rout */
-    dvtp3: f64,
-    dvtp4: f64,
-    dvtp5: f64,
-    lpe0: f64,
-    lpeb: f64,
-    dvt0: f64,
-    dvt1: f64,
-    dvt2: f64,
-    dvt0w: f64,
-    dvt1w: f64,
-    dvt2w: f64,
-    drout: f64,
-    dsub: f64,
-    vth0: f64,
-    ua: f64,
-    ua1: f64,
-    ub: f64,
-    ub1: f64,
-    uc: f64,
-    uc1: f64,
-    ud: f64,
-    ud1: f64,
-    up: f64,
-    lp: f64,
-    u0: f64,
-    eu: f64,
-    ucs: f64,
-    ute: f64,
-    ucste: f64,
-    voff: f64,
-    tvoff: f64,
-    tnfactor: f64, /* v4.7 Temp dep of leakage current */
-    teta0: f64,    /* v4.7 temp dep of leakage current */
-    tvoffcv: f64,  /* v4.7 temp dep of leakage current */
-    minv: f64,
-    minvcv: f64,
-    vfb: f64,
-    delta: f64,
-    rdsw: f64,
-    rds0: f64,
-    rs0: f64,
-    rd0: f64,
-    rsw: f64,
-    rdw: f64,
-    prwg: f64,
-    prwb: f64,
-    prt: f64,
-    eta0: f64,
-    etab: f64,
-    pclm: f64,
-    pdibl1: f64,
-    pdibl2: f64,
-    pdiblb: f64,
-    fprout: f64,
-    pdits: f64,
-    pditsd: f64,
-    pscbe1: f64,
-    pscbe2: f64,
-    pvag: f64,
-    wr: f64,
-    dwg: f64,
-    dwb: f64,
-    b0: f64,
-    b1: f64,
-    alpha0: f64,
-    alpha1: f64,
-    beta0: f64,
-    agidl: f64,
-    bgidl: f64,
-    cgidl: f64,
-    egidl: f64,
-    fgidl: f64, /* v4.7 New GIDL/GISL */
-    kgidl: f64, /* v4.7 New GIDL/GISL */
-    rgidl: f64, /* v4.7 New GIDL/GISL */
-    agisl: f64,
-    bgisl: f64,
-    cgisl: f64,
-    egisl: f64,
-    fgisl: f64, /* v4.7 New GIDL/GISL */
-    kgisl: f64, /* v4.7 New GIDL/GISL */
-    rgisl: f64, /* v4.7 New GIDL/GISL */
-    aigc: f64,
-    bigc: f64,
-    cigc: f64,
-    aigsd: f64,
-    bigsd: f64,
-    cigsd: f64,
-    aigs: f64,
-    bigs: f64,
-    cigs: f64,
-    aigd: f64,
-    bigd: f64,
-    cigd: f64,
-    aigbacc: f64,
-    bigbacc: f64,
-    cigbacc: f64,
-    aigbinv: f64,
-    bigbinv: f64,
-    cigbinv: f64,
-    nigc: f64,
-    nigbacc: f64,
-    nigbinv: f64,
-    ntox: f64,
-    eigbinv: f64,
-    pigcd: f64,
-    poxedge: f64,
-    xrcrg1: f64,
-    xrcrg2: f64,
-    lambda: f64,   /* overshoot */
-    vtl: f64,      /* thermal velocity limit */
-    xn: f64,       /* back scattering parameter */
-    lc: f64,       /* back scattering parameter */
-    tfactor: f64,  /* ballistic transportation factor  */
-    vfbsdoff: f64, /* S/D flatband offset voltage  */
-    tvfbsdoff: f64,
+    pub(crate) cdsc: f64,
+    pub(crate) cdscb: f64,
+    pub(crate) cdscd: f64,
+    pub(crate) cit: f64,
+    pub(crate) nfactor: f64,
+    pub(crate) xj: f64,
+    pub(crate) vsat: f64,
+    pub(crate) at: f64,
+    pub(crate) a0: f64,
+    pub(crate) ags: f64,
+    pub(crate) a1: f64,
+    pub(crate) a2: f64,
+    pub(crate) keta: f64,
+    pub(crate) nsub: f64,
+    pub(crate) ndep: f64,
+    pub(crate) nsd: f64,
+    pub(crate) phin: f64,
+    pub(crate) ngate: f64,
+    pub(crate) gamma1: f64,
+    pub(crate) gamma2: f64,
+    pub(crate) vbx: f64,
+    pub(crate) vbi: f64,
+    pub(crate) vbm: f64,
+    pub(crate) xt: f64,
+    pub(crate) phi: f64,
+    pub(crate) litl: f64,
+    pub(crate) k1: f64,
+    pub(crate) kt1: f64,
+    pub(crate) kt1l: f64,
+    pub(crate) kt2: f64,
+    pub(crate) k2: f64,
+    pub(crate) k3: f64,
+    pub(crate) k3b: f64,
+    pub(crate) w0: f64,
+    pub(crate) dvtp0: f64,
+    pub(crate) dvtp1: f64,
+    pub(crate) dvtp2: f64, /* New DIBL/Rout */
+    pub(crate) dvtp3: f64,
+    pub(crate) dvtp4: f64,
+    pub(crate) dvtp5: f64,
+    pub(crate) lpe0: f64,
+    pub(crate) lpeb: f64,
+    pub(crate) dvt0: f64,
+    pub(crate) dvt1: f64,
+    pub(crate) dvt2: f64,
+    pub(crate) dvt0w: f64,
+    pub(crate) dvt1w: f64,
+    pub(crate) dvt2w: f64,
+    pub(crate) drout: f64,
+    pub(crate) dsub: f64,
+    pub(crate) vth0: f64,
+    pub(crate) ua: f64,
+    pub(crate) ua1: f64,
+    pub(crate) ub: f64,
+    pub(crate) ub1: f64,
+    pub(crate) uc: f64,
+    pub(crate) uc1: f64,
+    pub(crate) ud: f64,
+    pub(crate) ud1: f64,
+    pub(crate) up: f64,
+    pub(crate) lp: f64,
+    pub(crate) u0: f64,
+    pub(crate) eu: f64,
+    pub(crate) ucs: f64,
+    pub(crate) ute: f64,
+    pub(crate) ucste: f64,
+    pub(crate) voff: f64,
+    pub(crate) tvoff: f64,
+    pub(crate) tnfactor: f64, /* v4.7 Temp dep of leakage current */
+    pub(crate) teta0: f64,    /* v4.7 temp dep of leakage current */
+    pub(crate) tvoffcv: f64,  /* v4.7 temp dep of leakage current */
+    pub(crate) minv: f64,
+    pub(crate) minvcv: f64,
+    pub(crate) vfb: f64,
+    pub(crate) delta: f64,
+    pub(crate) rdsw: f64,
+    pub(crate) rds0: f64,
+    pub(crate) rs0: f64,
+    pub(crate) rd0: f64,
+    pub(crate) rsw: f64,
+    pub(crate) rdw: f64,
+    pub(crate) prwg: f64,
+    pub(crate) prwb: f64,
+    pub(crate) prt: f64,
+    pub(crate) eta0: f64,
+    pub(crate) etab: f64,
+    pub(crate) pclm: f64,
+    pub(crate) pdibl1: f64,
+    pub(crate) pdibl2: f64,
+    pub(crate) pdiblb: f64,
+    pub(crate) fprout: f64,
+    pub(crate) pdits: f64,
+    pub(crate) pditsd: f64,
+    pub(crate) pscbe1: f64,
+    pub(crate) pscbe2: f64,
+    pub(crate) pvag: f64,
+    pub(crate) wr: f64,
+    pub(crate) dwg: f64,
+    pub(crate) dwb: f64,
+    pub(crate) b0: f64,
+    pub(crate) b1: f64,
+    pub(crate) alpha0: f64,
+    pub(crate) alpha1: f64,
+    pub(crate) beta0: f64,
+    pub(crate) agidl: f64,
+    pub(crate) bgidl: f64,
+    pub(crate) cgidl: f64,
+    pub(crate) egidl: f64,
+    pub(crate) fgidl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) kgidl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) rgidl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) agisl: f64,
+    pub(crate) bgisl: f64,
+    pub(crate) cgisl: f64,
+    pub(crate) egisl: f64,
+    pub(crate) fgisl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) kgisl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) rgisl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) aigc: f64,
+    pub(crate) bigc: f64,
+    pub(crate) cigc: f64,
+    pub(crate) aigsd: f64,
+    pub(crate) bigsd: f64,
+    pub(crate) cigsd: f64,
+    pub(crate) aigs: f64,
+    pub(crate) bigs: f64,
+    pub(crate) cigs: f64,
+    pub(crate) aigd: f64,
+    pub(crate) bigd: f64,
+    pub(crate) cigd: f64,
+    pub(crate) aigbacc: f64,
+    pub(crate) bigbacc: f64,
+    pub(crate) cigbacc: f64,
+    pub(crate) aigbinv: f64,
+    pub(crate) bigbinv: f64,
+    pub(crate) cigbinv: f64,
+    pub(crate) nigc: f64,
+    pub(crate) nigbacc: f64,
+    pub(crate) nigbinv: f64,
+    pub(crate) ntox: f64,
+    pub(crate) eigbinv: f64,
+    pub(crate) pigcd: f64,
+    pub(crate) poxedge: f64,
+    pub(crate) xrcrg1: f64,
+    pub(crate) xrcrg2: f64,
+    pub(crate) lambda: f64,   /* overshoot */
+    pub(crate) vtl: f64,      /* thermal velocity limit */
+    pub(crate) xn: f64,       /* back scattering parameter */
+    pub(crate) lc: f64,       /* back scattering parameter */
+    pub(crate) tfactor: f64,  /* ballistic transportation factor  */
+    pub(crate) vfbsdoff: f64, /* S/D flatband offset voltage  */
+    pub(crate) tvfbsdoff: f64,
 
     /* added for stress effect */
-    ku0: f64,
-    kvth0: f64,
-    ku0temp: f64,
-    rho_ref: f64,
-    inv_od_ref: f64,
+    pub(crate) ku0: f64,
+    pub(crate) kvth0: f64,
+    pub(crate) ku0temp: f64,
+    pub(crate) rho_ref: f64,
+    pub(crate) inv_od_ref: f64,
     /* added for well proximity effect */
-    kvth0we: f64,
-    k2we: f64,
-    ku0we: f64,
+    pub(crate) kvth0we: f64,
+    pub(crate) k2we: f64,
+    pub(crate) ku0we: f64,
 
     /* CV model */
-    cgsl: f64,
-    cgdl: f64,
-    ckappas: f64,
-    ckappad: f64,
-    cf: f64,
-    clc: f64,
-    cle: f64,
-    vfbcv: f64,
-    noff: f64,
-    voffcv: f64,
-    acde: f64,
-    moin: f64,
+    pub(crate) cgsl: f64,
+    pub(crate) cgdl: f64,
+    pub(crate) ckappas: f64,
+    pub(crate) ckappad: f64,
+    pub(crate) cf: f64,
+    pub(crate) clc: f64,
+    pub(crate) cle: f64,
+    pub(crate) vfbcv: f64,
+    pub(crate) noff: f64,
+    pub(crate) voffcv: f64,
+    pub(crate) acde: f64,
+    pub(crate) moin: f64,
 
     /* Pre-calculated constants */
-    dw: f64,
-    dl: f64,
-    leff: f64,
-    weff: f64,
+    pub(crate) dw: f64,
+    pub(crate) dl: f64,
+    pub(crate) leff: f64,
+    pub(crate) weff: f64,
 
-    dwc: f64,
-    dlc: f64,
-    dwj: f64,
-    leffCV: f64,
-    weffCV: f64,
-    weffCJ: f64,
-    abulkCVfactor: f64,
-    cgso: f64,
-    cgdo: f64,
-    cgbo: f64,
+    pub(crate) dwc: f64,
+    pub(crate) dlc: f64,
+    pub(crate) dwj: f64,
+    pub(crate) leffCV: f64,
+    pub(crate) weffCV: f64,
+    pub(crate) weffCJ: f64,
+    pub(crate) abulkCVfactor: f64,
+    pub(crate) cgso: f64,
+    pub(crate) cgdo: f64,
+    pub(crate) cgbo: f64,
 
-    u0temp: f64,
-    vsattemp: f64,
-    sqrtPhi: f64,
-    phis3: f64,
-    Xdep0: f64,
-    sqrtXdep0: f64,
-    theta0vb0: f64,
-    thetaRout: f64,
-    mstar: f64,
-    VgsteffVth: f64,
-    mstarcv: f64,
-    voffcbn: f64,
-    voffcbncv: f64,
-    rdswmin: f64,
-    rdwmin: f64,
-    rswmin: f64,
-    vfbsd: f64,
+    pub(crate) u0temp: f64,
+    pub(crate) vsattemp: f64,
+    pub(crate) sqrtPhi: f64,
+    pub(crate) phis3: f64,
+    pub(crate) Xdep0: f64,
+    pub(crate) sqrtXdep0: f64,
+    pub(crate) theta0vb0: f64,
+    pub(crate) thetaRout: f64,
+    pub(crate) mstar: f64,
+    pub(crate) VgsteffVth: f64,
+    pub(crate) mstarcv: f64,
+    pub(crate) voffcbn: f64,
+    pub(crate) voffcbncv: f64,
+    pub(crate) rdswmin: f64,
+    pub(crate) rdwmin: f64,
+    pub(crate) rswmin: f64,
+    pub(crate) vfbsd: f64,
 
-    cof1: f64,
-    cof2: f64,
-    cof3: f64,
-    cof4: f64,
-    cdep0: f64,
-    ToxRatio: f64,
-    Aechvb: f64,
-    Bechvb: f64,
-    ToxRatioEdge: f64,
-    AechvbEdgeS: f64,
-    AechvbEdgeD: f64,
-    BechvbEdge: f64,
-    ldeb: f64,
-    k1ox: f64,
-    k2ox: f64,
-    vfbzbfactor: f64,
-    dvtp2factor: f64, /* v4.7 */
+    pub(crate) cof1: f64,
+    pub(crate) cof2: f64,
+    pub(crate) cof3: f64,
+    pub(crate) cof4: f64,
+    pub(crate) cdep0: f64,
+    pub(crate) ToxRatio: f64,
+    pub(crate) Aechvb: f64,
+    pub(crate) Bechvb: f64,
+    pub(crate) ToxRatioEdge: f64,
+    pub(crate) AechvbEdgeS: f64,
+    pub(crate) AechvbEdgeD: f64,
+    pub(crate) BechvbEdge: f64,
+    pub(crate) ldeb: f64,
+    pub(crate) k1ox: f64,
+    pub(crate) k2ox: f64,
+    pub(crate) vfbzbfactor: f64,
+    pub(crate) dvtp2factor: f64, /* v4.7 */
 }
 
 /// # BSIM4 Matrix Pointers
@@ -736,10 +748,11 @@ struct Bsim4MatrixPointers {
 }
 
 /// BSIM4 MOSFET Solver
-pub struct Bsim4 {
+pub(crate) struct Bsim4 {
     ports: Bsim4Ports,
     inst: Bsim4Inst,
-    model: Bsim4Model,
+    model: Bsim4ModelVals,
+    model_derived: Bsim4ModelDerivedParams,
     size_params: Bsim4SizeDepParams,
     intp: Bsim4InternalParams,
     guess: Bsim4OpPoint,
@@ -1282,24 +1295,7 @@ impl Component for Bsim4 {
         let mut gqdef: f64;
         let mut cqdef: f64;
         let mut cqcheq: f64;
-        // let mut gcqdb: f64;
-        // let mut gcqsb: f64;
-        // let mut gcqgb: f64;
-        // let mut gcqbb: f64;
-        // let mut dxpart: f64;
-        // let mut sxpart: f64;
-        // let mut ggtg: f64;
-        // let mut ggtd: f64;
-        // let mut ggts: f64;
-        // let mut ggtb: f64;
-        // let mut ddxpart_dVd: f64;
-        // let mut ddxpart_dVg: f64;
-        // let mut ddxpart_dVb: f64;
-        // let mut ddxpart_dVs: f64;
-        // let mut dsxpart_dVd: f64;
-        // let mut dsxpart_dVg: f64;
-        // let mut dsxpart_dVb: f64;
-        // let mut dsxpart_dVs: f64;
+        
         let mut gbspsp: f64;
         let mut gbbdp: f64;
         let mut gbbsp: f64;
@@ -1466,18 +1462,20 @@ impl Component for Bsim4 {
         delvdes = vdes - self.guess.vdes;
         delvded = vdes - vds - vdedo;
 
-        delvbd_jct = if self.intp.rbodyMod != 0 {
+        delvbd_jct = if self.model.rbodymod != 0 {
             delvbd
         } else {
             delvdbd
         };
-        delvbs_jct = if self.intp.rbodyMod != 0 {
+        delvbs_jct = if self.model.rbodymod != 0 {
             delvbs
         } else {
             delvsbs
         };
 
+        // 
         // Convergence/ LTE criteria - to be moved elsewhere
+        // 
         // if self.guess.mode >= 0 {
         //     Idtot = self.guess.cd + self.guess.csub - self.guess.cbd + self.guess.Igidl;
         //     cdhat = Idtot - self.guess.gbd * delvbd_jct
@@ -1568,12 +1566,12 @@ impl Component for Bsim4 {
             vds = vgs - vgd;
             vds = DEVlimvds(vds, self.guess.vds);
             vgd = vgs - vds;
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 vges = DEVfetlim(vges, self.guess.vges, von);
                 vgms = DEVfetlim(vgms, self.guess.vgms, von);
                 vged = vges - vds;
                 vgmd = vgms - vds;
-            } else if (self.intp.rgateMod == 1) || (self.intp.rgateMod == 2) {
+            } else if (self.model.rgatemod == 1) || (self.model.rgatemod == 2) {
                 vges = DEVfetlim(vges, self.guess.vges, von);
                 vged = vges - vds;
             }
@@ -1587,13 +1585,13 @@ impl Component for Bsim4 {
             vds = -DEVlimvds(-vds, -self.guess.vds);
             vgs = vgd + vds;
 
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 vged = DEVfetlim(vged, vgedo, von);
                 vges = vged + vds;
                 vgmd = DEVfetlim(vgmd, vgmdo, von);
                 vgms = vgmd + vds;
             }
-            if (self.intp.rgateMod == 1) || (self.intp.rgateMod == 2) {
+            if (self.model.rgatemod == 1) || (self.model.rgatemod == 2) {
                 vged = DEVfetlim(vged, vgedo, von);
                 vges = vged + vds;
             }
@@ -1605,22 +1603,22 @@ impl Component for Bsim4 {
         }
 
         if vds >= 0.0 {
-            vbs = DEVpnjlim(vbs, self.guess.vbs, VT_REF, self.intp.vcrit);
+            vbs = DEVpnjlim(vbs, self.guess.vbs, VT_REF, self.model_derived.vcrit);
             vbd = vbs - vds;
-            if self.intp.rbodyMod != 0 {
-                vdbs = DEVpnjlim(vdbs, self.guess.vdbs, VT_REF, self.intp.vcrit);
+            if self.model.rbodymod != 0 {
+                vdbs = DEVpnjlim(vdbs, self.guess.vdbs, VT_REF, self.model_derived.vcrit);
                 vdbd = vdbs - vds;
-                vsbs = DEVpnjlim(vsbs, self.guess.vsbs, VT_REF, self.intp.vcrit);
+                vsbs = DEVpnjlim(vsbs, self.guess.vsbs, VT_REF, self.model_derived.vcrit);
             }
         } else {
-            vbd = DEVpnjlim(vbd, self.guess.vbd, VT_REF, self.intp.vcrit);
+            vbd = DEVpnjlim(vbd, self.guess.vbd, VT_REF, self.model_derived.vcrit);
             vbs = vbd + vds;
-            if self.intp.rbodyMod != 0 {
-                vdbd = DEVpnjlim(vdbd, self.guess.vdbd, VT_REF, self.intp.vcrit);
+            if self.model.rbodymod != 0 {
+                vdbd = DEVpnjlim(vdbd, self.guess.vdbd, VT_REF, self.model_derived.vcrit);
                 vdbs = vdbd + vds;
                 vsbdo = self.guess.vsbs - self.guess.vds;
                 vsbd = vsbs - vds;
-                vsbd = DEVpnjlim(vsbd, vsbdo, VT_REF, self.intp.vcrit);
+                vsbd = DEVpnjlim(vsbd, vsbdo, VT_REF, self.model_derived.vcrit);
                 vsbs = vsbd + vds;
             }
         }
@@ -1634,19 +1632,19 @@ impl Component for Bsim4 {
         vgmb = vgms - vbs;
         vdbd = vdbs - vds;
 
-        vbs_jct = if self.intp.rbodyMod != 0 { vbs } else { vsbs };
-        vbd_jct = if self.intp.rbodyMod != 0 { vbd } else { vdbd };
+        vbs_jct = if self.model.rbodymod != 0 { vbs } else { vsbs };
+        vbd_jct = if self.model.rbodymod != 0 { vbd } else { vdbd };
 
         // Source/drain junction diode DC model begins
-        Nvtms = self.intp.vtm * self.intp.SjctEmissionCoeff;
+        Nvtms = self.model_derived.vtm * self.model_derived.SjctEmissionCoeff;
         if (self.intp.Aseff <= 0.0) && (self.intp.Pseff <= 0.0) {
             SourceSatCurrent = 0.0;
         } else {
-            SourceSatCurrent = self.intp.Aseff * self.intp.SjctTempSatCurDensity
-                + self.intp.Pseff * self.intp.SjctSidewallTempSatCurDensity
+            SourceSatCurrent = self.intp.Aseff * self.model_derived.SjctTempSatCurDensity
+                + self.intp.Pseff * self.model_derived.SjctSidewallTempSatCurDensity
                 + self.size_params.weffCJ
                     * self.intp.nf
-                    * self.intp.SjctGateSidewallTempSatCurDensity;
+                    * self.model_derived.SjctGateSidewallTempSatCurDensity;
         }
 
         if SourceSatCurrent <= 0.0 {
@@ -1728,16 +1726,16 @@ impl Component for Bsim4 {
             }
         }
 
-        Nvtmd = self.intp.vtm * self.intp.DjctEmissionCoeff;
+        Nvtmd = self.model_derived.vtm * self.model_derived.DjctEmissionCoeff;
 
         if (self.intp.Adeff <= 0.0) && (self.intp.Pdeff <= 0.0) {
             DrainSatCurrent = 0.0;
         } else {
-            DrainSatCurrent = self.intp.Adeff * self.intp.DjctTempSatCurDensity
-                + self.intp.Pdeff * self.intp.DjctSidewallTempSatCurDensity
+            DrainSatCurrent = self.intp.Adeff * self.model_derived.DjctTempSatCurDensity
+                + self.intp.Pdeff * self.model_derived.DjctSidewallTempSatCurDensity
                 + self.size_params.weffCJ
                     * self.intp.nf
-                    * self.intp.DjctGateSidewallTempSatCurDensity;
+                    * self.model_derived.DjctGateSidewallTempSatCurDensity;
         }
 
         if DrainSatCurrent <= 0.0 {
@@ -1818,100 +1816,101 @@ impl Component for Bsim4 {
         }
 
         /* trap-assisted tunneling and recombination current for reverse bias  */
-        Nvtmrssws = self.intp.vtm0 * self.intp.njtsswstemp;
-        Nvtmrsswgs = self.intp.vtm0 * self.intp.njtsswgstemp;
-        Nvtmrss = self.intp.vtm0 * self.intp.njtsstemp;
-        Nvtmrsswd = self.intp.vtm0 * self.intp.njtsswdtemp;
-        Nvtmrsswgd = self.intp.vtm0 * self.intp.njtsswgdtemp;
-        Nvtmrsd = self.intp.vtm0 * self.intp.njtsdtemp;
+        // FIXME: all these things could be stored rather than calculated each iteration 
+        Nvtmrssws = self.model_derived.vtm0 * self.model_derived.njtsswstemp;
+        Nvtmrsswgs = self.model_derived.vtm0 * self.model_derived.njtsswgstemp;
+        Nvtmrss = self.model_derived.vtm0 * self.model_derived.njtsstemp;
+        Nvtmrsswd = self.model_derived.vtm0 * self.model_derived.njtsswdtemp;
+        Nvtmrsswgd = self.model_derived.vtm0 * self.model_derived.njtsswgdtemp;
+        Nvtmrsd = self.model_derived.vtm0 * self.model_derived.njtsdtemp;
 
         if (self.model.vtss - vbs_jct) < (self.model.vtss * 1e-3) {
             T9 = 1.0e3;
             T0 = -vbs_jct / Nvtmrss * T9;
-            T1 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T1 = dexpb(T0);
+            T10 = dexpc(T0);
             dT1_dVb = T10 / Nvtmrss * T9;
         } else {
             T9 = 1.0 / (self.model.vtss - vbs_jct);
             T0 = -vbs_jct / Nvtmrss * self.model.vtss * T9;
             dT0_dVb = self.model.vtss / Nvtmrss * (T9 + vbs_jct * T9 * T9);
-            T1 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T1 = dexpb(T0);
+            T10 = dexpc(T0);
             dT1_dVb = T10 * dT0_dVb;
         }
 
         if (self.model.vtsd - vbd_jct) < (self.model.vtsd * 1e-3) {
             T9 = 1.0e3;
             T0 = -vbd_jct / Nvtmrsd * T9;
-            T2 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T2 = dexpb(T0);
+            T10 = dexpc(T0);
             dT2_dVb = T10 / Nvtmrsd * T9;
         } else {
             T9 = 1.0 / (self.model.vtsd - vbd_jct);
             T0 = -vbd_jct / Nvtmrsd * self.model.vtsd * T9;
             dT0_dVb = self.model.vtsd / Nvtmrsd * (T9 + vbd_jct * T9 * T9);
-            T2 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T2 = dexpb(T0);
+            T10 = dexpc(T0);
             dT2_dVb = T10 * dT0_dVb;
         }
 
         if (self.model.vtssws - vbs_jct) < (self.model.vtssws * 1e-3) {
             T9 = 1.0e3;
             T0 = -vbs_jct / Nvtmrssws * T9;
-            T3 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T3 = dexpb(T0);
+            T10 = dexpc(T0);
             dT3_dVb = T10 / Nvtmrssws * T9;
         } else {
             T9 = 1.0 / (self.model.vtssws - vbs_jct);
             T0 = -vbs_jct / Nvtmrssws * self.model.vtssws * T9;
             dT0_dVb = self.model.vtssws / Nvtmrssws * (T9 + vbs_jct * T9 * T9);
-            T3 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T3 = dexpb(T0);
+            T10 = dexpc(T0);
             dT3_dVb = T10 * dT0_dVb;
         }
 
         if (self.model.vtsswd - vbd_jct) < (self.model.vtsswd * 1e-3) {
             T9 = 1.0e3;
             T0 = -vbd_jct / Nvtmrsswd * T9;
-            T4 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T4 = dexpb(T0);
+            T10 = dexpc(T0);
             dT4_dVb = T10 / Nvtmrsswd * T9;
         } else {
             T9 = 1.0 / (self.model.vtsswd - vbd_jct);
             T0 = -vbd_jct / Nvtmrsswd * self.model.vtsswd * T9;
             dT0_dVb = self.model.vtsswd / Nvtmrsswd * (T9 + vbd_jct * T9 * T9);
-            T4 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T4 = dexpb(T0);
+            T10 = dexpc(T0);
             dT4_dVb = T10 * dT0_dVb;
         }
 
         if (self.model.vtsswgs - vbs_jct) < (self.model.vtsswgs * 1e-3) {
             T9 = 1.0e3;
             T0 = -vbs_jct / Nvtmrsswgs * T9;
-            T5 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T5 = dexpb(T0);
+            T10 = dexpc(T0);
             dT5_dVb = T10 / Nvtmrsswgs * T9;
         } else {
             T9 = 1.0 / (self.model.vtsswgs - vbs_jct);
             T0 = -vbs_jct / Nvtmrsswgs * self.model.vtsswgs * T9;
             dT0_dVb = self.model.vtsswgs / Nvtmrsswgs * (T9 + vbs_jct * T9 * T9);
-            T5 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T5 = dexpb(T0);
+            T10 = dexpc(T0);
             dT5_dVb = T10 * dT0_dVb;
         }
 
         if (self.model.vtsswgd - vbd_jct) < (self.model.vtsswgd * 1e-3) {
             T9 = 1.0e3;
             T0 = -vbd_jct / Nvtmrsswgd * T9;
-            T6 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T6 = dexpb(T0);
+            T10 = dexpc(T0);
             dT6_dVb = T10 / Nvtmrsswgd * T9;
         } else {
             T9 = 1.0 / (self.model.vtsswgd - vbd_jct);
             T0 = -vbd_jct / Nvtmrsswgd * self.model.vtsswgd * T9;
             dT0_dVb = self.model.vtsswgd / Nvtmrsswgd * (T9 + vbd_jct * T9 * T9);
-            T6 = DEXPb(T0);
-            T10 = DEXPc(T0);
+            T6 = dexpb(T0);
+            T10 = dexpc(T0);
             dT6_dVb = T10 * dT0_dVb;
         }
 
@@ -1980,8 +1979,8 @@ impl Component for Bsim4 {
         dXdep_dVb = (self.size_params.Xdep0 / self.size_params.sqrtPhi) * dsqrtPhis_dVb;
 
         Leff = self.size_params.leff;
-        Vtm = self.intp.vtm;
-        Vtm0 = self.intp.vtm0;
+        Vtm = self.model_derived.vtm;
+        Vtm0 = self.model_derived.vtm0;
 
         /* Vth Calculation */
         T3 = sqrt(Xdep);
@@ -1996,8 +1995,8 @@ impl Component for Bsim4 {
             T1 = (1.0 + 3.0 * T0) * T4;
             T2 = self.size_params.dvt2 * T4 * T4;
         }
-        lt1 = self.intp.factor1 * T3 * T1;
-        dlt1_dVb = self.intp.factor1 * (0.5 / T3 * T1 * dXdep_dVb + T3 * T2);
+        lt1 = self.model_derived.factor1 * T3 * T1;
+        dlt1_dVb = self.model_derived.factor1 * (0.5 / T3 * T1 * dXdep_dVb + T3 * T2);
 
         T0 = self.size_params.dvt2w * Vbseff;
         if T0 >= -0.5 {
@@ -2008,8 +2007,8 @@ impl Component for Bsim4 {
             T1 = (1.0 + 3.0 * T0) * T4;
             T2 = self.size_params.dvt2w * T4 * T4;
         }
-        ltw = self.intp.factor1 * T3 * T1;
-        dltw_dVb = self.intp.factor1 * (0.5 / T3 * T1 * dXdep_dVb + T3 * T2);
+        ltw = self.model_derived.factor1 * T3 * T1;
+        dltw_dVb = self.model_derived.factor1 * (0.5 / T3 * T1 * dXdep_dVb + T3 * T2);
 
         T0 = self.size_params.dvt1 * Leff / lt1;
         if T0 < EXP_THRESHOLD {
@@ -2049,7 +2048,7 @@ impl Component for Bsim4 {
         T0 = sqrt(1.0 + self.size_params.lpe0 / Leff);
         T1 = self.size_params.k1ox * (T0 - 1.0) * self.size_params.sqrtPhi
             + (self.size_params.kt1 + self.size_params.kt1l / Leff + self.size_params.kt2 * Vbseff)
-                * self.intp.TempRatio;
+                * self.model_derived.TempRatio;
         Vth_NarrowW = toxe * self.size_params.phi / (self.size_params.weff + self.size_params.w0);
 
         T3 = self.intp.eta0 + self.size_params.etab * Vbseff;
@@ -2081,31 +2080,31 @@ impl Component for Bsim4 {
             - dT2_dVb
             + self.size_params.k3b * Vth_NarrowW
             - self.size_params.etab * Vds * self.size_params.theta0vb0 * T4
-            + self.size_params.kt2 * self.intp.TempRatio;
+            + self.size_params.kt2 * self.model_derived.TempRatio;
         dVth_dVd = -dDIBL_Sft_dVd;
 
         /* Calculate n */
         tmp1 = epssub / Xdep;
-        newop.nstar = self.intp.vtm / Q * (self.intp.coxe + tmp1 + self.size_params.cit);
+        newop.nstar = self.model_derived.vtm / Q * (self.model_derived.coxe + tmp1 + self.size_params.cit);
         tmp2 = self.size_params.nfactor * tmp1;
         tmp3 =
             self.size_params.cdsc + self.size_params.cdscb * Vbseff + self.size_params.cdscd * Vds;
-        tmp4 = (tmp2 + tmp3 * Theta0 + self.size_params.cit) / self.intp.coxe;
+        tmp4 = (tmp2 + tmp3 * Theta0 + self.size_params.cit) / self.model_derived.coxe;
         if tmp4 >= -0.5 {
             n = 1.0 + tmp4;
             dn_dVb =
                 (-tmp2 / Xdep * dXdep_dVb + tmp3 * dTheta0_dVb + self.size_params.cdscb * Theta0)
-                    / self.intp.coxe;
-            dn_dVd = self.size_params.cdscd * Theta0 / self.intp.coxe;
+                    / self.model_derived.coxe;
+            dn_dVd = self.size_params.cdscd * Theta0 / self.model_derived.coxe;
         } else {
             T0 = 1.0 / (3.0 + 8.0 * tmp4);
             n = (1.0 + 3.0 * tmp4) * T0;
             T0 *= T0;
             dn_dVb =
                 (-tmp2 / Xdep * dXdep_dVb + tmp3 * dTheta0_dVb + self.size_params.cdscb * Theta0)
-                    / self.intp.coxe
+                    / self.model_derived.coxe
                     * T0;
-            dn_dVd = self.size_params.cdscd * Theta0 / self.intp.coxe * T0;
+            dn_dVd = self.size_params.cdscd * Theta0 / self.model_derived.coxe * T0;
         }
 
         /* Vth correction for Pocket implant */
@@ -2125,8 +2124,8 @@ impl Component for Bsim4 {
                 T4 = Vtm * log(Leff / T3);
                 dT4_dVd = -Vtm * dT3_dVd / T3;
             } else {
-                T4 = self.intp.vtm0 * log(Leff / T3);
-                dT4_dVd = -self.intp.vtm0 * dT3_dVd / T3;
+                T4 = self.model_derived.vtm0 * log(Leff / T3);
+                dT4_dVd = -self.model_derived.vtm0 * dT3_dVd / T3;
             }
             dDITS_Sft_dVd = dn_dVd * T4 + n * dT4_dVd;
             dDITS_Sft_dVb = T4 * dn_dVb;
@@ -2143,8 +2142,8 @@ impl Component for Bsim4 {
         } else {
             //T0 = exp(2.0 * self.size_params.dvtp4 * Vds);   /* beta code */
             T1 = 2.0 * self.size_params.dvtp4 * Vds;
-            T0 = DEXPb(T1);
-            T10 = DEXPc(T1);
+            T0 = dexpb(T1);
+            T10 = dexpc(T1);
             DITS_Sft2 = self.size_params.dvtp2factor * (T0 - 1.0) / (T0 + 1.0);
             //dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T0 / ((T0+1) * (T0+1));   /* beta code */
             dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T10
@@ -2163,10 +2162,10 @@ impl Component for Bsim4 {
             T1 = self.model.epsrgate * EPS0;
         }
         // Sad destructuring
-        let (_v, _dv) = polyDepletion(T0, self.size_params.ngate, T1, self.intp.coxe, vgs);
+        let (_v, _dv) = polyDepletion(T0, self.size_params.ngate, T1, self.model_derived.coxe, vgs);
         vgs_eff = _v;
         dvgs_eff_dvg = _dv;
-        let (_v, _dv) = polyDepletion(T0, self.size_params.ngate, T1, self.intp.coxe, vgd);
+        let (_v, _dv) = polyDepletion(T0, self.size_params.ngate, T1, self.model_derived.coxe, vgd);
         vgd_eff = _v;
         dvgd_eff_dvg = _dv;
 
@@ -2212,20 +2211,20 @@ impl Component for Bsim4 {
         T1 = self.size_params.voffcbn - (1.0 - self.size_params.mstar) * Vgst;
         T2 = T1 / T0;
         if T2 < -EXP_THRESHOLD {
-            T3 = self.intp.coxe * MIN_EXP / self.size_params.cdep0;
+            T3 = self.model_derived.coxe * MIN_EXP / self.size_params.cdep0;
             T9 = self.size_params.mstar + T3 * n;
             dT9_dVg = 0.0;
             dT9_dVd = dn_dVd * T3;
             dT9_dVb = dn_dVb * T3;
         } else if T2 > EXP_THRESHOLD {
-            T3 = self.intp.coxe * MAX_EXP / self.size_params.cdep0;
+            T3 = self.model_derived.coxe * MAX_EXP / self.size_params.cdep0;
             T9 = self.size_params.mstar + T3 * n;
             dT9_dVg = 0.0;
             dT9_dVd = dn_dVd * T3;
             dT9_dVb = dn_dVb * T3;
         } else {
             ExpVgst = exp(T2);
-            T3 = self.intp.coxe / self.size_params.cdep0;
+            T3 = self.model_derived.coxe / self.size_params.cdep0;
             T4 = T3 * ExpVgst;
             T5 = T1 * T4 / T0;
             T9 = self.size_params.mstar + n * T4;
@@ -2346,7 +2345,7 @@ impl Component for Bsim4 {
         if self.model.mtrlmod != 0 && self.model.mtrlcompatmod == 0 {
             T14 = 2.0
                 * self.model.p()
-                * (self.model.phig - self.model.easub - 0.5 * self.intp.Eg0 + 0.45);
+                * (self.model.phig - self.model.easub - 0.5 * self.model_derived.Eg0 + 0.45);
         } else {
             T14 = 0.0;
         }
@@ -2500,7 +2499,7 @@ impl Component for Bsim4 {
         dueff_dVb = T9 * dDenomi_dVb;
 
         /* Saturation Drain Voltage  Vdsat */
-        WVCox = Weff * self.intp.vsattemp * self.intp.coxe;
+        WVCox = Weff * self.intp.vsattemp * self.model_derived.coxe;
         WVCoxRds = WVCox * Rds;
 
         Esat = 2.0 * self.intp.vsattemp / ueff;
@@ -3025,7 +3024,7 @@ impl Component for Bsim4 {
             dvs_dVg = Gm * T11 + cdrain * T10 * dVgsteff_dVg;
             dvs_dVd = Gds * T11 + cdrain * T10 * dVgsteff_dVd;
             dvs_dVb = Gmb * T11 + cdrain * T10 * dVgsteff_dVb;
-            T0 = 2.0 * MM;
+            T0 = 6.0;
             T1 = vs / (self.size_params.vtl * self.size_params.tfactor);
             if T1 > 0.0 {
                 T2 = 1.0 + exp(T0 * log(T1));
@@ -3063,8 +3062,8 @@ impl Component for Bsim4 {
         }
 
         /* Calculate Rg */
-        if ((self.intp.rgateMod > 1) || (self.model.trnqsmod != 0) || (self.model.acnqsmod != 0)) {
-            T9 = self.size_params.xrcrg2 * self.intp.vtm;
+        if ((self.model.rgatemod > 1) || (self.model.trnqsmod != 0) || (self.model.acnqsmod != 0)) {
+            T9 = self.size_params.xrcrg2 * self.model_derived.vtm;
             T0 = T9 * beta;
             dT0_dVd = (dbeta_dVd + dbeta_dVg * dVgsteff_dVd) * T9;
             dT0_dVb = (dbeta_dVb + dbeta_dVg * dVgsteff_dVb) * T9;
@@ -3082,7 +3081,7 @@ impl Component for Bsim4 {
                 newop.gcrgb *= self.intp.nf;
             }
 
-            if self.intp.rgateMod == 2 {
+            if self.model.rgatemod == 2 {
                 T10 = self.intp.grgeltd * self.intp.grgeltd;
                 T11 = self.intp.grgeltd + newop.gcrg;
                 newop.gcrg = self.intp.grgeltd * newop.gcrg / T11;
@@ -3944,7 +3943,7 @@ impl Component for Bsim4 {
                 dVgst_dVb = -dVth_dVb;
                 dVgst_dVg = dVgs_eff_dVg;
 
-                CoxWL = self.intp.coxe
+                CoxWL = self.model_derived.coxe
                     * self.size_params.weffCV
                     * self.size_params.leffCV
                     * self.intp.nf;
@@ -4211,7 +4210,7 @@ impl Component for Bsim4 {
                     dVbseffCV_dVb = -dPhis_dVb;
                 }
 
-                CoxWL = self.intp.coxe
+                CoxWL = self.model_derived.coxe
                     * self.size_params.weffCV
                     * self.size_params.leffCV
                     * self.intp.nf;
@@ -4277,20 +4276,20 @@ impl Component for Bsim4 {
                     T1 = self.size_params.voffcbncv - (1.0 - self.size_params.mstarcv) * Vgst;
                     T2 = T1 / T0;
                     if T2 < -EXP_THRESHOLD {
-                        T3 = self.intp.coxe * MIN_EXP / self.size_params.cdep0;
+                        T3 = self.model_derived.coxe * MIN_EXP / self.size_params.cdep0;
                         T9 = self.size_params.mstarcv + T3 * n;
                         dT9_dVg = 0.0;
                         dT9_dVd = dn_dVd * T3;
                         dT9_dVb = dn_dVb * T3;
                     } else if T2 > EXP_THRESHOLD {
-                        T3 = self.intp.coxe * MAX_EXP / self.size_params.cdep0;
+                        T3 = self.model_derived.coxe * MAX_EXP / self.size_params.cdep0;
                         T9 = self.size_params.mstarcv + T3 * n;
                         dT9_dVg = 0.0;
                         dT9_dVd = dn_dVd * T3;
                         dT9_dVb = dn_dVb * T3;
                     } else {
                         ExpVgst = exp(T2);
-                        T3 = self.intp.coxe / self.size_params.cdep0;
+                        T3 = self.model_derived.coxe / self.size_params.cdep0;
                         T4 = T3 * ExpVgst;
                         T5 = T1 * T4 / T0;
                         T9 = self.size_params.mstarcv + n * T4;
@@ -4459,7 +4458,7 @@ impl Component for Bsim4 {
                     newop.cgsb = -(Cgg + Cgd + Cgb);
                     newop.cgdb = Cgd;
                     newop.cdgb = -(Cgg + Cbg + Csg);
-                    newop.cdsb = (Cgg + Cgd + Cgb + Cbg + Cbd + Cbb + Csg + Csd + Csb);
+                    newop.cdsb = Cgg + Cgd + Cgb + Cbg + Cbd + Cbb + Csg + Csd + Csb;
                     newop.cddb = -(Cgd + Cbd + Csd);
                     newop.cbgb = Cbg;
                     newop.cbsb = -(Cbg + Cbd + Cbb);
@@ -4516,7 +4515,7 @@ impl Component for Bsim4 {
                     dCoxeff_dVg = T2 * T2 * T3;
                     dCoxeff_dVb = dCoxeff_dVg * dTcen_dVb;
                     dCoxeff_dVg *= dTcen_dVg;
-                    CoxWLcen = CoxWL * Coxeff / self.intp.coxe;
+                    CoxWLcen = CoxWL * Coxeff / self.model_derived.coxe;
 
                     Qac0 = CoxWLcen * (Vfbeff - self.intp.vfbzb);
                     QovCox = Qac0 / Coxeff;
@@ -4587,7 +4586,7 @@ impl Component for Bsim4 {
                     dCoxeff_dVd = dCoxeff_dVg * dTcen_dVd;
                     dCoxeff_dVb = dCoxeff_dVg * dTcen_dVb;
                     dCoxeff_dVg *= dTcen_dVg;
-                    CoxWLcen = CoxWL * Coxeff / self.intp.coxe;
+                    CoxWLcen = CoxWL * Coxeff / self.model_derived.coxe;
 
                     AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
                     dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb;
@@ -4754,7 +4753,7 @@ impl Component for Bsim4 {
                 newop.cqsb = -(newop.cgsb + newop.cbsb);
                 newop.cqbb = -(newop.cqgb + newop.cqdb + newop.cqsb);
 
-                CoxWL = self.intp.coxe
+                CoxWL = self.model_derived.coxe
                     * self.size_params.weffCV
                     * self.intp.nf
                     * self.size_params.leffCV;
@@ -4780,24 +4779,24 @@ impl Component for Bsim4 {
 
         // Charge computations
         if let AnalysisInfo::TRAN(_, state) = an {
-            czbd = self.intp.DunitAreaTempJctCap * self.intp.Adeff;
-            czbs = self.intp.SunitAreaTempJctCap * self.intp.Aseff;
-            czbdsw = self.intp.DunitLengthSidewallTempJctCap * self.intp.Pdeff;
-            czbdswg = self.intp.DunitLengthGateSidewallTempJctCap
+            czbd = self.model_derived.DunitAreaTempJctCap * self.intp.Adeff;
+            czbs = self.model_derived.SunitAreaTempJctCap * self.intp.Aseff;
+            czbdsw = self.model_derived.DunitLengthSidewallTempJctCap * self.intp.Pdeff;
+            czbdswg = self.model_derived.DunitLengthGateSidewallTempJctCap
                 * self.size_params.weffCJ
                 * self.intp.nf;
-            czbssw = self.intp.SunitLengthSidewallTempJctCap * self.intp.Pseff;
-            czbsswg = self.intp.SunitLengthGateSidewallTempJctCap
+            czbssw = self.model_derived.SunitLengthSidewallTempJctCap * self.intp.Pseff;
+            czbsswg = self.model_derived.SunitLengthGateSidewallTempJctCap
                 * self.size_params.weffCJ
                 * self.intp.nf;
 
-            MJS = self.intp.SbulkJctBotGradingCoeff;
-            MJSWS = self.intp.SbulkJctSideGradingCoeff;
-            MJSWGS = self.intp.SbulkJctGateSideGradingCoeff;
+            MJS = self.model_derived.SbulkJctBotGradingCoeff;
+            MJSWS = self.model_derived.SbulkJctSideGradingCoeff;
+            MJSWGS = self.model_derived.SbulkJctGateSideGradingCoeff;
 
-            MJD = self.intp.DbulkJctBotGradingCoeff;
-            MJSWD = self.intp.DbulkJctSideGradingCoeff;
-            MJSWGD = self.intp.DbulkJctGateSideGradingCoeff;
+            MJD = self.model_derived.DbulkJctBotGradingCoeff;
+            MJSWD = self.model_derived.DbulkJctSideGradingCoeff;
+            MJSWGD = self.model_derived.DbulkJctGateSideGradingCoeff;
 
             /* Source Bulk Junction */
             if vbs_jct == 0.0 {
@@ -4805,44 +4804,44 @@ impl Component for Bsim4 {
                 newop.capbs = czbs + czbssw + czbsswg;
             } else if vbs_jct < 0.0 {
                 if czbs > 0.0 {
-                    arg = 1.0 - vbs_jct / self.intp.PhiBS;
+                    arg = 1.0 - vbs_jct / self.model_derived.PhiBS;
                     if (MJS == 0.5) {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJS * log(arg));
                     }
-                    newop.qbs = self.intp.PhiBS * czbs * (1.0 - arg * sarg) / (1.0 - MJS);
+                    newop.qbs = self.model_derived.PhiBS * czbs * (1.0 - arg * sarg) / (1.0 - MJS);
                     newop.capbs = czbs * sarg;
                 } else {
                     newop.qbs = 0.0;
                     newop.capbs = 0.0;
                 }
                 if czbssw > 0.0 {
-                    arg = 1.0 - vbs_jct / self.intp.PhiBSWS;
+                    arg = 1.0 - vbs_jct / self.model_derived.PhiBSWS;
                     if (MJSWS == 0.5) {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWS * log(arg));
                     }
-                    newop.qbs += self.intp.PhiBSWS * czbssw * (1.0 - arg * sarg) / (1.0 - MJSWS);
+                    newop.qbs += self.model_derived.PhiBSWS * czbssw * (1.0 - arg * sarg) / (1.0 - MJSWS);
                     newop.capbs += czbssw * sarg;
                 }
                 if czbsswg > 0.0 {
-                    arg = 1.0 - vbs_jct / self.intp.PhiBSWGS;
+                    arg = 1.0 - vbs_jct / self.model_derived.PhiBSWGS;
                     if (MJSWGS == 0.5) {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWGS * log(arg));
                     }
-                    newop.qbs += self.intp.PhiBSWGS * czbsswg * (1.0 - arg * sarg) / (1.0 - MJSWGS);
+                    newop.qbs += self.model_derived.PhiBSWGS * czbsswg * (1.0 - arg * sarg) / (1.0 - MJSWGS);
                     newop.capbs += czbsswg * sarg;
                 }
             } else {
                 T0 = czbs + czbssw + czbsswg;
                 T1 = vbs_jct
-                    * (czbs * MJS / self.intp.PhiBS
-                        + czbssw * MJSWS / self.intp.PhiBSWS
-                        + czbsswg * MJSWGS / self.intp.PhiBSWGS);
+                    * (czbs * MJS / self.model_derived.PhiBS
+                        + czbssw * MJSWS / self.model_derived.PhiBSWS
+                        + czbsswg * MJSWGS / self.model_derived.PhiBSWGS);
                 newop.qbs = vbs_jct * (T0 + 0.5 * T1);
                 newop.capbs = T0 + T1;
             }
@@ -4853,44 +4852,44 @@ impl Component for Bsim4 {
                 newop.capbd = czbd + czbdsw + czbdswg;
             } else if vbd_jct < 0.0 {
                 if czbd > 0.0 {
-                    arg = 1.0 - vbd_jct / self.intp.PhiBD;
+                    arg = 1.0 - vbd_jct / self.model_derived.PhiBD;
                     if (MJD == 0.5) {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJD * log(arg));
                     }
-                    newop.qbd = self.intp.PhiBD * czbd * (1.0 - arg * sarg) / (1.0 - MJD);
+                    newop.qbd = self.model_derived.PhiBD * czbd * (1.0 - arg * sarg) / (1.0 - MJD);
                     newop.capbd = czbd * sarg;
                 } else {
                     newop.qbd = 0.0;
                     newop.capbd = 0.0;
                 }
                 if czbdsw > 0.0 {
-                    arg = 1.0 - vbd_jct / self.intp.PhiBSWD;
+                    arg = 1.0 - vbd_jct / self.model_derived.PhiBSWD;
                     if (MJSWD == 0.5) {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWD * log(arg));
                     }
-                    newop.qbd += self.intp.PhiBSWD * czbdsw * (1.0 - arg * sarg) / (1.0 - MJSWD);
+                    newop.qbd += self.model_derived.PhiBSWD * czbdsw * (1.0 - arg * sarg) / (1.0 - MJSWD);
                     newop.capbd += czbdsw * sarg;
                 }
                 if czbdswg > 0.0 {
-                    arg = 1.0 - vbd_jct / self.intp.PhiBSWGD;
+                    arg = 1.0 - vbd_jct / self.model_derived.PhiBSWGD;
                     if (MJSWGD == 0.5) {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWGD * log(arg));
                     }
-                    newop.qbd += self.intp.PhiBSWGD * czbdswg * (1.0 - arg * sarg) / (1.0 - MJSWGD);
+                    newop.qbd += self.model_derived.PhiBSWGD * czbdswg * (1.0 - arg * sarg) / (1.0 - MJSWGD);
                     newop.capbd += czbdswg * sarg;
                 }
             } else {
                 T0 = czbd + czbdsw + czbdswg;
                 T1 = vbd_jct
-                    * (czbd * MJD / self.intp.PhiBD
-                        + czbdsw * MJSWD / self.intp.PhiBSWD
-                        + czbdswg * MJSWGD / self.intp.PhiBSWGD);
+                    * (czbd * MJD / self.model_derived.PhiBD
+                        + czbdsw * MJSWD / self.model_derived.PhiBSWD
+                        + czbdswg * MJSWGD / self.model_derived.PhiBSWGD);
                 newop.qbd = vbd_jct * (T0 + 0.5 * T1);
                 newop.capbd = T0 + T1;
             }
@@ -4969,7 +4968,7 @@ impl Component for Bsim4 {
 
         if self.model.trnqsmod != 0 {
             CoxWL =
-                self.intp.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
+                self.model_derived.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
             T1 = newop.gcrg / CoxWL;
             newop.gtau = T1 * ScalingFactor;
         } else {
@@ -4978,7 +4977,7 @@ impl Component for Bsim4 {
 
         // Charge computations
         if let AnalysisInfo::TRAN(_, state) = an {
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 vgdx = vgmd;
                 vgsx = vgms;
             } else {
@@ -5030,7 +5029,7 @@ impl Component for Bsim4 {
             if self.guess.mode > 0 {
                 if self.model.trnqsmod == 0 {
                     qdrn -= qgdo;
-                    if self.intp.rgateMod == 3 {
+                    if self.model.rgatemod == 3 {
                         gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                         gcgmdb = -cgdo * ag0;
                         gcgmsb = -cgso * ag0;
@@ -5078,7 +5077,7 @@ impl Component for Bsim4 {
                     gcsdb = -(newop.cgdb + newop.cbdb + newop.cddb) * ag0;
                     gcssb = (newop.capbs + cgso - (newop.cgsb + newop.cbsb + newop.cdsb)) * ag0;
 
-                    if self.intp.rbodyMod == 0 {
+                    if self.model.rbodymod == 0 {
                         gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
                         gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
                         gcbdb = (newop.cbdb - newop.capbd) * ag0;
@@ -5112,7 +5111,7 @@ impl Component for Bsim4 {
                     dsxpart_dVs = 0.0;
                 } else {
                     qcheq = newop.qchqs;
-                    CoxWL = self.intp.coxe
+                    CoxWL = self.model_derived.coxe
                         * self.size_params.weffCV
                         * self.intp.nf
                         * self.size_params.leffCV;
@@ -5166,7 +5165,7 @@ impl Component for Bsim4 {
                     dsxpart_dVs = -ddxpart_dVs;
                     dsxpart_dVb = -(dsxpart_dVd + dsxpart_dVg + dsxpart_dVs);
 
-                    if self.intp.rgateMod == 3 {
+                    if self.model.rgatemod == 3 {
                         gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                         gcgmdb = -cgdo * ag0;
                         gcgmsb = -cgso * ag0;
@@ -5215,7 +5214,7 @@ impl Component for Bsim4 {
                     gcsdb = 0.0;
                     gcssb = (newop.capbs + cgso) * ag0;
 
-                    if self.intp.rbodyMod == 0 {
+                    if self.model.rbodymod == 0 {
                         gcdbb = -(gcdgb + gcddb + gcdgmb);
                         gcsbb = -(gcsgb + gcssb + gcsgmb);
                         gcbdb = -newop.capbd * ag0;
@@ -5235,7 +5234,7 @@ impl Component for Bsim4 {
             } else {
                 if self.model.trnqsmod == 0 {
                     qsrc = qdrn - qgso;
-                    if self.intp.rgateMod == 3 {
+                    if self.model.rgatemod == 3 {
                         gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                         gcgmdb = -cgdo * ag0;
                         gcgmsb = -cgso * ag0;
@@ -5283,7 +5282,7 @@ impl Component for Bsim4 {
                     gcsdb = newop.cdsb * ag0;
                     gcssb = (newop.cddb + newop.capbs + cgso) * ag0;
 
-                    if self.intp.rbodyMod == 0 {
+                    if self.model.rbodymod == 0 {
                         gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
                         gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
                         gcbdb = (newop.cbsb - newop.capbd) * ag0;
@@ -5316,7 +5315,7 @@ impl Component for Bsim4 {
                     dsxpart_dVs = 0.0;
                 } else {
                     qcheq = newop.qchqs;
-                    CoxWL = self.intp.coxe
+                    CoxWL = self.model_derived.coxe
                         * self.size_params.weffCV
                         * self.intp.nf
                         * self.size_params.leffCV;
@@ -5369,7 +5368,7 @@ impl Component for Bsim4 {
                     ddxpart_dVs = -dsxpart_dVs;
                     ddxpart_dVb = -(ddxpart_dVd + ddxpart_dVg + ddxpart_dVs);
 
-                    if self.intp.rgateMod == 3 {
+                    if self.model.rgatemod == 3 {
                         gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                         gcgmdb = -cgdo * ag0;
                         gcgmsb = -cgso * ag0;
@@ -5417,7 +5416,7 @@ impl Component for Bsim4 {
                     gcdsb = 0.0;
                     gcsdb = 0.0;
                     gcssb = (newop.capbs + cgso) * ag0;
-                    if self.intp.rbodyMod == 0 {
+                    if self.model.rbodymod == 0 {
                         gcdbb = -(gcdgb + gcddb + gcdgmb);
                         gcsbb = -(gcsgb + gcssb + gcsgmb);
                         gcbdb = -newop.capbd * ag0;
@@ -5447,11 +5446,11 @@ impl Component for Bsim4 {
             newop.qg = qgate;
             newop.qd = qdrn - newop.qbd;
             newop.qs = qsrc - newop.qbs;
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 newop.qgmid = qgmid;
             }
 
-            if self.intp.rbodyMod != 0 {
+            if self.model.rbodymod != 0 {
                 newop.qb = qbulk + newop.qbd + newop.qbs;
             } else {
                 newop.qb = qbulk;
@@ -5467,14 +5466,14 @@ impl Component for Bsim4 {
             let (_g, i, _r) = state.integrate(newop.qd - self.op.qd, 0.0, 0.0, self.op.cqd);
             newop.cqd = i;
 
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qgmid);
                 let (_g, i, _r) =
                     state.integrate(newop.qgmid - self.op.qgmid, 0.0, 0.0, self.op.cqgmid);
                 newop.cqgmid = i;
             }
 
-            if self.intp.rbodyMod != 0 {
+            if self.model.rbodymod != 0 {
                 // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qbs);
                 let (_g, i, _r) = state.integrate(newop.qbs - self.op.qbs, 0.0, 0.0, self.op.cqbs);
                 newop.cqbs = i;
@@ -5494,13 +5493,13 @@ impl Component for Bsim4 {
                 + gcdsb * vbs;
             ceqqb = cqbody - gcbgb * vgb - gcbgmb * vgmb + gcbdb * vbd + gcbsb * vbs;
 
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 ceqqgmid = newop.cqgmid + gcgmdb * vbd + gcgmsb * vbs - gcgmgmb * vgmb;
             } else {
                 ceqqgmid = 0.0;
             }
 
-            if self.intp.rbodyMod != 0 {
+            if self.model.rbodymod != 0 {
                 ceqqjs = newop.cqbs + gcsbsb * vbs_jct;
                 ceqqjd = newop.cqbd + gcdbdb * vbd_jct;
             }
@@ -5611,12 +5610,12 @@ impl Component for Bsim4 {
                 Igtoteq = 0.0;
             }
 
-            if (self.intp.rgateMod == 2) {
+            if (self.model.rgatemod == 2) {
                 T0 = vges - vgs;
-            } else if (self.intp.rgateMod == 3) {
+            } else if (self.model.rgatemod == 3) {
                 T0 = vgms - vgs;
             }
-            if self.intp.rgateMod > 1 {
+            if self.model.rgatemod > 1 {
                 gcrgd = newop.gcrgd * T0;
                 gcrgg = newop.gcrgg * T0;
                 gcrgs = newop.gcrgs * T0;
@@ -5720,12 +5719,12 @@ impl Component for Bsim4 {
                 Igtoteq = 0.0;
             }
 
-            if (self.intp.rgateMod == 2) {
+            if (self.model.rgatemod == 2) {
                 T0 = vges - vgs;
-            } else if (self.intp.rgateMod == 3) {
+            } else if (self.model.rgatemod == 3) {
                 T0 = vgms - vgs;
             }
-            if self.intp.rgateMod > 1 {
+            if self.model.rgatemod > 1 {
                 gcrgd = newop.gcrgs * T0;
                 gcrgg = newop.gcrgg * T0;
                 gcrgs = newop.gcrgd * T0;
@@ -5790,12 +5789,12 @@ impl Component for Bsim4 {
                 cqcheq = -cqcheq;
             }
 
-            if self.intp.rbodyMod != 0 {
+            if self.model.rbodymod != 0 {
                 ceqqjs = -ceqqjs;
                 ceqqjd = -ceqqjd;
             }
 
-            if self.intp.rgateMod == 3 {
+            if self.model.rgatemod == 3 {
                 ceqqgmid = -ceqqgmid;
             }
         }
@@ -5810,13 +5809,13 @@ impl Component for Bsim4 {
         ));
         b.push((self.ports.gNodePrime, -(ceqqg - ceqgcrg + Igtoteq)));
 
-        if (self.intp.rgateMod == 2) {
+        if (self.model.rgatemod == 2) {
             b.push((self.ports.gNodeExt, -ceqgcrg));
-        } else if (self.intp.rgateMod == 3) {
+        } else if (self.model.rgatemod == 3) {
             b.push((self.ports.gNodeMid, -(ceqqgmid + ceqgcrg)));
         }
 
-        if self.intp.rbodyMod == 0 {
+        if self.model.rbodymod == 0 {
             b.push((
                 self.ports.bNodePrime,
                 (ceqbd + ceqbs - ceqjd - ceqjs - ceqqb + Ibtoteq),
@@ -5848,7 +5847,7 @@ impl Component for Bsim4 {
         // Gather up matrix Jacobian terms
         let mut j: Vec<(Option<Eindex>, f64)> = vec![];
 
-        if self.intp.rbodyMod != 0 {
+        if self.model.rbodymod != 0 {
             gjbd = newop.gbd;
             gjbs = newop.gbs;
         } else {
@@ -5867,7 +5866,7 @@ impl Component for Bsim4 {
         geltd = self.intp.grgeltd;
         T1 = qdef * newop.gtau;
 
-        if self.intp.rgateMod == 1 {
+        if self.model.rgatemod == 1 {
             j.push((self.matps.GEgePtr, geltd));
             j.push((self.matps.GPgePtr, -(geltd)));
             j.push((self.matps.GEgpPtr, -(geltd)));
@@ -5875,7 +5874,7 @@ impl Component for Bsim4 {
             j.push((self.matps.GPdpPtr, gcgdb - ggtd + gIgtotd));
             j.push((self.matps.GPspPtr, gcgsb - ggts + gIgtots));
             j.push((self.matps.GPbpPtr, gcgbb - ggtb + gIgtotb));
-        } else if self.intp.rgateMod == 2 {
+        } else if self.model.rgatemod == 2 {
             j.push((self.matps.GEgePtr, gcrg));
             j.push((self.matps.GEgpPtr, gcrgg));
             j.push((self.matps.GEdpPtr, gcrgd));
@@ -5887,7 +5886,7 @@ impl Component for Bsim4 {
             j.push((self.matps.GPdpPtr, gcgdb - gcrgd - ggtd + gIgtotd));
             j.push((self.matps.GPspPtr, gcgsb - gcrgs - ggts + gIgtots));
             j.push((self.matps.GPbpPtr, gcgbb - gcrgb - ggtb + gIgtotb));
-        } else if self.intp.rgateMod == 3 {
+        } else if self.model.rgatemod == 3 {
             j.push((self.matps.GEgePtr, geltd));
             j.push((self.matps.GEgmPtr, -(geltd)));
             j.push((self.matps.GMgePtr, -(geltd)));
@@ -6012,35 +6011,35 @@ impl Component for Bsim4 {
         j.push((self.matps.BPspPtr, -(ggisls)));
         j.push((self.matps.BPbpPtr, -(ggislb)));
 
-        if self.intp.rbodyMod != 0 {
+        if self.model.rbodymod != 0 {
             j.push((self.matps.DPdbPtr, gcdbdb - newop.gbd));
             j.push((self.matps.SPsbPtr, -(newop.gbs - gcsbsb)));
 
             j.push((self.matps.DBdpPtr, gcdbdb - newop.gbd));
             j.push((
                 self.matps.DBdbPtr,
-                newop.gbd - gcdbdb + newop.grbpd + newop.grbdb,
+                newop.gbd - gcdbdb + self.intp.grbpd + self.intp.grbdb,
             ));
-            j.push((self.matps.DBbpPtr, -(newop.grbpd)));
-            j.push((self.matps.DBbPtr, -(newop.grbdb)));
+            j.push((self.matps.DBbpPtr, -(self.intp.grbpd)));
+            j.push((self.matps.DBbPtr, -(self.intp.grbdb)));
 
-            j.push((self.matps.BPdbPtr, -(newop.grbpd)));
-            j.push((self.matps.BPbPtr, -(newop.grbpb)));
-            j.push((self.matps.BPsbPtr, -(newop.grbps)));
-            j.push((self.matps.BPbpPtr, newop.grbpd + newop.grbps + newop.grbpb));
+            j.push((self.matps.BPdbPtr, -(self.intp.grbpd)));
+            j.push((self.matps.BPbPtr, -(self.intp.grbpb)));
+            j.push((self.matps.BPsbPtr, -(self.intp.grbps)));
+            j.push((self.matps.BPbpPtr, self.intp.grbpd + self.intp.grbps + self.intp.grbpb));
 
             j.push((self.matps.SBspPtr, gcsbsb - newop.gbs));
-            j.push((self.matps.SBbpPtr, -(newop.grbps)));
-            j.push((self.matps.SBbPtr, -(newop.grbsb)));
+            j.push((self.matps.SBbpPtr, -(self.intp.grbps)));
+            j.push((self.matps.SBbPtr, -(self.intp.grbsb)));
             j.push((
                 self.matps.SBsbPtr,
-                newop.gbs - gcsbsb + newop.grbps + newop.grbsb,
+                newop.gbs - gcsbsb + self.intp.grbps + self.intp.grbsb,
             ));
 
-            j.push((self.matps.BdbPtr, -(newop.grbdb)));
-            j.push((self.matps.BbpPtr, -(newop.grbpb)));
-            j.push((self.matps.BsbPtr, -(newop.grbsb)));
-            j.push((self.matps.BbPtr, newop.grbsb + newop.grbdb + newop.grbpb));
+            j.push((self.matps.BdbPtr, -(self.intp.grbdb)));
+            j.push((self.matps.BbpPtr, -(self.intp.grbpb)));
+            j.push((self.matps.BsbPtr, -(self.intp.grbsb)));
+            j.push((self.matps.BbPtr, self.intp.grbsb + self.intp.grbdb + self.intp.grbpb));
         }
 
         if self.model.trnqsmod != 0 {
@@ -6062,7 +6061,7 @@ impl Component for Bsim4 {
 }
 
 /// compute poly depletion effect
-fn polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -> (f64, f64) {
+fn polyDepletion( phi: f64,  ngate: f64,  epsgate: f64,  coxe: f64, Vgs: f64) -> (f64, f64) {
     if (ngate > 1.0e18) && (ngate < 1.0e25) && (Vgs > phi) && (epsgate != 0.0) {
         let T1 = 1.0e6 * Q * epsgate * ngate / (coxe * coxe);
         let T8 = Vgs - phi;
@@ -6080,24 +6079,112 @@ fn polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -> (f6
     }
 }
 
-// FIXME - implement these here limiting methods!
-fn DEVlimvds(_a: f64, _b: f64) -> f64 {
-    _a
+/// Vds limiting
+fn DEVlimvds(vold: f64, vnew: f64) -> f64 {
+    if vold >= 3.5 {
+        if vnew > vold {
+            return vnew.min((3.0 * vold) + 2.0);
+        }
+        if vnew < 3.5 {
+            return vnew.max(2.0);
+        }
+    } else {
+        if vnew > vold {
+            return vnew.min(4.0);
+        } else {
+            return vnew.max(-0.5);
+        }
+    }
+    return vnew;
 }
-fn DEVfetlim(a: f64, b: f64, c: f64) -> f64 {
-    a
+/// Inter-iteration voltage limiting
+fn DEVfetlim(vnew: f64,vold: f64, vto: f64) -> f64 {
+    let vtsthi = (2.0 * (vold - vto)).abs() + 2.0;
+    let vtstlo = vtsthi / 2.0 + 2.0;
+    let vtox = vto + 3.5;
+    let delv = vnew - vold;
+
+    if vold >= vto {
+        if vold >= vtox {
+            if delv <= 0.0 {
+                /* going off */
+                if vnew >= vtox {
+                    if -delv > vtstlo {
+                        return vold - vtstlo;
+                    }
+                } else {
+                    return MAX(vnew, vto + 2.0);
+                }
+            } else {
+                /* staying on */
+                if delv >= vtsthi {
+                    return vold + vtsthi;
+                }
+            }
+        } else {
+            /* middle region */
+            if delv <= 0.0 {
+                /* decreasing */
+                return MAX(vnew, vto - 0.5);
+            } else {
+                /* increasing */
+                return MIN(vnew, vto + 4.0);
+            }
+        }
+    } else {
+        /* off */
+        if delv <= 0.0 {
+            if -delv > vtsthi {
+                return vold - vtsthi;
+            }
+        } else {
+            let vtemp = vto + 0.5;
+            if vnew <= vtemp {
+                if delv > vtstlo {
+                    return vold + vtstlo;
+                }
+            } else {
+                return vtemp;
+            }
+        }
+    }
+    return vnew;
 }
-fn DEVpnjlim(a: f64, b: f64, c: f64, d: f64) -> f64 {
-    a
+/// P-N Junction Limiting
+fn DEVpnjlim( vnew: f64,  vold: f64,  vt: f64, vcrit: f64) -> f64 {
+    if vnew > vcrit && abs(vnew - vold) > (vt + vt) {
+        if vold > 0.0 {
+            let arg = 1.0 + (vnew - vold) / vt;
+            if arg > 0.0 {
+                return vold + vt * log(arg);
+            }
+            return vcrit;
+        }
+        return vt * log(vnew / vt);
+    }
+    return vnew;
 }
 
 // Some helper math
-fn sqrt(a: f64) -> f64 {
+pub(crate) fn sqrt(a: f64) -> f64 {
     a.sqrt()
 }
-fn log(a: f64) -> f64 {
+pub(crate) fn log(a: f64) -> f64 {
     a.ln()
 }
-fn exp(a: f64) -> f64 {
+pub(crate) fn exp(a: f64) -> f64 {
     a.exp()
 }
+pub(crate) fn MAX( a: f64, b: f64) -> f64 {
+    a.max(b)
+}
+pub(crate) fn MIN( a: f64, b: f64) -> f64 {
+    a.min(b)
+}
+pub(crate) fn abs(a: f64) -> f64 {
+    a.abs()
+}
+pub(crate) fn pow(a: f64, b:f64) -> f64 {
+    a.powf(b)
+}
+

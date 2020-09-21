@@ -57,7 +57,9 @@ pub enum MosType {
     NMOS,
     PMOS,
 }
-
+impl Default for MosType {
+    fn default() -> MosType { MosType::NMOS }
+}
 impl MosType {
     /// Polarity Function
     /// The very common need to negate values for PMOS, and leave NMOS unchanged.

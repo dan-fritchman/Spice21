@@ -63,6 +63,26 @@ pub(crate) mod macros {
     }
     }
 
+    #[macro_export]
+    macro_rules! specgen {
+    ( $specs_name:ident, $vals_name: ident, $struct_desc:literal, [
+        $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
+    ]) => {
+        #[doc=$struct_desc]
+        #[derive(Clone, Copy, Default)]
+        pub(crate) struct $specs_name {
+            $( #[doc=$desc]
+                pub(crate) $attr_name : Option<$attr_type> ),*
+        }
+        #[doc=$struct_desc]
+        #[derive(Clone, Copy, Default)]
+        pub(crate) struct $vals_name {
+            $( #[doc=$desc]
+                pub(crate) $attr_name : $attr_type ),*
+        }
+    }
+    }
+
     #[cfg(test)]
     mod tests {
         use crate::assert::*;

@@ -1,4 +1,5 @@
-use crate::paramstruct;
+use crate::comps::mos::MosType;
+use crate::{paramstruct, specgen};
 
 paramstruct! {
     Bsim4Inst,
@@ -15,7 +16,7 @@ paramstruct! {
     (sc, f64, "Distance to a single well edge "),
     (min, usize, "Minimize either D or S"),
     (ad, f64, "Drain area"),
-    (r#as, f64, "Source area"), // Note `r#as` allows the keyword `as`
+    (r#as, f64, "Source area"), // Note renamed from the keyword `as`
     (pd, f64, "Drain perimeter"),
     (ps, f64, "Source perimeter"),
     (nrd, f64, "Number of squares in drain"),
@@ -92,9 +93,11 @@ paramstruct! {
 //     ]
 // }
 
-paramstruct! {
-    Bsim4Model,
+specgen! {
+    Bsim4ModelSpecs,
+    Bsim4ModelVals,
     "BSIM4 Model Parameters", [
+        (mos_type, MosType, "MosType Enum: NMOS or PMOS"),
         (cvchargemod, usize, "Capacitance Charge model selector"),
         (capmod, usize, "Capacitance model selector"),
         (diomod, usize, "Diode IV model selector"),
@@ -113,9 +116,11 @@ paramstruct! {
         (igcmod, usize, "Gate-to-channel Ig model selector"),
         (igbmod, usize, "Gate-to-body Ig model selector"),
         (tempmod, usize, "Temperature model selector"),
-        (gidlmod, usize, "parameter for GIDL selector"), /* v4.7 New GIDL/GISL */
+        (gidlmod, usize, "parameter for GIDL selector"),
+        (wpemod, usize, " Flag for WPE model (WPEMOD=1 to activate this model) "),
         (paramchk, usize, "Model parameter checking selector"),
         (binunit, usize, "Bin  unit  selector"),
+
         (version, f64, "parameter for model version"),
         (eot, f64, "Equivalent gate oxide thickness in meters"),
         (vddeot, f64, "Voltage for extraction of Equivalent gate oxide thickness"),
@@ -186,7 +191,7 @@ paramstruct! {
         (drout, f64, "DIBL coefficient of output resistance"),
         (dsub, f64, "DIBL coefficient in the subthreshold region"),
         (vth0, f64,"Threshold voltage"),
-        (vtho, f64,"Threshold voltage"),
+        // (vtho, f64,"Threshold voltage"), // Removed
         (ua, f64, "Linear gate dependence of mobility"),
         (ua1, f64, "Temperature coefficient of ua"),
         (ub, f64, "Quadratic gate dependence of mobility"),
@@ -499,7 +504,7 @@ paramstruct! {
         (ldrout, f64, "Length dependence of drout"),
         (ldsub, f64, "Length dependence of dsub"),
         (lvth0, f64,"Length dependence of vto"),
-        (lvtho, f64,"Length dependence of vto"),
+        // (lvtho, f64,"Length dependence of vto"), // Removed
         (lua, f64, "Length dependence of ua"),
         (lua1, f64, "Length dependence of ua1"),
         (lub, f64, "Length dependence of ub"),
@@ -656,7 +661,7 @@ paramstruct! {
         (wdrout, f64, "Width dependence of drout"),
         (wdsub, f64, "Width dependence of dsub"),
         (wvth0, f64,"Width dependence of vto"),
-        (wvtho, f64,"Width dependence of vto"),
+        // (wvtho, f64,"Width dependence of vto"), // Removed
         (wua, f64, "Width dependence of ua"),
         (wua1, f64, "Width dependence of ua1"),
         (wub, f64, "Width dependence of ub"),
@@ -813,10 +818,10 @@ paramstruct! {
         (pdrout, f64, "Cross-term dependence of drout"),
         (pdsub, f64, "Cross-term dependence of dsub"),
         (pvth0, f64,"Cross-term dependence of vto"),
-        (pvtho, f64,"Cross-term dependence of vto"),
+        // (pvtho, f64,"Cross-term dependence of vto"), // Removed 
         (pua, f64, "Cross-term dependence of ua"),
         (pua1, f64, "Cross-term dependence of ua1"),
-        (r#pub, f64, "Cross-term dependence of ub"), // Note: r# allows use of the keyword `pub`
+        (r#pub, f64, "Cross-term dependence of ub"), // Note: renamed from the keyword `pub`
         (pub1, f64, "Cross-term dependence of ub1"),
         (puc, f64, "Cross-term dependence of uc"),
         (puc1, f64, "Cross-term dependence of uc1"),
@@ -951,7 +956,6 @@ paramstruct! {
         (k2we, f64, " K2 shift factor for well proximity effect "),
         (ku0we, f64, " Mobility degradation factor for well proximity effect "),
         (scref, f64, " Reference distance to calculate SCA, SCB and SCC"),
-        (wpemod, f64, " Flag for WPE model (WPEMOD=1 to activate this model) "),
         (lkvth0we, f64, "Length dependence of kvth0we"),
         (lk2we, f64, " Length dependence of k2we "),
         (lku0we, f64, " Length dependence of ku0we "),
