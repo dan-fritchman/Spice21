@@ -1,10 +1,10 @@
-use super::log;
 use super::bsim4defs::*;
+use super::log;
 use crate::comps::consts::*;
 use crate::comps::MosType;
 
 fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
-    let vals = Bsim4ModelVals::default();
+    let mut vals = Bsim4ModelVals::default();
     use MosType::{NMOS, PMOS};
 
     // vals.type = if let Some(val) = specs.type { if val > 0 { NMOS } else { PMOS} } else { NMOS };
@@ -287,7 +287,6 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.alpha0 = if let Some(val) = specs.alpha0 { val } else { 0.0 };
     vals.alpha1 = if let Some(val) = specs.alpha1 { val } else { 0.0 };
     vals.beta0 = if let Some(val) = specs.beta0 { val } else { 0.0 };
-    
     vals.agidl = if let Some(val) = specs.agidl { val } else { 0.0 };
     vals.bgidl = if let Some(val) = specs.bgidl { val } else { 2.3e9 }; /* V/m */
     vals.cgidl = if let Some(val) = specs.cgidl { val } else { 0.5 }; /* V^3 */
@@ -629,7 +628,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.laigs = vals.laigsd;
         vals.laigd = vals.laigsd;
     }
-    if (!specs.bigsd.is_some() && (specs.bigs.is_some() || specs.bigd.is_some())) {
+    if !specs.bigsd.is_some() && (specs.bigs.is_some() || specs.bigd.is_some()) {
         vals.lbigs = if let Some(val) = specs.lbigs { val } else { 0.0 };
         vals.lbigd = if let Some(val) = specs.lbigd { val } else { 0.0 };
     } else {
@@ -637,7 +636,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.lbigs = vals.lbigsd;
         vals.lbigd = vals.lbigsd;
     }
-    if (!specs.cigsd.is_some() && (specs.cigs.is_some() || specs.cigd.is_some())) {
+    if !specs.cigsd.is_some() && (specs.cigs.is_some() || specs.cigd.is_some()) {
         vals.lcigs = if let Some(val) = specs.lcigs { val } else { 0.0 };
         vals.lcigd = if let Some(val) = specs.lcigd { val } else { 0.0 };
     } else {
@@ -795,7 +794,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.waigc = if let Some(val) = specs.waigc { val } else { 0.0 };
     vals.wbigc = if let Some(val) = specs.wbigc { val } else { 0.0 };
     vals.wcigc = if let Some(val) = specs.wcigc { val } else { 0.0 };
-    if (!specs.aigsd.is_some() && (specs.aigs.is_some() || specs.aigd.is_some())) {
+    if !specs.aigsd.is_some() && (specs.aigs.is_some() || specs.aigd.is_some()) {
         vals.waigs = if let Some(val) = specs.waigs { val } else { 0.0 };
         vals.waigd = if let Some(val) = specs.waigd { val } else { 0.0 };
     } else {
@@ -803,7 +802,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.waigs = vals.waigsd;
         vals.waigd = vals.waigsd;
     }
-    if (!specs.bigsd.is_some() && (specs.bigs.is_some() || specs.bigd.is_some())) {
+    if !specs.bigsd.is_some() && (specs.bigs.is_some() || specs.bigd.is_some()) {
         vals.wbigs = if let Some(val) = specs.wbigs { val } else { 0.0 };
         vals.wbigd = if let Some(val) = specs.wbigd { val } else { 0.0 };
     } else {
@@ -811,7 +810,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.wbigs = vals.wbigsd;
         vals.wbigd = vals.wbigsd;
     }
-    if (!specs.cigsd.is_some() && (specs.cigs.is_some() || specs.cigd.is_some())) {
+    if !specs.cigsd.is_some() && (specs.cigs.is_some() || specs.cigd.is_some()) {
         vals.wcigs = if let Some(val) = specs.wcigs { val } else { 0.0 };
         vals.wcigd = if let Some(val) = specs.wcigd { val } else { 0.0 };
     } else {
@@ -969,7 +968,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.paigc = if let Some(val) = specs.paigc { val } else { 0.0 };
     vals.pbigc = if let Some(val) = specs.pbigc { val } else { 0.0 };
     vals.pcigc = if let Some(val) = specs.pcigc { val } else { 0.0 };
-    if (!specs.aigsd.is_some() && (specs.aigs.is_some() || specs.aigd.is_some())) {
+    if !specs.aigsd.is_some() && (specs.aigs.is_some() || specs.aigd.is_some()) {
         vals.paigs = if let Some(val) = specs.paigs { val } else { 0.0 };
         vals.paigd = if let Some(val) = specs.paigd { val } else { 0.0 };
     } else {
@@ -977,7 +976,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.paigs = vals.paigsd;
         vals.paigd = vals.paigsd;
     }
-    if (!specs.bigsd.is_some() && (specs.bigs.is_some() || specs.bigd.is_some())) {
+    if !specs.bigsd.is_some() && (specs.bigs.is_some() || specs.bigd.is_some()) {
         vals.pbigs = if let Some(val) = specs.pbigs { val } else { 0.0 };
         vals.pbigd = if let Some(val) = specs.pbigd { val } else { 0.0 };
     } else {
@@ -985,7 +984,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.pbigs = vals.pbigsd;
         vals.pbigd = vals.pbigsd;
     }
-    if (!specs.cigsd.is_some() && (specs.cigs.is_some() || specs.cigd.is_some())) {
+    if !specs.cigsd.is_some() && (specs.cigs.is_some() || specs.cigd.is_some()) {
         vals.pcigs = if let Some(val) = specs.pcigs { val } else { 0.0 };
         vals.pcigd = if let Some(val) = specs.pcigd { val } else { 0.0 };
     } else {
@@ -1073,14 +1072,9 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.xl = if let Some(val) = specs.xl { val } else { 0.0 };
     vals.xw = if let Some(val) = specs.xw { val } else { 0.0 };
     vals.dlcig = if let Some(val) = specs.dlcig { val } else { vals.lint };
-    vals.dlcigd = if let Some(val) = specs.dwj {
-        val
-    } else if let Some(dlcig) = specs.dlcig {
-        dlcig
-    } else {
-        vals.lint
-    };
+    vals.dlcigd = if let Some(val) = specs.dwj { val } else { vals.lint };
     vals.dwj = if let Some(val) = specs.dwj { val } else { vals.dwc };
+
     vals.cf = if let Some(val) = specs.cf {
         val
     } else {
@@ -1088,103 +1082,35 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     };
 
     vals.xpart = if let Some(val) = specs.xpart { val } else { 0.0 };
-    vals.sheetResistance = if let Some(val) = specs.sheetResistance { val } else { 0.0 };
-    vals.SunitAreaJctCap = if let Some(val) = specs.SunitAreaJctCap { val } else { 5.0E-4 };
-    vals.DunitAreaJctCap = if let Some(val) = specs.DunitAreaJctCap {
-        val
-    } else {
-        vals.SunitAreaJctCap
-    };
-    vals.SunitLengthSidewallJctCap = if let Some(val) = specs.SunitLengthSidewallJctCap { val } else { 5.0E-10 };
-    vals.DunitLengthSidewallJctCap = if let Some(val) = specs.DunitLengthSidewallJctCap {
-        val
-    } else {
-        vals.SunitLengthSidewallJctCap
-    };
-    vals.SunitLengthGateSidewallJctCap = if let Some(val) = specs.SunitLengthGateSidewallJctCap {
-        val
-    } else {
-        vals.SunitLengthSidewallJctCap
-    };
-    vals.DunitLengthGateSidewallJctCap = if let Some(val) = specs.DunitLengthGateSidewallJctCap {
-        val
-    } else {
-        vals.SunitLengthGateSidewallJctCap
-    };
-    vals.SjctSatCurDensity = if let Some(val) = specs.SjctSatCurDensity { val } else { 1.0E-4 };
-    vals.DjctSatCurDensity = if let Some(val) = specs.DjctSatCurDensity {
-        val
-    } else {
-        vals.SjctSatCurDensity
-    };
-    vals.SjctSidewallSatCurDensity = if let Some(val) = specs.SjctSidewallSatCurDensity { val } else { 0.0 };
-    vals.DjctSidewallSatCurDensity = if let Some(val) = specs.DjctSidewallSatCurDensity {
-        val
-    } else {
-        vals.SjctSidewallSatCurDensity
-    };
-    vals.SjctGateSidewallSatCurDensity = if let Some(val) = specs.SjctGateSidewallSatCurDensity { val } else { 0.0 };
-    vals.DjctGateSidewallSatCurDensity = if let Some(val) = specs.DjctGateSidewallSatCurDensity {
-        val
-    } else {
-        vals.SjctGateSidewallSatCurDensity
-    };
-    vals.SbulkJctPotential = if let Some(val) = specs.SbulkJctPotential { val } else { 1.0 };
-    vals.DbulkJctPotential = if let Some(val) = specs.DbulkJctPotential {
-        val
-    } else {
-        vals.SbulkJctPotential
-    };
-    vals.SsidewallJctPotential = if let Some(val) = specs.SsidewallJctPotential { val } else { 1.0 };
-    vals.DsidewallJctPotential = if let Some(val) = specs.DsidewallJctPotential {
-        val
-    } else {
-        vals.SsidewallJctPotential
-    };
-    vals.SGatesidewallJctPotential = if let Some(val) = specs.SGatesidewallJctPotential {
-        val
-    } else {
-        vals.SsidewallJctPotential
-    };
-    vals.DGatesidewallJctPotential = if let Some(val) = specs.DGatesidewallJctPotential {
-        val
-    } else {
-        vals.SGatesidewallJctPotential
-    };
-    vals.SbulkJctBotGradingCoeff = if let Some(val) = specs.SbulkJctBotGradingCoeff { val } else { 0.5 };
-    vals.DbulkJctBotGradingCoeff = if let Some(val) = specs.DbulkJctBotGradingCoeff {
-        val
-    } else {
-        vals.SbulkJctBotGradingCoeff
-    };
-    vals.SbulkJctSideGradingCoeff = if let Some(val) = specs.SbulkJctSideGradingCoeff { val } else { 0.33 };
-    vals.DbulkJctSideGradingCoeff = if let Some(val) = specs.DbulkJctSideGradingCoeff {
-        val
-    } else {
-        vals.SbulkJctSideGradingCoeff
-    };
-    vals.SbulkJctGateSideGradingCoeff = if let Some(val) = specs.SbulkJctGateSideGradingCoeff {
-        val
-    } else {
-        vals.SbulkJctSideGradingCoeff
-    };
-    vals.DbulkJctGateSideGradingCoeff = if let Some(val) = specs.DbulkJctGateSideGradingCoeff {
-        val
-    } else {
-        vals.SbulkJctGateSideGradingCoeff
-    };
-    vals.SjctEmissionCoeff = if let Some(val) = specs.SjctEmissionCoeff { val } else { 1.0 };
-    vals.DjctEmissionCoeff = if let Some(val) = specs.DjctEmissionCoeff {
-        val
-    } else {
-        vals.SjctEmissionCoeff
-    };
-    vals.SjctTempExponent = if let Some(val) = specs.SjctTempExponent { val } else { 3.0 };
-    vals.DjctTempExponent = if let Some(val) = specs.DjctTempExponent {
-        val
-    } else {
-        vals.SjctTempExponent
-    };
+    vals.rsh = if let Some(val) = specs.rsh { val } else { 0.0 };
+    vals.cjs = if let Some(val) = specs.cjs { val } else { 5.0E-4 };
+    vals.cjd = if let Some(val) = specs.cjd { val } else { vals.cjs };
+    vals.cjsws = if let Some(val) = specs.cjsws { val } else { 5.0E-10 };
+    vals.cjswd = if let Some(val) = specs.cjswd { val } else { vals.cjsws };
+    vals.cjswgs = if let Some(val) = specs.cjswgs { val } else { vals.cjsws };
+    vals.cjswgd = if let Some(val) = specs.cjswgd { val } else { vals.cjswgs };
+    vals.jss = if let Some(val) = specs.jss { val } else { 1.0E-4 };
+    vals.jsd = if let Some(val) = specs.jsd { val } else { vals.jss };
+    vals.jsws = if let Some(val) = specs.jsws { val } else { 0.0 };
+    vals.jswd = if let Some(val) = specs.jswd { val } else { vals.jsws };
+    vals.jswgs = if let Some(val) = specs.jswgs { val } else { 0.0 };
+    vals.jswgd = if let Some(val) = specs.jswgd { val } else { vals.jswgs };
+    vals.pbs = if let Some(val) = specs.pbs { val } else { 1.0 };
+    vals.pbd = if let Some(val) = specs.pbd { val } else { vals.pbs };
+    vals.pbsws = if let Some(val) = specs.pbsws { val } else { 1.0 };
+    vals.pbswd = if let Some(val) = specs.pbswd { val } else { vals.pbsws };
+    vals.pbswgs = if let Some(val) = specs.pbswgs { val } else { vals.pbsws };
+    vals.pbswgd = if let Some(val) = specs.pbswgd { val } else { vals.pbswgs };
+    vals.mjs = if let Some(val) = specs.mjs { val } else { 0.5 };
+    vals.mjd = if let Some(val) = specs.mjd { val } else { vals.mjs };
+    vals.mjsws = if let Some(val) = specs.mjsws { val } else { 0.33 };
+    vals.mjswd = if let Some(val) = specs.mjswd { val } else { vals.mjsws };
+    vals.mjswgs = if let Some(val) = specs.mjswgs { val } else { vals.mjsws };
+    vals.mjswgd = if let Some(val) = specs.mjswgd { val } else { vals.mjswgs };
+    vals.njs = if let Some(val) = specs.njs { val } else { 1.0 };
+    vals.njd = if let Some(val) = specs.njd { val } else { vals.njs };
+    vals.xtis = if let Some(val) = specs.xtis { val } else { 3.0 };
+    vals.xtid = if let Some(val) = specs.xtid { val } else { vals.xtis };
 
     vals.jtss = if let Some(val) = specs.jtss { val } else { 0.0 };
     vals.jtsd = if let Some(val) = specs.jtsd { val } else { vals.jtss };
@@ -1196,27 +1122,10 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.njts = if let Some(val) = specs.njts { val } else { 20.0 };
     vals.njtssw = if let Some(val) = specs.njtssw { val } else { 20.0 };
     vals.njtsswg = if let Some(val) = specs.njtsswg { val } else { 20.0 };
-    if specs.njtsd.is_none() {
-        if let Some(njts) = specs.njts {
-            vals.njtsd = njts;
-        } else {
-            vals.njtsd = 20.0;
-        }
-    }
-    if specs.njtsswd.is_none() {
-        if let Some(njtssw) = specs.njtssw {
-            vals.njtsswd = njtssw;
-        } else {
-            vals.njtsswd = 20.0;
-        }
-    }
-    if specs.njtsswgd.is_none() {
-        if let Some(njtsswg) = specs.njtsswg {
-            vals.njtsswgd = njtsswg;
-        } else {
-            vals.njtsswgd = 20.0;
-        }
-    }
+    vals.njtsd = if let Some(val) = specs.njtsd { val } else { vals.njts };
+    vals.njtsswd = if let Some(val) = specs.njtsswd { val } else { vals.njtssw };
+    vals.njtsswgd = if let Some(val) = specs.njtsswgd { val } else { vals.njtsswg };
+
     vals.xtss = if let Some(val) = specs.xtss { val } else { 0.02 };
     vals.xtsd = if let Some(val) = specs.xtsd { val } else { vals.xtss };
     vals.xtssws = if let Some(val) = specs.xtssws { val } else { 0.02 };
@@ -1226,31 +1135,9 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.tnjts = if let Some(val) = specs.tnjts { val } else { 0.0 };
     vals.tnjtssw = if let Some(val) = specs.tnjtssw { val } else { 0.0 };
     vals.tnjtsswg = if let Some(val) = specs.tnjtsswg { val } else { 0.0 };
-
-    vals.tnjtsd = if let Some(val) = specs.tnjtsd {
-        val
-    } else if let Some(tnjts) = specs.tnjts {
-        tnjts
-    } else {
-        0.0
-    };
-
-    vals.tnjtsswd = if let Some(val) = specs.tnjtsswd {
-        val
-    } else if let Some(tnjtssw) = specs.tnjtssw {
-        tnjtssw
-    } else {
-        0.0
-    };
-
-    vals.tnjtsswgd = if let Some(val) = specs.tnjtsswgd {
-        val
-    } else if let Some(tnjtsswg) = specs.tnjtsswg {
-        tnjtsswg
-    } else {
-        0.0
-    };
-
+    vals.tnjtsd = if let Some(val) = specs.tnjtsd { val } else { vals.tnjts };
+    vals.tnjtsswd = if let Some(val) = specs.tnjtsswd { val } else { vals.tnjtssw };
+    vals.tnjtsswgd = if let Some(val) = specs.tnjtsswgd { val } else { vals.tnjtsswg };
     vals.vtss = if let Some(val) = specs.vtss { val } else { 10.0 };
     vals.vtsd = if let Some(val) = specs.vtsd { val } else { vals.vtss };
     vals.vtssws = if let Some(val) = specs.vtssws { val } else { 10.0 };
@@ -1258,7 +1145,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.vtsswgs = if let Some(val) = specs.vtsswgs { val } else { 10.0 };
     vals.vtsswgd = if let Some(val) = specs.vtsswgd { val } else { vals.vtsswgs };
 
-    vals.oxideTrapDensityA = if let Some(val) = specs.oxideTrapDensityA {
+    vals.noia = if let Some(val) = specs.noia {
         val
     } else {
         match vals.mos_type {
@@ -1266,7 +1153,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
             PMOS => 6.188e40,
         }
     };
-    vals.oxideTrapDensityB = if let Some(val) = specs.oxideTrapDensityB {
+    vals.noib = if let Some(val) = specs.noib {
         val
     } else {
         match vals.mos_type {
@@ -1274,7 +1161,7 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
             PMOS => 1.5e25,
         }
     };
-    vals.oxideTrapDensityC = if let Some(val) = specs.oxideTrapDensityC { val } else { 8.75e9 };
+    vals.noic = if let Some(val) = specs.noic { val } else { 8.75e9 };
     vals.em = if let Some(val) = specs.em { val } else { 4.1e7 }; /* V/m */
     vals.ef = if let Some(val) = specs.ef { val } else { 1.0 };
     vals.af = if let Some(val) = specs.af { val } else { 1.0 };
@@ -1320,6 +1207,5 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.pkvth0we = if let Some(val) = specs.pkvth0we { val } else { 0.0 };
     vals.pk2we = if let Some(val) = specs.pk2we { val } else { 0.0 };
     vals.pku0we = if let Some(val) = specs.pku0we { val } else { 0.0 };
-    
     return vals;
 }
