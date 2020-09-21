@@ -105,76 +105,9 @@ fn derive(model: &Bsim4Model) -> Bsim4ModelDerivedParams {
     let mut i: usize;
 
     let model_derived = Bsim4ModelDerivedParams::default();
-    let Temp = 300.15; // FIXME !ckt->CKTtemp;
 
-    // FIXME: initial references to `derived` here arent the right idea
-    if (model_derived.SbulkJctPotential < 0.1) {
-        model_derived.SbulkJctPotential = 0.1;
-        panic!("Given pbs is less than 0.1. Pbs is set to 0.1.\n");
-    }
-    if (model_derived.SsidewallJctPotential < 0.1) {
-        model_derived.SsidewallJctPotential = 0.1;
-        panic!("Given pbsws is less than 0.1. Pbsws is set to 0.1.\n",);
-    }
-    if (model_derived.SGatesidewallJctPotential < 0.1) {
-        model_derived.SGatesidewallJctPotential = 0.1;
-        panic!("Given pbswgs is less than 0.1. Pbswgs is set to 0.1.\n",);
-    }
-
-    if (model_derived.DbulkJctPotential < 0.1) {
-        model_derived.DbulkJctPotential = 0.1;
-        panic!("Given pbd is less than 0.1. Pbd is set to 0.1.\n");
-    }
-    if (model_derived.DsidewallJctPotential < 0.1) {
-        model_derived.DsidewallJctPotential = 0.1;
-        panic!("Given pbswd is less than 0.1. Pbswd is set to 0.1.\n",);
-    }
-    if (model_derived.DGatesidewallJctPotential < 0.1) {
-        model_derived.DGatesidewallJctPotential = 0.1;
-        panic!("Given pbswgd is less than 0.1. Pbswgd is set to 0.1.\n",);
-    }
-
-    if (model.mtrlmod == 0) {
-        if ((model.toxeGiven)
-            && (model.toxpGiven)
-            && (model.dtoxGiven)
-            && (model.toxe != (model.toxp + model.dtox)))
-        {
-            panic!(
-                "Warning: toxe, toxp and dtox all given and toxe != toxp + dtox; dtox ignored.\n",
-            );
-        } else if ((model.toxeGiven) && (!model.toxpGiven)) {
-            model_derived.toxp = model.toxe - model.dtox;
-        } else if ((!model.toxeGiven) && (model.toxpGiven)) {
-            {
-                model_derived.toxe = model.toxp + model.dtox;
-            }
-            if (!model.toxmGiven)
-            /* v4.7 */
-            {
-                model_derived.toxm = model.toxe;
-            }
-        }
-    } else if (model.mtrlcompatmod != 0)
-    /* v4.7 */
-    {
-        T0 = model.epsrox / 3.9;
-        if ((model.eotGiven)
-            && (model.toxpGiven)
-            && (model.dtoxGiven)
-            && (abs(model.eot * T0 - (model.toxp + model.dtox)) > 1.0e-20))
-        {
-            panic!("Warning: eot, toxp and dtox all given and eot * EPSROX / 3.9 != toxp + dtox; dtox ignored.\n");
-        } else if ((model.eotGiven) && (!model.toxpGiven)) {
-            model_derived.toxp = T0 * model.eot - model.dtox;
-        } else if ((!model.eotGiven) && (model.toxpGiven)) {
-            model_derived.eot = (model.toxp + model.dtox) / T0;
-            if (!model.toxmGiven) {
-                model_derived.toxm = model.eot;
-            }
-        }
-    }
-
+    // This first part is not temperature-dependent, 
+    // but creates the `coxp` and `toxp` params not present in `Bims4Model`. 
     if (model.mtrlmod) {
         epsrox = 3.9;
         toxe = model.eot;
@@ -207,12 +140,15 @@ fn derive(model: &Bsim4Model) -> Bsim4ModelDerivedParams {
     if (!model.cgboGiven) {
         model_derived.cgbo = 2.0 * model.dwc * model_derived.coxe;
     }
+    model_derived.vcrit = VT_REF * log(VT_REF / (SQRT2 * 1.0e-14));
+    model_derived.factor1 = sqrt(epssub / (epsrox * EPS0) * toxe);
+    
+    // Temperature dependencies
+    let Temp = 300.15; // FIXME !ckt->CKTtemp;
 
     Tnom = model.tnom;
     TRatio = Temp / Tnom;
 
-    model_derived.vcrit = VT_REF * log(VT_REF / (SQRT2 * 1.0e-14));
-    model_derived.factor1 = sqrt(epssub / (epsrox * EPS0) * toxe);
 
     Vtm0 = KB_OVER_Q * Tnom;
     model_derived.vtm0 = Vtm0;
@@ -381,45 +317,6 @@ fn derive(model: &Bsim4Model) -> Bsim4ModelDerivedParams {
         panic!("Temperature effect has caused pbswgd to be less than 0.01. Pbswgd is clamped to 0.01.\n");
     } /* End of junction capacitance */
 
-    if (model.ijthdfwd <= 0.0) {
-        // model_derived.ijthdfwd = 0.0;
-        panic!("Ijthdfwd reset to %g.\n"); //model.ijthdfwd);
-    }
-    if (model.ijthsfwd <= 0.0) {
-        // model_derived.ijthsfwd = 0.0;
-        panic!("Ijthsfwd reset to %g.\n"); //model.ijthsfwd);
-    }
-    if (model.ijthdrev <= 0.0) {
-        // model_derived.ijthdrev = 0.0;
-        panic!("Ijthdrev reset to %g.\n"); //model.ijthdrev);
-    }
-    if (model.ijthsrev <= 0.0) {
-        // model_derived.ijthsrev = 0.0;
-        panic!("Ijthsrev reset to %g.\n"); //model.ijthsrev);
-    }
-    if ((model.xjbvd <= 0.0) && (model.diomod == 2)) {
-        // model_derived.xjbvd = 0.0;
-        panic!("Xjbvd reset to %g.\n"); //model.xjbvd);
-    } else if ((model.xjbvd < 0.0) && (model.diomod == 0)) {
-        // model_derived.xjbvd = 0.0;
-        panic!("Xjbvd reset to %g.\n"); //model.xjbvd);
-    }
-    if (model.bvd <= 0.0) {
-        // model_derived.bvd = 0.0;
-        panic!("BVD reset to %g.\n"); //model.bvd);
-    }
-    if ((model.xjbvs <= 0.0) && (model.diomod == 2)) {
-        // model_derived.xjbvs = 0.0;
-        panic!("Xjbvs reset to %g.\n"); //model.xjbvs);
-    } else if ((model.xjbvs < 0.0) && (model.diomod == 0)) {
-        // model_derived.xjbvs = 0.0;
-        panic!("Xjbvs reset to %g.\n"); //model.xjbvs);
-    }
-    if (model.bvs <= 0.0) {
-        // model_derived.bvs = 0.0;
-        panic!("BVS reset to %g.\n"); //model.bvs);
-    }
-
     /* GEDL current reverse bias */
     T0 = (TRatio - 1.0);
     model_derived.njtsstemp = model.njts * (1.0 + model.tnjts * T0);
@@ -428,11 +325,6 @@ fn derive(model: &Bsim4Model) -> Bsim4ModelDerivedParams {
     model_derived.njtsdtemp = model.njtsd * (1.0 + model.tnjtsd * T0);
     model_derived.njtsswdtemp = model.njtsswd * (1.0 + model.tnjtsswd * T0);
     model_derived.njtsswgdtemp = model.njtsswgd * (1.0 + model.tnjtsswgd * T0);
-    /*IBM TAT*/
-    if (model.jtweff < 0.0) {
-        // model_derived.jtweff = 0.0;
-        panic!("TAT width dependence effect is negative. Jtweff is clamped to zero.\n",);
-    }
 
     return model_derived;
 }

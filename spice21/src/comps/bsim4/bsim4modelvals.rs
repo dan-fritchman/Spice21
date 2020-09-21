@@ -16,23 +16,16 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.mobmod = 0;
         println!("Warning: mobmod has been set to its default value: 0.\n");
     }
-
-    vals.binunit = if let Some(val) = specs.binunit { val } else { 1 };
-    vals.paramchk = if let Some(val) = specs.paramchk { val } else { 1 };
-
     vals.diomod = if let Some(val) = specs.diomod { val } else { 1 };
     if vals.diomod > 2 {
         vals.diomod = 1;
         println!("Warning: diomod has been set to its default value: 1.\n");
     }
-
-    vals.cvchargemod = if let Some(val) = specs.cvchargemod { val } else { 0 };
     vals.capmod = if let Some(val) = specs.capmod { val } else { 2 };
     if vals.capmod > 2 {
         vals.capmod = 2;
         println!("Warning: capmod has been set to its default value: 2.\n");
     }
-
     vals.rdsmod = if let Some(val) = specs.rdsmod { val } else { 0 };
     if vals.rdsmod > 1 {
         vals.rdsmod = 0;
@@ -43,21 +36,16 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.rbodymod = 0;
         println!("Warning: rbodymod has been set to its default value: 0.\n");
     }
-
     vals.rgatemod = if let Some(val) = specs.rgatemod { val } else { 0 };
     if vals.rgatemod > 3 {
         vals.rgatemod = 0;
         println!("Warning: rgatemod has been set to its default value: 0.\n");
     }
-
     vals.permod = if let Some(val) = specs.permod { val } else { 1 };
     if vals.permod > 1 {
         vals.permod = 1;
         println!("Warning: permod has been set to its default value: 1.\n");
     }
-
-    vals.geomod = if let Some(val) = specs.geomod { val } else { 0 };
-
     vals.fnoimod = if let Some(val) = specs.fnoimod { val } else { 1 };
     if vals.fnoimod > 1 {
         vals.fnoimod = 1;
@@ -68,7 +56,6 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.tnoimod = 0;
         println!("Warning: tnoimod has been set to its default value: 0.\n");
     }
-
     vals.trnqsmod = if let Some(val) = specs.trnqsmod { val } else { 0 };
     if vals.trnqsmod > 1 {
         vals.trnqsmod = 0;
@@ -79,7 +66,6 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.acnqsmod = 0;
         println!("Warning: acnqsmod has been set to its default value: 0.\n");
     }
-
     vals.mtrlmod = if let Some(val) = specs.mtrlmod { val } else { 0 };
     if vals.mtrlmod > 1 {
         vals.mtrlmod = 0;
@@ -90,7 +76,6 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.mtrlcompatmod = 0;
         println!("Warning: mtrlcompatmod has been set to its default value: 0.\n");
     }
-
     vals.igcmod = if let Some(val) = specs.igcmod { val } else { 0 };
     if vals.igcmod > 2 {
         vals.igcmod = 0;
@@ -112,9 +97,14 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         println!("Warning: wpemod has been set to its default value: 0.\n");
     }
 
+    // FIXME: range check these
     vals.gidlmod = if let Some(val) = specs.gidlmod { val } else { 0 };
-    // FIXME: range check this one
+    vals.geomod = if let Some(val) = specs.geomod { val } else { 0 };
+    vals.cvchargemod = if let Some(val) = specs.cvchargemod { val } else { 0 };
+    vals.binunit = if let Some(val) = specs.binunit { val } else { 1 };
+    vals.paramchk = if let Some(val) = specs.paramchk { val } else { 1 };
 
+    // Beginning primary double-valued params
     vals.version = if let Some(val) = specs.version { val } else { 4.80 };
     vals.toxref = if let Some(val) = specs.toxref { val } else { 30.0e-10 };
     vals.eot = if let Some(val) = specs.eot { val } else { 15.0e-10 };
@@ -1207,5 +1197,103 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.pkvth0we = if let Some(val) = specs.pkvth0we { val } else { 0.0 };
     vals.pk2we = if let Some(val) = specs.pk2we { val } else { 0.0 };
     vals.pku0we = if let Some(val) = specs.pku0we { val } else { 0.0 };
+
+    // FIXME: this whole mtrlmod params setup
+    // For now just bail if they don't add up
+    if vals.toxe != vals.toxp + vals.dtox {
+        panic!("Invalid toxe, toxp and dtox params");
+    }
+    // if vals.mtrlmod == 0 {
+    //     if (model.toxeGiven) && (model.toxpGiven) && (model.dtoxGiven) && (model.toxe != (model.toxp + model.dtox)) {
+    //         println!("Warning: toxe, toxp and dtox all given and toxe != toxp + dtox; dtox ignored.\n",);
+    //     } else if (model.toxeGiven) && (!model.toxpGiven) {
+    //         vals.toxp = model.toxe - model.dtox;
+    //     } else if (!model.toxeGiven) && (model.toxpGiven) {
+    //         {
+    //             vals.toxe = model.toxp + model.dtox;
+    //         }
+    //         if !model.toxmGiven {
+    //             vals.toxm = model.toxe;
+    //         }
+    //     }
+    // } else if vals.mtrlcompatmod != 0 {
+    //     let T0 = vals.epsrox / 3.9;
+    //     if (model.eotGiven) && (model.toxpGiven) && (model.dtoxGiven) && (abs(model.eot * T0 - (model.toxp + model.dtox)) > 1.0e-20) {
+    //         println!("Warning: eot, toxp and dtox all given and eot * EPSROX / 3.9 != toxp + dtox; dtox ignored.\n");
+    //     } else if (model.eotGiven) && (!model.toxpGiven) {
+    //         vals.toxp = T0 * model.eot - model.dtox;
+    //     } else if (!model.eotGiven) && (model.toxpGiven) {
+    //         vals.eot = (model.toxp + model.dtox) / T0;
+    //         if !model.toxmGiven {
+    //             vals.toxm = model.eot;
+    //         }
+    //     }
+    // }
+
+    // Value Range-Limiting and Related Stern Warnings
+    if vals.pbs < 0.1 {
+        vals.pbs = 0.1;
+        println!("Given pbs is less than 0.1. Pbs is set to 0.1.\n");
+    }
+    if vals.pbsws < 0.1 {
+        vals.pbsws = 0.1;
+        println!("Given pbsws is less than 0.1. Pbsws is set to 0.1.\n",);
+    }
+    if vals.pbswgs < 0.1 {
+        vals.pbswgs = 0.1;
+        println!("Given pbswgs is less than 0.1. Pbswgs is set to 0.1.\n",);
+    }
+    if vals.pbd < 0.1 {
+        vals.pbd = 0.1;
+        println!("Given pbd is less than 0.1. Pbd is set to 0.1.\n");
+    }
+    if vals.pbswd < 0.1 {
+        vals.pbswd = 0.1;
+        println!("Given pbswd is less than 0.1. Pbswd is set to 0.1.\n",);
+    }
+    if vals.pbswgd < 0.1 {
+        vals.pbswgd = 0.1;
+        println!("Given pbswgd is less than 0.1. Pbswgd is set to 0.1.\n",);
+    }
+    if vals.ijthdfwd <= 0.0 {
+        vals.ijthdfwd = 0.0;
+        println!("Ijthdfwd reset to %g.\n"); //vals.ijthdfwd);
+    }
+    if vals.ijthsfwd <= 0.0 {
+        vals.ijthsfwd = 0.0;
+        println!("Ijthsfwd reset to %g.\n"); //vals.ijthsfwd);
+    }
+    if vals.ijthdrev <= 0.0 {
+        vals.ijthdrev = 0.0;
+        println!("Ijthdrev reset to %g.\n"); //vals.ijthdrev);
+    }
+    if vals.ijthsrev <= 0.0 {
+        vals.ijthsrev = 0.0;
+        println!("Ijthsrev reset to %g.\n"); //vals.ijthsrev);
+    }
+    if vals.xjbvd <= 0.0 && (vals.diomod == 2 || vals.diomod == 0) {
+        vals.xjbvd = 0.0;
+        println!("Xjbvd reset to %g.\n"); //vals.xjbvd);
+    }
+    if vals.bvd <= 0.0 {
+        vals.bvd = 0.0;
+        println!("BVD reset to %g.\n"); //vals.bvd);
+    }
+    if (vals.xjbvs <= 0.0) && (vals.diomod == 2) {
+        vals.xjbvs = 0.0;
+        println!("Xjbvs reset to %g.\n"); //vals.xjbvs);
+    } else if (vals.xjbvs < 0.0) && (vals.diomod == 0) {
+        // vals.xjbvs = 0.0;
+        println!("Xjbvs reset to %g.\n"); //vals.xjbvs);
+    }
+    if vals.bvs <= 0.0 {
+        vals.bvs = 0.0;
+        println!("BVS reset to %g.\n"); //vals.bvs);
+    }
+    if vals.jtweff < 0.0 {
+        vals.jtweff = 0.0;
+        println!("TAT width dependence effect is negative. Jtweff is clamped to zero.\n",);
+    }
+
     return vals;
 }
