@@ -7,7 +7,6 @@ pub mod bsim4modelvals;
 pub mod bsim4derive;
 pub mod bsim4inst;
 pub use bsim4defs::*;
-// use super::bsim4derive::*;
 
 use super::consts::*;
 use super::Component;
@@ -69,9 +68,34 @@ pub(crate) struct Bsim4Ports {
     qNode: Option<VarIndex>,
 }
 
+/// Bsim4 Internal, Derived Parameters
+/// These are the numbers calculated offline and used during sim-time, 
+/// i.e. during `load`, `load_ac`, etc. 
 #[derive(Default)]
 pub(crate) struct Bsim4InternalParams {
-    pub(crate) size_params: Bsim4SizeDepParams,
+    pub(crate) l: f64,
+    pub(crate) w: f64,
+    pub(crate) ad: f64,
+    pub(crate) r#as: f64,
+    pub(crate) nrd: f64,
+    pub(crate) nrs: f64,
+    pub(crate) pd: f64,
+    pub(crate) ps: f64,
+    pub(crate) sourceConductance: f64,
+    pub(crate) drainConductance: f64,
+
+    /* stress effect instance param */
+    pub(crate) sa: f64,
+    pub(crate) sb: f64,
+    pub(crate) sd: f64,
+    pub(crate) sca: f64,
+    pub(crate) scb: f64,
+    pub(crate) scc: f64,
+    pub(crate) sc: f64,
+
+    pub(crate) delvto: f64,
+    pub(crate) xgw: f64,
+    pub(crate) ngcon: f64,
 
     pub(crate) vjsmFwd: f64,
     pub(crate) vjsmRev: f64,
@@ -94,34 +118,6 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) Aseff: f64,
     pub(crate) Adeff: f64,
 
-    pub(crate) l: f64,
-    pub(crate) w: f64,
-    pub(crate) drainArea: f64,
-    pub(crate) sourceArea: f64,
-    pub(crate) drainSquares: f64,
-    pub(crate) sourceSquares: f64,
-    pub(crate) drainPerimeter: f64,
-    pub(crate) sourcePerimeter: f64,
-    pub(crate) sourceConductance: f64,
-    pub(crate) drainConductance: f64,
-    /* stress effect instance param */
-    pub(crate) sa: f64,
-    pub(crate) sb: f64,
-    pub(crate) sd: f64,
-    pub(crate) sca: f64,
-    pub(crate) scb: f64,
-    pub(crate) scc: f64,
-    pub(crate) sc: f64,
-
-    pub(crate) rbdb: f64,
-    pub(crate) rbsb: f64,
-    pub(crate) rbpb: f64,
-    pub(crate) rbps: f64,
-    pub(crate) rbpd: f64,
-    pub(crate) delvto: f64,
-    pub(crate) xgw: f64,
-    pub(crate) ngcon: f64,
-
     /* added here to account stress effect instance dependence */
     pub(crate) u0temp: f64,
     pub(crate) vsattemp: f64,
@@ -140,16 +136,6 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) icVBS: f64,
     pub(crate) nf: f64,
     
-    pub(crate) off: isize,
-    pub(crate) mode: isize,
-    // trnqsMod: isize,
-    // acnqsMod: isize,
-    // rbodyMod: isize,
-    // rgateMod: isize,
-    // geoMod: isize,
-    // rgeoMod: isize,
-    pub(crate) min: isize,
-    
     pub(crate) grbsb: f64,
     pub(crate) grbdb: f64,
     pub(crate) grbpb: f64,
@@ -163,8 +149,25 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) SswgTempRevSatCur: f64,
     pub(crate) DswgTempRevSatCur: f64,
     
+    // Modes 
+    pub(crate) mode: usize,
+    pub(crate) min: usize,
+    pub(crate) rgeomod: usize,
+
     // Note these are *also* the names of model parameters
     pub(crate) toxp: f64,
+    pub(crate) rbdb: f64,
+    pub(crate) rbsb: f64,
+    pub(crate) rbpb: f64,
+    pub(crate) rbps: f64,
+    pub(crate) rbpd: f64,
+
+    // Instance-specific mode-selections not (yet?) supported 
+    // trnqsmod: isize,
+    // acnqsmod: isize,
+    // rbodymod: isize,
+    // rgatemod: isize,
+    // geomod: isize,
 
     // Note these are *also* the names of (derived) model parameters
     pub(crate) coxp: f64,
@@ -209,6 +212,7 @@ pub(crate) struct Bsim4ModelDerivedParams {
     pub(crate) njtsswgdtemp: f64,
     pub(crate) TempRatio: f64,
     pub(crate) epssub: f64,
+    pub(crate) ni: f64,
 }
 
 #[derive(Default)]
@@ -274,7 +278,7 @@ struct Bsim4OpPoint {
     pub(crate) gmbs: f64,
     pub(crate) gbd: f64,
     pub(crate) gbs: f64,
-    pub(crate) noiGd0: f64, /* tnoiMod=2 (v4.7) */
+    pub(crate) noiGd0: f64, 
     pub(crate) Coxeff: f64,
 
     pub(crate) gbbs: f64,
@@ -419,7 +423,7 @@ pub(crate) struct Bsim4SizeDepParams {
     pub(crate) w0: f64,
     pub(crate) dvtp0: f64,
     pub(crate) dvtp1: f64,
-    pub(crate) dvtp2: f64, /* New DIBL/Rout */
+    pub(crate) dvtp2: f64, 
     pub(crate) dvtp3: f64,
     pub(crate) dvtp4: f64,
     pub(crate) dvtp5: f64,
@@ -451,9 +455,9 @@ pub(crate) struct Bsim4SizeDepParams {
     pub(crate) ucste: f64,
     pub(crate) voff: f64,
     pub(crate) tvoff: f64,
-    pub(crate) tnfactor: f64, /* v4.7 Temp dep of leakage current */
-    pub(crate) teta0: f64,    /* v4.7 temp dep of leakage current */
-    pub(crate) tvoffcv: f64,  /* v4.7 temp dep of leakage current */
+    pub(crate) tnfactor: f64, 
+    pub(crate) teta0: f64,    
+    pub(crate) tvoffcv: f64,  
     pub(crate) minv: f64,
     pub(crate) minvcv: f64,
     pub(crate) vfb: f64,
@@ -491,16 +495,16 @@ pub(crate) struct Bsim4SizeDepParams {
     pub(crate) bgidl: f64,
     pub(crate) cgidl: f64,
     pub(crate) egidl: f64,
-    pub(crate) fgidl: f64, /* v4.7 New GIDL/GISL */
-    pub(crate) kgidl: f64, /* v4.7 New GIDL/GISL */
-    pub(crate) rgidl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) fgidl: f64, 
+    pub(crate) kgidl: f64, 
+    pub(crate) rgidl: f64, 
     pub(crate) agisl: f64,
     pub(crate) bgisl: f64,
     pub(crate) cgisl: f64,
     pub(crate) egisl: f64,
-    pub(crate) fgisl: f64, /* v4.7 New GIDL/GISL */
-    pub(crate) kgisl: f64, /* v4.7 New GIDL/GISL */
-    pub(crate) rgisl: f64, /* v4.7 New GIDL/GISL */
+    pub(crate) fgisl: f64, 
+    pub(crate) kgisl: f64, 
+    pub(crate) rgisl: f64, 
     pub(crate) aigc: f64,
     pub(crate) bigc: f64,
     pub(crate) cigc: f64,
@@ -708,7 +712,7 @@ struct Bsim4MatrixPointers {
 /// BSIM4 MOSFET Solver
 pub(crate) struct Bsim4 {
     ports: Bsim4Ports,
-    inst: Bsim4Inst,
+    // inst: Bsim4Inst, // Think we need these? nope
     model: Bsim4ModelVals,
     model_derived: Bsim4ModelDerivedParams,
     size_params: Bsim4SizeDepParams,
@@ -1591,6 +1595,7 @@ impl Component for Bsim4 {
         vbd_jct = if self.model.rbodymod != 0 { vbd } else { vdbd };
 
         // Source/drain junction diode DC model begins
+        // FIXME: move offline 
         Nvtms = self.model_derived.vtm * self.model.njs;
         if (self.intp.Aseff <= 0.0) && (self.intp.Pseff <= 0.0) {
             SourceSatCurrent = 0.0;
@@ -1771,7 +1776,7 @@ impl Component for Bsim4 {
         }
 
         /* trap-assisted tunneling and recombination current for reverse bias  */
-        // FIXME: all these things could be stored rather than calculated each iteration 
+        // FIXME: move offline 
         Nvtmrssws = self.model_derived.vtm0 * self.model_derived.njtsswstemp;
         Nvtmrsswgs = self.model_derived.vtm0 * self.model_derived.njtsswgstemp;
         Nvtmrss = self.model_derived.vtm0 * self.model_derived.njtsstemp;
@@ -3114,9 +3119,7 @@ impl Component for Bsim4 {
             newop.gdtotg = T2 * dgdtot_dvg;
             newop.gdtots = T2 * dgdtot_dvs;
             newop.gdtotb = T2 * dgdtot_dvb;
-        } else
-        /* WDLiu: for bypass */
-        {
+        } else {
             newop.gstot = 0.0;
             newop.gstotd = 0.0;
             newop.gstotg = 0.0;
@@ -6133,7 +6136,12 @@ pub(crate) fn MIN( a: f64, b: f64) -> f64 {
 pub(crate) fn abs(a: f64) -> f64 {
     a.abs()
 }
+pub(crate) fn atan(a: f64) -> f64 {
+    a.atan()
+}
 pub(crate) fn pow(a: f64, b:f64) -> f64 {
     a.powf(b)
 }
-
+pub(crate) fn max(a: f64, b:f64) -> f64 {
+    a.max(b)
+}

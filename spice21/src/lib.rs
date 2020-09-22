@@ -67,7 +67,9 @@ pub(crate) mod macros {
     macro_rules! specgen {
     ( $specs_name:ident, $vals_name: ident, $struct_desc:literal, [
         $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
-    ]) => {
+    ], [
+        $( ($val_name:ident, $val_type:ty) ),* $(,)?
+    ]$(,)? ) => {
         #[doc=$struct_desc]
         #[derive(Clone, Copy, Default)]
         pub(crate) struct $specs_name {
@@ -77,8 +79,8 @@ pub(crate) mod macros {
         #[doc=$struct_desc]
         #[derive(Clone, Copy, Default)]
         pub(crate) struct $vals_name {
-            $( #[doc=$desc]
-                pub(crate) $attr_name : $attr_type ),*
+            $( pub(crate) $attr_name : $attr_type, )*
+            $( pub(crate) $val_name : $val_type, )*
         }
     }
     }

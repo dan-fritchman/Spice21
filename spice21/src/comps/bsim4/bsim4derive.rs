@@ -50,9 +50,10 @@ fn derive(model: &Bsim4ModelVals) -> Bsim4ModelDerivedParams {
         T0 = model.bg0sub - model.tbgasub * 90090.0225 / (300.15 + model.tbgbsub);
         ni = model.ni0sub * (Tnom / 300.15) * sqrt(Tnom / 300.15) * exp((T0 - Eg0) / (2.0 * Vtm0));
     }
-
     model_derived.Eg0 = Eg0;
     model_derived.vtm = KB_OVER_Q * Temp;
+    model_derived.ni = ni;
+
     if model.mtrlmod == 0 {
         Eg = 1.16 - 7.02e-4 * Temp * Temp / (Temp + 1108.0);
     } else {

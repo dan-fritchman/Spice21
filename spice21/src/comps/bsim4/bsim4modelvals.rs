@@ -3,8 +3,8 @@ use super::log;
 use crate::comps::consts::*;
 use crate::comps::MosType;
 
-/// Resolve input-provided model-specs into their values, 
-/// incorporating defaults and limiting constraints. 
+/// Resolve input-provided model-specs into their values,
+/// incorporating defaults and limiting constraints.
 fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     let mut vals = Bsim4ModelVals::default();
     use MosType::{NMOS, PMOS};
@@ -1243,23 +1243,25 @@ fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
 
     // FIXME: `coxe` is also derived elsewhere, merge when possible
     let coxe = vals.epsrox * EPS0 / vals.toxe;
-    vals.cgso = if let Some(val) =specs.cgso { val } else {
+    vals.cgso = if let Some(val) = specs.cgso {
+        val
+    } else {
         if specs.dlc.is_some() && vals.dlc > 0.0 {
             vals.dlc * coxe - vals.cgsl
         } else {
             0.6 * vals.xj * coxe
         }
     };
-    vals.cgdo = if let Some(val) =specs.cgdo { val } else {
+    vals.cgdo = if let Some(val) = specs.cgdo {
+        val
+    } else {
         if specs.dlc.is_some() && vals.dlc > 0.0 {
             vals.dlc * coxe - vals.cgdl
         } else {
             0.6 * vals.xj * coxe
         }
     };
-    vals.cgbo = if let Some(val) = specs.cgbo { val } else {
-        2.0 * vals.dwc * coxe
-    };
+    vals.cgbo = if let Some(val) = specs.cgbo { val } else { 2.0 * vals.dwc * coxe };
 
     // Value Range-Limiting and Related Stern Warnings
     if vals.pbs < 0.1 {
@@ -1334,6 +1336,32 @@ fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.wlod = 0.0;
         println!("Warning: WLOD = %g is less than 0. 0.0 is used\n");
     }
+
+    // Derived params
+    // Body resistance mode (Probably enum-ize)
+    vals.bodymode = if ((!specs.rbps0.is_some()) || (!specs.rbpd0.is_some())) {
+        1
+    } else if ((!specs.rbsbx0.is_some() && !specs.rbsby0.is_some()) || (!specs.rbdbx0.is_some() && !specs.rbdby0.is_some())) {
+        3
+    } else {
+        5
+    };
+
+    // Resorting to keeping some of these "given" flags around,
+    // as downstream behavior does appear to depend on them.
+    vals.vtlGiven = specs.vtl.is_some();
+    vals.vfbGiven = specs.vfb.is_some();
+    vals.vth0Given = specs.vth0.is_some();
+    vals.ndepGiven = specs.ndep.is_some();
+    vals.nsubGiven = specs.nsub.is_some();
+    vals.gamma1Given = specs.gamma1.is_some();
+    vals.gamma2Given = specs.gamma2.is_some();
+    vals.k1Given = specs.k1.is_some();
+    vals.k2Given = specs.k2.is_some();
+    vals.nsubGiven = specs.nsub.is_some();
+    vals.xtGiven = specs.xt.is_some();
+    vals.vbxGiven = specs.vbx.is_some();
+    vals.phigGiven = specs.phig.is_some();
 
     return vals;
 }

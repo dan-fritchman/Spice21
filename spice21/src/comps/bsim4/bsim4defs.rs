@@ -1,44 +1,49 @@
 use crate::comps::mos::MosType;
 use crate::{paramstruct, specgen};
 
-paramstruct! {
-    Bsim4Inst,
+specgen! {
+    Bsim4InstSpecs,
+    Bsim4InstVals,
     "BSIM4 Instance Parameters",[
-    (l, f64, "Length"),
-    (w, f64, "Width"),
-    (nf, f64, "Number of fingers"),
-    (sa, f64, "distance between  OD edge to poly of one side "),
-    (sb, f64, "distance between  OD edge to poly of the other side"),
-    (sd, f64, "distance between neighbour fingers"),
-    (sca, f64, "Integral of the first distribution function for scattered well dopant"),
-    (scb, f64, "Integral of the second distribution function for scattered well dopant"),
-    (scc, f64, "Integral of the third distribution function for scattered well dopant"),
-    (sc, f64, "Distance to a single well edge "),
-    (min, usize, "Minimize either D or S"),
-    (ad, f64, "Drain area"),
-    (r#as, f64, "Source area"), // Note renamed from the keyword `as`
-    (pd, f64, "Drain perimeter"),
-    (ps, f64, "Source perimeter"),
-    (nrd, f64, "Number of squares in drain"),
-    (nrs, f64, "Number of squares in source"),
-    (off, bool, "Device is initially off"),
-    (rbdb, f64, "Body resistance"),
-    (rbsb, f64, "Body resistance"),
-    (rbpb, f64, "Body resistance"),
-    (rbps, f64, "Body resistance"),
-    (rbpd, f64, "Body resistance"),
-    (delvto, f64, "Zero bias threshold voltage variation"),
-    (xgw, f64, "Distance from gate contact center to device edge"),
-    (ngcon, f64, "Number of gate contacts"),
-    (trnqsmod, usize, "Transient NQS model selector"),
-    (acnqsmod, usize, "AC NQS model selector"),
-    (rbodymod, usize, "Distributed body R model selector"),
-    (rgatemod, usize, "Gate resistance model selector"),
-    (geomod, usize, "Geometry dependent parasitics model selector"),
-    (rgeomod, usize, "S/D resistance and contact model selector"),
-    // Unsupported:
-    // (ic, Vec<f64>, "Vector of DS,GS,BS initial voltages"),
-    ]
+        (l, f64, "Length"),
+        (w, f64, "Width"),
+        (nf, f64, "Number of fingers"),
+        (sa, f64, "distance between  OD edge to poly of one side "),
+        (sb, f64, "distance between  OD edge to poly of the other side"),
+        (sd, f64, "distance between neighbour fingers"),
+        (sca, f64, "Integral of the first distribution function for scattered well dopant"),
+        (scb, f64, "Integral of the second distribution function for scattered well dopant"),
+        (scc, f64, "Integral of the third distribution function for scattered well dopant"),
+        (sc, f64, "Distance to a single well edge "),
+        (ad, f64, "Drain area"),
+        (r#as, f64, "Source area"), // Note renamed from the keyword `as`
+        (pd, f64, "Drain perimeter"),
+        (ps, f64, "Source perimeter"),
+        (nrd, f64, "Number of squares in drain"),
+        (nrs, f64, "Number of squares in source"),
+        // Modal instance params
+        (min, usize, "Minimize either D or S"),
+        (rgeomod, usize, "S/D resistance and contact model selector"),
+        // Also model parameters 
+        (rbdb, f64, "Body resistance"),
+        (rbsb, f64, "Body resistance"),
+        (rbpb, f64, "Body resistance"),
+        (rbps, f64, "Body resistance"),
+        (rbpd, f64, "Body resistance"),
+        (delvto, f64, "Zero bias threshold voltage variation"),
+        (xgw, f64, "Distance from gate contact center to device edge"),
+        (ngcon, f64, "Number of gate contacts"),
+        // Unsupported:
+        // FIXME: comprehension of per-instance changes to these models
+        // (trnqsmod, usize, "Transient NQS model selector"),
+        // (acnqsmod, usize, "AC NQS model selector"),
+        // (rbodymod, usize, "Distributed body R model selector"),
+        // (rgatemod, usize, "Gate resistance model selector"),
+        // (geomod, usize, "Geometry dependent parasitics model selector"),
+        // (off, bool, "Device is initially off"),
+        // (ic, Vec<f64>, "Vector of DS,GS,BS initial voltages"),
+    ], 
+    [] // No extra params 
 }
 // paramstruct! {
 //     Bsim4OpPoint,
@@ -349,16 +354,16 @@ specgen! {
         (agidl, f64, "Pre-exponential constant for GIDL"),
         (bgidl, f64, "Exponential constant for GIDL"),
         (cgidl, f64, "Parameter for body-bias dependence of GIDL"),
-        (rgidl, f64, "GIDL vg parameter"), /* v4.7 New GIDL/GISL */
-        (kgidl, f64, "GIDL vb parameter"), /* v4.7 New GIDL/GISL */
-        (fgidl, f64, "GIDL vb parameter"), /* v4.7 New GIDL/GISL */
+        (rgidl, f64, "GIDL vg parameter"),
+        (kgidl, f64, "GIDL vb parameter"),
+        (fgidl, f64, "GIDL vb parameter"),
         (egidl, f64, "Fitting parameter for Bandbending"),
         (agisl, f64, "Pre-exponential constant for GISL"),
         (bgisl, f64, "Exponential constant for GISL"),
         (cgisl, f64, "Parameter for body-bias dependence of GISL"),
-        (rgisl, f64, "GISL vg parameter"), /* v4.7 New GIDL/GISL */
-        (kgisl, f64, "GISL vb parameter"), /* v4.7 New GIDL/GISL */
-        (fgisl, f64, "GISL vb parameter"), /* v4.7 New GIDL/GISL */
+        (rgisl, f64, "GISL vg parameter"),
+        (kgisl, f64, "GISL vb parameter"),
+        (fgisl, f64, "GISL vb parameter"),
         (egisl, f64, "Fitting parameter for Bandbending"),
         (aigc, f64, "Parameter for Igc"),
         (bigc, f64, "Parameter for Igc"),
@@ -558,16 +563,16 @@ specgen! {
         (lagidl, f64, "Length dependence of agidl"),
         (lbgidl, f64, "Length dependence of bgidl"),
         (lcgidl, f64, "Length dependence of cgidl"),
-        (lrgidl, f64, "Length dependence of rgidl"), /* v4.7 New GIDL/GISL */
-        (lkgidl, f64, "Length dependence of kgidl"), /* v4.7 New GIDL/GISL */
-        (lfgidl, f64, "Length dependence of fgidl"), /* v4.7 New GIDL/GISL */
+        (lrgidl, f64, "Length dependence of rgidl"),
+        (lkgidl, f64, "Length dependence of kgidl"),
+        (lfgidl, f64, "Length dependence of fgidl"),
         (legidl, f64, "Length dependence of egidl"),
         (lagisl, f64, "Length dependence of agisl"),
         (lbgisl, f64, "Length dependence of bgisl"),
         (lcgisl, f64, "Length dependence of cgisl"),
-        (lrgisl, f64, "Length dependence of rgisl"), /* v4.7 New GIDL/GISL */
-        (lkgisl, f64, "Length dependence of kgisl"), /* v4.7 New GIDL/GISL */
-        (lfgisl, f64, "Length dependence of fgisl"), /* v4.7 New GIDL/GISL */
+        (lrgisl, f64, "Length dependence of rgisl"),
+        (lkgisl, f64, "Length dependence of kgisl"),
+        (lfgisl, f64, "Length dependence of fgisl"),
         (legisl, f64, "Length dependence of egisl"),
         (laigc, f64, "Length dependence of aigc"),
         (lbigc, f64, "Length dependence of bigc"),
@@ -715,16 +720,16 @@ specgen! {
         (wagidl, f64, "Width dependence of agidl"),
         (wbgidl, f64, "Width dependence of bgidl"),
         (wcgidl, f64, "Width dependence of cgidl"),
-        (wrgidl, f64, "Width dependence of rgidl"), /* v4.7 New GIDL/GISL */
-        (wkgidl, f64, "Width dependence of kgidl"), /* v4.7 New GIDL/GISL */
-        (wfgidl, f64, "Width dependence of fgidl"), /* v4.7 New GIDL/GISL */
+        (wrgidl, f64, "Width dependence of rgidl"),
+        (wkgidl, f64, "Width dependence of kgidl"),
+        (wfgidl, f64, "Width dependence of fgidl"),
         (wegidl, f64, "Width dependence of egidl"),
         (wagisl, f64, "Width dependence of agisl"),
         (wbgisl, f64, "Width dependence of bgisl"),
         (wcgisl, f64, "Width dependence of cgisl"),
-        (wrgisl, f64, "Width dependence of rgisl"), /* v4.7 New GIDL/GISL */
-        (wkgisl, f64, "Width dependence of kgisl"), /* v4.7 New GIDL/GISL */
-        (wfgisl, f64, "Width dependence of fgisl"), /* v4.7 New GIDL/GISL */
+        (wrgisl, f64, "Width dependence of rgisl"),
+        (wkgisl, f64, "Width dependence of kgisl"),
+        (wfgisl, f64, "Width dependence of fgisl"),
         (wegisl, f64, "Width dependence of egisl"),
         (waigc, f64, "Width dependence of aigc"),
         (wbigc, f64, "Width dependence of bigc"),
@@ -818,7 +823,7 @@ specgen! {
         (pdrout, f64, "Cross-term dependence of drout"),
         (pdsub, f64, "Cross-term dependence of dsub"),
         (pvth0, f64,"Cross-term dependence of vto"),
-        // (pvtho, f64,"Cross-term dependence of vto"), // Removed 
+        // (pvtho, f64,"Cross-term dependence of vto"), // Removed
         (pua, f64, "Cross-term dependence of ua"),
         (pua1, f64, "Cross-term dependence of ua1"),
         (r#pub, f64, "Cross-term dependence of ub"), // Note: renamed from the keyword `pub`
@@ -872,17 +877,17 @@ specgen! {
         (pagidl, f64, "Cross-term dependence of agidl"),
         (pbgidl, f64, "Cross-term dependence of bgidl"),
         (pcgidl, f64, "Cross-term dependence of cgidl"),
-        (prgidl, f64, "Cross-term dependence of rgidl"), /* v4.7 New GIDL/GISL */
-        (pkgidl, f64, "Cross-term dependence of kgidl"), /* v4.7 New GIDL/GISL */
-        (pfgidl, f64, "Cross-term dependence of fgidl"), /* v4.7 New GIDL/GISL */
+        (prgidl, f64, "Cross-term dependence of rgidl"),
+        (pkgidl, f64, "Cross-term dependence of kgidl"),
+        (pfgidl, f64, "Cross-term dependence of fgidl"),
         (pegidl, f64, "Cross-term dependence of egidl"),
         (pagisl, f64, "Cross-term dependence of agisl"),
         (pbgisl, f64, "Cross-term dependence of bgisl"),
         (pcgisl, f64, "Cross-term dependence of cgisl"),
         (pegisl, f64, "Cross-term dependence of egisl"),
-        (prgisl, f64, "Cross-term dependence of rgisl"), /* v4.7 New GIDL/GISL */
-        (pkgisl, f64, "Cross-term dependence of kgisl"), /* v4.7 New GIDL/GISL */
-        (pfgisl, f64, "Cross-term dependence of fgisl"), /* v4.7 New GIDL/GISL */
+        (prgisl, f64, "Cross-term dependence of rgisl"),
+        (pkgisl, f64, "Cross-term dependence of kgisl"),
+        (pfgisl, f64, "Cross-term dependence of fgisl"),
         (paigc, f64, "Cross-term dependence of aigc"),
         (pbigc, f64, "Cross-term dependence of bigc"),
         (pcigc, f64, "Cross-term dependence of cigc"),
@@ -983,5 +988,22 @@ specgen! {
         //
         (nmos, bool, "Flag to indicate NMOS"),
         (pmos, bool, "Flag to indicate PMOS"),
-    ]
+    ], [ 
+        // Additional values, derived at resolution-time
+        (bodymode, usize),
+        // Given-flags 
+        (vtlGiven, bool),
+        (vfbGiven, bool),
+        (vth0Given, bool),
+        (ndepGiven, bool),
+        (nsubGiven, bool),
+        (gamma1Given, bool),
+        (gamma2Given, bool),
+        (k1Given, bool),
+        (k2Given, bool),
+        (xtGiven, bool),
+        (vbxGiven, bool),
+        (phigGiven, bool),
+
+    ],
 }
