@@ -1638,7 +1638,7 @@ fn from(
         intp.toxp = toxpf;
         intp.coxp = epsrox * EPS0 / model.toxp;
     } else {
-        intp.toxp = model_derived.toxp;
+        intp.toxp = model.toxp;
         intp.coxp = model_derived.coxp;
     }
 

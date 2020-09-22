@@ -4,7 +4,7 @@
 
 pub mod bsim4defs;
 pub mod bsim4modelvals;
-// pub mod bsim4derive;
+pub mod bsim4derive;
 // pub mod bsim4inst;
 pub use bsim4defs::*;
 // use super::bsim4derive::*;
@@ -162,30 +162,25 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) DswTempRevSatCur: f64,
     pub(crate) SswgTempRevSatCur: f64,
     pub(crate) DswgTempRevSatCur: f64,
-
-    // Note these two are *also* the names of derived model parameters
+    
+    // Note these are *also* the names of model parameters
     pub(crate) toxp: f64,
+
+    // Note these are *also* the names of (derived) model parameters
     pub(crate) coxp: f64,
 }
 
+/// Derived Bsim4 Model Parameters
+/// Primarily params which depend on temperature, etc. 
 #[derive(Default)]
 pub(crate) struct Bsim4ModelDerivedParams {
-    // Note these two are *also* the names of internal instance parameters
-    pub(crate) toxp: f64,
+    // Note these are *also* the names of internal instance parameters
     pub(crate) coxp: f64,
-    // Note these are also model input params (although not with the same values)
-    pub(crate) cgso: f64,
-    pub(crate) cgdo: f64,
-    pub(crate) cgbo: f64,
 
     pub(crate) Eg0: f64,
     pub(crate) vtm: f64,
     pub(crate) vtm0: f64,
     pub(crate) coxe: f64,
-    pub(crate) cof1: f64,
-    pub(crate) cof2: f64,
-    pub(crate) cof3: f64,
-    pub(crate) cof4: f64,
     pub(crate) vcrit: f64,
     pub(crate) factor1: f64,
     pub(crate) PhiBS: f64,
@@ -206,51 +201,14 @@ pub(crate) struct Bsim4ModelDerivedParams {
     pub(crate) DunitLengthSidewallTempJctCap: f64,
     pub(crate) SunitLengthGateSidewallTempJctCap: f64,
     pub(crate) DunitLengthGateSidewallTempJctCap: f64,
-
-    pub(crate) oxideTrapDensityA: f64,
-    pub(crate) oxideTrapDensityB: f64,
-    pub(crate) oxideTrapDensityC: f64,
-    pub(crate) em: f64,
-    pub(crate) ef: f64,
-    pub(crate) af: f64,
-    pub(crate) kf: f64,
-    pub(crate) sheetResistance: f64,
-    pub(crate) SjctSatCurDensity: f64,
-    pub(crate) DjctSatCurDensity: f64,
-    pub(crate) SjctSidewallSatCurDensity: f64,
-    pub(crate) DjctSidewallSatCurDensity: f64,
-    pub(crate) SjctGateSidewallSatCurDensity: f64,
-    pub(crate) DjctGateSidewallSatCurDensity: f64,
-    pub(crate) SbulkJctPotential: f64,
-    pub(crate) DbulkJctPotential: f64,
-    pub(crate) SbulkJctBotGradingCoeff: f64,
-    pub(crate) DbulkJctBotGradingCoeff: f64,
-    pub(crate) SbulkJctSideGradingCoeff: f64,
-    pub(crate) DbulkJctSideGradingCoeff: f64,
-    pub(crate) SbulkJctGateSideGradingCoeff: f64,
-    pub(crate) DbulkJctGateSideGradingCoeff: f64,
-    pub(crate) SsidewallJctPotential: f64,
-    pub(crate) DsidewallJctPotential: f64,
-    pub(crate) SGatesidewallJctPotential: f64,
-    pub(crate) DGatesidewallJctPotential: f64,
-    pub(crate) SunitAreaJctCap: f64,
-    pub(crate) DunitAreaJctCap: f64,
-    pub(crate) SunitLengthSidewallJctCap: f64,
-    pub(crate) DunitLengthSidewallJctCap: f64,
-    pub(crate) SunitLengthGateSidewallJctCap: f64,
-    pub(crate) DunitLengthGateSidewallJctCap: f64,
-    pub(crate) SjctEmissionCoeff: f64,
-    pub(crate) DjctEmissionCoeff: f64,
-    pub(crate) SjctTempExponent: f64,
-    pub(crate) DjctTempExponent: f64,
     pub(crate) njtsstemp: f64,
     pub(crate) njtsswstemp: f64,
     pub(crate) njtsswgstemp: f64,
     pub(crate) njtsdtemp: f64,
     pub(crate) njtsswdtemp: f64,
     pub(crate) njtsswgdtemp: f64,
-
     pub(crate) TempRatio: f64,
+    pub(crate) epssub: f64,
 }
 
 #[derive(Default)]
@@ -1377,9 +1335,6 @@ impl Component for Bsim4 {
         let mut dFsevl_dVb: f64;
         let mut vgdx: f64;
         let mut vgsx: f64;
-        let mut epssub: f64;
-        let mut toxe: f64;
-        let mut epsrox: f64;
 
         // Initialized locals. Complicated code-paths do not otherwise ensure these are ever set.
         let mut qgmid = 0.0;
@@ -1636,7 +1591,7 @@ impl Component for Bsim4 {
         vbd_jct = if self.model.rbodymod != 0 { vbd } else { vdbd };
 
         // Source/drain junction diode DC model begins
-        Nvtms = self.model_derived.vtm * self.model_derived.SjctEmissionCoeff;
+        Nvtms = self.model_derived.vtm * self.model.njs;
         if (self.intp.Aseff <= 0.0) && (self.intp.Pseff <= 0.0) {
             SourceSatCurrent = 0.0;
         } else {
@@ -1726,7 +1681,7 @@ impl Component for Bsim4 {
             }
         }
 
-        Nvtmd = self.model_derived.vtm * self.model_derived.DjctEmissionCoeff;
+        Nvtmd = self.model_derived.vtm * self.model.njd;
 
         if (self.intp.Adeff <= 0.0) && (self.intp.Pdeff <= 0.0) {
             DrainSatCurrent = 0.0;
@@ -1943,15 +1898,9 @@ impl Component for Bsim4 {
             Vdb = -vbs;
         }
 
-        if self.model.mtrlmod != 0 {
-            epsrox = 3.9;
-            toxe = self.model.eot;
-            epssub = EPS0 * self.model.epsrsub;
-        } else {
-            epsrox = self.model.epsrox;
-            toxe = self.model.toxe;
-            epssub = EPSSI;
-        }
+        let epsrox = self.model.epsrox;
+        let toxe = self.model.toxe;
+        let epssub = self.model_derived.epssub;
 
         T0 = Vbs - self.intp.vbsc - 0.001;
         T1 = sqrt(T0 * T0 - 0.004 * self.intp.vbsc);
@@ -4790,13 +4739,13 @@ impl Component for Bsim4 {
                 * self.size_params.weffCJ
                 * self.intp.nf;
 
-            MJS = self.model_derived.SbulkJctBotGradingCoeff;
-            MJSWS = self.model_derived.SbulkJctSideGradingCoeff;
-            MJSWGS = self.model_derived.SbulkJctGateSideGradingCoeff;
+            MJS = self.model.mjs;
+            MJSWS = self.model.mjsws;
+            MJSWGS = self.model.mjswgs;
 
-            MJD = self.model_derived.DbulkJctBotGradingCoeff;
-            MJSWD = self.model_derived.DbulkJctSideGradingCoeff;
-            MJSWGD = self.model_derived.DbulkJctGateSideGradingCoeff;
+            MJD = self.model.mjd;
+            MJSWD = self.model.mjswd;
+            MJSWGD = self.model.mjswgd;
 
             /* Source Bulk Junction */
             if vbs_jct == 0.0 {

@@ -3,7 +3,9 @@ use super::log;
 use crate::comps::consts::*;
 use crate::comps::MosType;
 
-fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
+/// Resolve input-provided model-specs into their values, 
+/// incorporating defaults and limiting constraints. 
+fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     let mut vals = Bsim4ModelVals::default();
     use MosType::{NMOS, PMOS};
 
@@ -1203,6 +1205,15 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     if vals.toxe != vals.toxp + vals.dtox {
         panic!("Invalid toxe, toxp and dtox params");
     }
+    // if model.mtrlmod {
+    //     epsrox = 3.9;
+    //     toxe = model.eot;
+    //     epssub = EPS0 * model.epsrsub;
+    // } else {
+    //     epsrox = model.epsrox;
+    //     toxe = model.toxe;
+    //     epssub = EPSSI;
+    // }
     // if vals.mtrlmod == 0 {
     //     if (model.toxeGiven) && (model.toxpGiven) && (model.dtoxGiven) && (model.toxe != (model.toxp + model.dtox)) {
     //         println!("Warning: toxe, toxp and dtox all given and toxe != toxp + dtox; dtox ignored.\n",);
@@ -1229,6 +1240,26 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     //         }
     //     }
     // }
+
+    // FIXME: `coxe` is also derived elsewhere, merge when possible
+    let coxe = vals.epsrox * EPS0 / vals.toxe;
+    vals.cgso = if let Some(val) =specs.cgso { val } else {
+        if specs.dlc.is_some() && vals.dlc > 0.0 {
+            vals.dlc * coxe - vals.cgsl
+        } else {
+            0.6 * vals.xj * coxe
+        }
+    };
+    vals.cgdo = if let Some(val) =specs.cgdo { val } else {
+        if specs.dlc.is_some() && vals.dlc > 0.0 {
+            vals.dlc * coxe - vals.cgdl
+        } else {
+            0.6 * vals.xj * coxe
+        }
+    };
+    vals.cgbo = if let Some(val) = specs.cgbo { val } else {
+        2.0 * vals.dwc * coxe
+    };
 
     // Value Range-Limiting and Related Stern Warnings
     if vals.pbs < 0.1 {
@@ -1275,16 +1306,13 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.xjbvd = 0.0;
         println!("Xjbvd reset to %g.\n"); //vals.xjbvd);
     }
+    if vals.xjbvs <= 0.0 && (vals.diomod == 2 || vals.diomod == 0) {
+        vals.xjbvs = 0.0;
+        println!("Xjbvs reset to %g.\n"); //vals.xjbvs);
+    }
     if vals.bvd <= 0.0 {
         vals.bvd = 0.0;
         println!("BVD reset to %g.\n"); //vals.bvd);
-    }
-    if (vals.xjbvs <= 0.0) && (vals.diomod == 2) {
-        vals.xjbvs = 0.0;
-        println!("Xjbvs reset to %g.\n"); //vals.xjbvs);
-    } else if (vals.xjbvs < 0.0) && (vals.diomod == 0) {
-        // vals.xjbvs = 0.0;
-        println!("Xjbvs reset to %g.\n"); //vals.xjbvs);
     }
     if vals.bvs <= 0.0 {
         vals.bvs = 0.0;
@@ -1293,6 +1321,14 @@ fn from(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     if vals.jtweff < 0.0 {
         vals.jtweff = 0.0;
         println!("TAT width dependence effect is negative. Jtweff is clamped to zero.\n",);
+    }
+    if vals.cjsws < 0.0 {
+        vals.cjsws = 0.0;
+        println!("CJSWS is negative. Cjsws is clamped to zero.\n");
+    }
+    if vals.cjswd < 0.0 {
+        vals.cjswd = 0.0;
+        println!("CJSWD is negative. Cjswd is clamped to zero.\n");
     }
 
     return vals;
