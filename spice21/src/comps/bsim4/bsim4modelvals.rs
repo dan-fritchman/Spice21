@@ -1330,6 +1330,10 @@ fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         vals.cjswd = 0.0;
         println!("CJSWD is negative. Cjswd is clamped to zero.\n");
     }
+    if vals.wlod < 0.0 {
+        vals.wlod = 0.0;
+        println!("Warning: WLOD = %g is less than 0. 0.0 is used\n");
+    }
 
     return vals;
 }

@@ -1,13 +1,9 @@
-use super::consts::*;
-use super::bsim4::*;
 use super::bsim4defs::*;
+use super::*;
+use crate::comps::consts::*;
 
-/// Derive Bsim4 Internal Parameters from Model and Instance params
-fn from(
-    model: &Bsim4Model,
-    model_derived: &Bsim4ModelDerivedParams,
-    inst: &Bsim4Inst,
-) -> Bsim4InternalParams {
+/// Derive Bsim4 Internal Instance Parameters from Model and Instance params
+fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &Bsim4Inst) -> Bsim4InternalParams {
     let mut tmp: f64;
     let mut tmp1: f64;
     let mut tmp2: f64;
@@ -30,7 +26,6 @@ fn from(
     let mut Wnew: f64;
     let mut delTemp: f64;
     let mut Temp: f64;
-    let mut TRatio: f64;
     let mut Inv_L: f64;
     let mut Inv_W: f64;
     let mut Inv_LW: f64;
@@ -74,7 +69,6 @@ fn from(
     let mut rbdbx: f64;
     let mut rbdby: f64;
     let mut kvsat: f64;
-    let mut wlod: f64;
     let mut sceff: f64;
     let mut Wdrn: f64;
     let mut V0: f64;
@@ -109,7 +103,7 @@ fn from(
     let mut size_params = Bsim4SizeDepParams::default();
     let mut intp = Bsim4InternalParams::default();
 
-    // FIXME: set up a hash table of these size params, cache it etc.
+    // FIXME: set up a hash table of these size params, cache it, etc.
     Size_Not_Found = true;
     // pSizeDependParamKnot = model->pSizeDependParamKnot;
     //   while ((pSizeDependParamKnot != NULL) && Size_Not_Found)
@@ -130,7 +124,7 @@ fn from(
     Ldrn = inst.l;
     Wdrn = inst.w / inst.nf;
 
-    if (Size_Not_Found) {
+    if Size_Not_Found {
         //   pParam = (struct bsim4SizeDependParam *)malloc(
         //                 sizeof(struct bsim4SizeDependParam));
         //       if (pLastKnot == NULL)
@@ -163,31 +157,31 @@ fn from(
         size_params.dwj = model.dwj + tmp2;
 
         size_params.leff = Lnew - 2.0 * size_params.dl;
-        if (size_params.leff <= 0.0) {
-            panic!("BSIM4: mosfet %s, model %s: Effective channel length <= 0");
+        if size_params.leff <= 0.0 {
+            println!("BSIM4: mosfet %s, model %s: Effective channel length <= 0");
         }
 
         size_params.weff = Wnew - 2.0 * size_params.dw;
-        if (size_params.weff <= 0.0) {
-            panic!("BSIM4: mosfet %s, model %s: Effective channel width <= 0");
+        if size_params.weff <= 0.0 {
+            println!("BSIM4: mosfet %s, model %s: Effective channel width <= 0");
         }
 
         size_params.leffCV = Lnew - 2.0 * size_params.dlc;
-        if (size_params.leffCV <= 0.0) {
-            panic!("BSIM4: mosfet %s, model %s: Effective channel length for C-V <= 0");
+        if size_params.leffCV <= 0.0 {
+            println!("BSIM4: mosfet %s, model %s: Effective channel length for C-V <= 0");
         }
 
         size_params.weffCV = Wnew - 2.0 * size_params.dwc;
-        if (size_params.weffCV <= 0.0) {
-            panic!("BSIM4: mosfet %s, model %s: Effective channel width for C-V <= 0");
+        if size_params.weffCV <= 0.0 {
+            println!("BSIM4: mosfet %s, model %s: Effective channel width for C-V <= 0");
         }
 
         size_params.weffCJ = Wnew - 2.0 * size_params.dwj;
-        if (size_params.weffCJ <= 0.0) {
-            panic!("BSIM4: mosfet %s, model %s: Effective channel width for S/D junctions <= 0");
+        if size_params.weffCJ <= 0.0 {
+            println!("BSIM4: mosfet %s, model %s: Effective channel width for S/D junctions <= 0");
         }
 
-        if (model.binunit == 1) {
+        if model.binunit == 1 {
             Inv_L = 1.0e-6 / size_params.leff;
             Inv_W = 1.0e-6 / size_params.weff;
             Inv_LW = 1.0e-12 / (size_params.leff * size_params.weff);
@@ -196,26 +190,16 @@ fn from(
             Inv_W = 1.0 / size_params.weff;
             Inv_LW = 1.0 / (size_params.leff * size_params.weff);
         }
-        size_params.cdsc =
-            model.cdsc + model.lcdsc * Inv_L + model.wcdsc * Inv_W + model.pcdsc * Inv_LW;
-        size_params.cdscb =
-            model.cdscb + model.lcdscb * Inv_L + model.wcdscb * Inv_W + model.pcdscb * Inv_LW;
+        size_params.cdsc = model.cdsc + model.lcdsc * Inv_L + model.wcdsc * Inv_W + model.pcdsc * Inv_LW;
+        size_params.cdscb = model.cdscb + model.lcdscb * Inv_L + model.wcdscb * Inv_W + model.pcdscb * Inv_LW;
 
-        size_params.cdscd =
-            model.cdscd + model.lcdscd * Inv_L + model.wcdscd * Inv_W + model.pcdscd * Inv_LW;
+        size_params.cdscd = model.cdscd + model.lcdscd * Inv_L + model.wcdscd * Inv_W + model.pcdscd * Inv_LW;
 
         size_params.cit = model.cit + model.lcit * Inv_L + model.wcit * Inv_W + model.pcit * Inv_LW;
-        size_params.nfactor = model.nfactor
-            + model.lnfactor * Inv_L
-            + model.wnfactor * Inv_W
-            + model.pnfactor * Inv_LW;
-        size_params.tnfactor = model.tnfactor 
-				       + model.ltnfactor * Inv_L
-				       + model.wtnfactor * Inv_W
-				       + model.ptnfactor * Inv_LW;
+        size_params.nfactor = model.nfactor + model.lnfactor * Inv_L + model.wnfactor * Inv_W + model.pnfactor * Inv_LW;
+        size_params.tnfactor = model.tnfactor + model.ltnfactor * Inv_L + model.wtnfactor * Inv_W + model.ptnfactor * Inv_LW;
         size_params.xj = model.xj + model.lxj * Inv_L + model.wxj * Inv_W + model.pxj * Inv_LW;
-        size_params.vsat =
-            model.vsat + model.lvsat * Inv_L + model.wvsat * Inv_W + model.pvsat * Inv_LW;
+        size_params.vsat = model.vsat + model.lvsat * Inv_L + model.wvsat * Inv_W + model.pvsat * Inv_LW;
         size_params.at = model.at + model.lat * Inv_L + model.wat * Inv_W + model.pat * Inv_LW;
         size_params.a0 = model.a0 + model.la0 * Inv_L + model.wa0 * Inv_W + model.pa0 * Inv_LW;
 
@@ -223,42 +207,30 @@ fn from(
 
         size_params.a1 = model.a1 + model.la1 * Inv_L + model.wa1 * Inv_W + model.pa1 * Inv_LW;
         size_params.a2 = model.a2 + model.la2 * Inv_L + model.wa2 * Inv_W + model.pa2 * Inv_LW;
-        size_params.keta =
-            model.keta + model.lketa * Inv_L + model.wketa * Inv_W + model.pketa * Inv_LW;
-        size_params.nsub =
-            model.nsub + model.lnsub * Inv_L + model.wnsub * Inv_W + model.pnsub * Inv_LW;
-        size_params.ndep =
-            model.ndep + model.lndep * Inv_L + model.wndep * Inv_W + model.pndep * Inv_LW;
+        size_params.keta = model.keta + model.lketa * Inv_L + model.wketa * Inv_W + model.pketa * Inv_LW;
+        size_params.nsub = model.nsub + model.lnsub * Inv_L + model.wnsub * Inv_W + model.pnsub * Inv_LW;
+        size_params.ndep = model.ndep + model.lndep * Inv_L + model.wndep * Inv_W + model.pndep * Inv_LW;
         size_params.nsd = model.nsd + model.lnsd * Inv_L + model.wnsd * Inv_W + model.pnsd * Inv_LW;
-        size_params.phin =
-            model.phin + model.lphin * Inv_L + model.wphin * Inv_W + model.pphin * Inv_LW;
-        size_params.ngate =
-            model.ngate + model.lngate * Inv_L + model.wngate * Inv_W + model.pngate * Inv_LW;
-        size_params.gamma1 =
-            model.gamma1 + model.lgamma1 * Inv_L + model.wgamma1 * Inv_W + model.pgamma1 * Inv_LW;
-        size_params.gamma2 =
-            model.gamma2 + model.lgamma2 * Inv_L + model.wgamma2 * Inv_W + model.pgamma2 * Inv_LW;
+        size_params.phin = model.phin + model.lphin * Inv_L + model.wphin * Inv_W + model.pphin * Inv_LW;
+        size_params.ngate = model.ngate + model.lngate * Inv_L + model.wngate * Inv_W + model.pngate * Inv_LW;
+        size_params.gamma1 = model.gamma1 + model.lgamma1 * Inv_L + model.wgamma1 * Inv_W + model.pgamma1 * Inv_LW;
+        size_params.gamma2 = model.gamma2 + model.lgamma2 * Inv_L + model.wgamma2 * Inv_W + model.pgamma2 * Inv_LW;
         size_params.vbx = model.vbx + model.lvbx * Inv_L + model.wvbx * Inv_W + model.pvbx * Inv_LW;
         size_params.vbm = model.vbm + model.lvbm * Inv_L + model.wvbm * Inv_W + model.pvbm * Inv_LW;
         size_params.xt = model.xt + model.lxt * Inv_L + model.wxt * Inv_W + model.pxt * Inv_LW;
         size_params.vfb = model.vfb + model.lvfb * Inv_L + model.wvfb * Inv_W + model.pvfb * Inv_LW;
         size_params.k1 = model.k1 + model.lk1 * Inv_L + model.wk1 * Inv_W + model.pk1 * Inv_LW;
         size_params.kt1 = model.kt1 + model.lkt1 * Inv_L + model.wkt1 * Inv_W + model.pkt1 * Inv_LW;
-        size_params.kt1l =
-            model.kt1l + model.lkt1l * Inv_L + model.wkt1l * Inv_W + model.pkt1l * Inv_LW;
+        size_params.kt1l = model.kt1l + model.lkt1l * Inv_L + model.wkt1l * Inv_W + model.pkt1l * Inv_LW;
         size_params.k2 = model.k2 + model.lk2 * Inv_L + model.wk2 * Inv_W + model.pk2 * Inv_LW;
         size_params.kt2 = model.kt2 + model.lkt2 * Inv_L + model.wkt2 * Inv_W + model.pkt2 * Inv_LW;
         size_params.k3 = model.k3 + model.lk3 * Inv_L + model.wk3 * Inv_W + model.pk3 * Inv_LW;
         size_params.k3b = model.k3b + model.lk3b * Inv_L + model.wk3b * Inv_W + model.pk3b * Inv_LW;
         size_params.w0 = model.w0 + model.lw0 * Inv_L + model.ww0 * Inv_W + model.pw0 * Inv_LW;
-        size_params.lpe0 =
-            model.lpe0 + model.llpe0 * Inv_L + model.wlpe0 * Inv_W + model.plpe0 * Inv_LW;
-        size_params.lpeb =
-            model.lpeb + model.llpeb * Inv_L + model.wlpeb * Inv_W + model.plpeb * Inv_LW;
-        size_params.dvtp0 =
-            model.dvtp0 + model.ldvtp0 * Inv_L + model.wdvtp0 * Inv_W + model.pdvtp0 * Inv_LW;
-        size_params.dvtp1 =
-            model.dvtp1 + model.ldvtp1 * Inv_L + model.wdvtp1 * Inv_W + model.pdvtp1 * Inv_LW;
+        size_params.lpe0 = model.lpe0 + model.llpe0 * Inv_L + model.wlpe0 * Inv_W + model.plpe0 * Inv_LW;
+        size_params.lpeb = model.lpeb + model.llpeb * Inv_L + model.wlpeb * Inv_W + model.plpeb * Inv_LW;
+        size_params.dvtp0 = model.dvtp0 + model.ldvtp0 * Inv_L + model.wdvtp0 * Inv_W + model.pdvtp0 * Inv_LW;
+        size_params.dvtp1 = model.dvtp1 + model.ldvtp1 * Inv_L + model.wdvtp1 * Inv_W + model.pdvtp1 * Inv_LW;
         size_params.dvtp2 = model.dvtp2 		/* v4.7  */
                                      + model.ldvtp2 * Inv_L
                                      + model.wdvtp2 * Inv_W
@@ -275,24 +247,15 @@ fn from(
                                      + model.ldvtp5 * Inv_L
                                      + model.wdvtp5 * Inv_W
                                      + model.pdvtp5 * Inv_LW;
-        size_params.dvt0 =
-            model.dvt0 + model.ldvt0 * Inv_L + model.wdvt0 * Inv_W + model.pdvt0 * Inv_LW;
-        size_params.dvt1 =
-            model.dvt1 + model.ldvt1 * Inv_L + model.wdvt1 * Inv_W + model.pdvt1 * Inv_LW;
-        size_params.dvt2 =
-            model.dvt2 + model.ldvt2 * Inv_L + model.wdvt2 * Inv_W + model.pdvt2 * Inv_LW;
-        size_params.dvt0w =
-            model.dvt0w + model.ldvt0w * Inv_L + model.wdvt0w * Inv_W + model.pdvt0w * Inv_LW;
-        size_params.dvt1w =
-            model.dvt1w + model.ldvt1w * Inv_L + model.wdvt1w * Inv_W + model.pdvt1w * Inv_LW;
-        size_params.dvt2w =
-            model.dvt2w + model.ldvt2w * Inv_L + model.wdvt2w * Inv_W + model.pdvt2w * Inv_LW;
-        size_params.drout =
-            model.drout + model.ldrout * Inv_L + model.wdrout * Inv_W + model.pdrout * Inv_LW;
-        size_params.dsub =
-            model.dsub + model.ldsub * Inv_L + model.wdsub * Inv_W + model.pdsub * Inv_LW;
-        size_params.vth0 =
-            model.vth0 + model.lvth0 * Inv_L + model.wvth0 * Inv_W + model.pvth0 * Inv_LW;
+        size_params.dvt0 = model.dvt0 + model.ldvt0 * Inv_L + model.wdvt0 * Inv_W + model.pdvt0 * Inv_LW;
+        size_params.dvt1 = model.dvt1 + model.ldvt1 * Inv_L + model.wdvt1 * Inv_W + model.pdvt1 * Inv_LW;
+        size_params.dvt2 = model.dvt2 + model.ldvt2 * Inv_L + model.wdvt2 * Inv_W + model.pdvt2 * Inv_LW;
+        size_params.dvt0w = model.dvt0w + model.ldvt0w * Inv_L + model.wdvt0w * Inv_W + model.pdvt0w * Inv_LW;
+        size_params.dvt1w = model.dvt1w + model.ldvt1w * Inv_L + model.wdvt1w * Inv_W + model.pdvt1w * Inv_LW;
+        size_params.dvt2w = model.dvt2w + model.ldvt2w * Inv_L + model.wdvt2w * Inv_W + model.pdvt2w * Inv_LW;
+        size_params.drout = model.drout + model.ldrout * Inv_L + model.wdrout * Inv_W + model.pdrout * Inv_LW;
+        size_params.dsub = model.dsub + model.ldsub * Inv_L + model.wdsub * Inv_W + model.pdsub * Inv_LW;
+        size_params.vth0 = model.vth0 + model.lvth0 * Inv_L + model.wvth0 * Inv_W + model.pvth0 * Inv_LW;
         size_params.ua = model.ua + model.lua * Inv_L + model.wua * Inv_W + model.pua * Inv_LW;
         size_params.ua1 = model.ua1 + model.lua1 * Inv_L + model.wua1 * Inv_W + model.pua1 * Inv_LW;
         size_params.ub = model.ub + model.lub * Inv_L + model.wub * Inv_W + model.pub_ * Inv_LW;
@@ -306,244 +269,106 @@ fn from(
         size_params.eu = model.eu + model.leu * Inv_L + model.weu * Inv_W + model.peu * Inv_LW;
         size_params.u0 = model.u0 + model.lu0 * Inv_L + model.wu0 * Inv_W + model.pu0 * Inv_LW;
         size_params.ute = model.ute + model.lute * Inv_L + model.wute * Inv_W + model.pute * Inv_LW;
-        /*high k mobility*/
         size_params.ucs = model.ucs + model.lucs * Inv_L + model.wucs * Inv_W + model.pucs * Inv_LW;
-        size_params.ucste =
-            model.ucste + model.lucste * Inv_L + model.wucste * Inv_W + model.pucste * Inv_LW;
-
-        size_params.voff =
-            model.voff + model.lvoff * Inv_L + model.wvoff * Inv_W + model.pvoff * Inv_LW;
-        size_params.tvoff =
-            model.tvoff + model.ltvoff * Inv_L + model.wtvoff * Inv_W + model.ptvoff * Inv_LW;
-        size_params.minv =
-            model.minv + model.lminv * Inv_L + model.wminv * Inv_W + model.pminv * Inv_LW;
-        size_params.minvcv =
-            model.minvcv + model.lminvcv * Inv_L + model.wminvcv * Inv_W + model.pminvcv * Inv_LW;
-        size_params.fprout =
-            model.fprout + model.lfprout * Inv_L + model.wfprout * Inv_W + model.pfprout * Inv_LW;
-        size_params.pdits =
-            model.pdits + model.lpdits * Inv_L + model.wpdits * Inv_W + model.ppdits * Inv_LW;
-        size_params.pditsd =
-            model.pditsd + model.lpditsd * Inv_L + model.wpditsd * Inv_W + model.ppditsd * Inv_LW;
-        size_params.delta =
-            model.delta + model.ldelta * Inv_L + model.wdelta * Inv_W + model.pdelta * Inv_LW;
-        size_params.rdsw =
-            model.rdsw + model.lrdsw * Inv_L + model.wrdsw * Inv_W + model.prdsw * Inv_LW;
+        size_params.ucste = model.ucste + model.lucste * Inv_L + model.wucste * Inv_W + model.pucste * Inv_LW;
+        size_params.voff = model.voff + model.lvoff * Inv_L + model.wvoff * Inv_W + model.pvoff * Inv_LW;
+        size_params.tvoff = model.tvoff + model.ltvoff * Inv_L + model.wtvoff * Inv_W + model.ptvoff * Inv_LW;
+        size_params.minv = model.minv + model.lminv * Inv_L + model.wminv * Inv_W + model.pminv * Inv_LW;
+        size_params.minvcv = model.minvcv + model.lminvcv * Inv_L + model.wminvcv * Inv_W + model.pminvcv * Inv_LW;
+        size_params.fprout = model.fprout + model.lfprout * Inv_L + model.wfprout * Inv_W + model.pfprout * Inv_LW;
+        size_params.pdits = model.pdits + model.lpdits * Inv_L + model.wpdits * Inv_W + model.ppdits * Inv_LW;
+        size_params.pditsd = model.pditsd + model.lpditsd * Inv_L + model.wpditsd * Inv_W + model.ppditsd * Inv_LW;
+        size_params.delta = model.delta + model.ldelta * Inv_L + model.wdelta * Inv_W + model.pdelta * Inv_LW;
+        size_params.rdsw = model.rdsw + model.lrdsw * Inv_L + model.wrdsw * Inv_W + model.prdsw * Inv_LW;
         size_params.rdw = model.rdw + model.lrdw * Inv_L + model.wrdw * Inv_W + model.prdw * Inv_LW;
         size_params.rsw = model.rsw + model.lrsw * Inv_L + model.wrsw * Inv_W + model.prsw * Inv_LW;
-        size_params.prwg =
-            model.prwg + model.lprwg * Inv_L + model.wprwg * Inv_W + model.pprwg * Inv_LW;
-        size_params.prwb =
-            model.prwb + model.lprwb * Inv_L + model.wprwb * Inv_W + model.pprwb * Inv_LW;
+        size_params.prwg = model.prwg + model.lprwg * Inv_L + model.wprwg * Inv_W + model.pprwg * Inv_LW;
+        size_params.prwb = model.prwb + model.lprwb * Inv_L + model.wprwb * Inv_W + model.pprwb * Inv_LW;
         size_params.prt = model.prt + model.lprt * Inv_L + model.wprt * Inv_W + model.pprt * Inv_LW;
-        size_params.eta0 =
-            model.eta0 + model.leta0 * Inv_L + model.weta0 * Inv_W + model.peta0 * Inv_LW;
-        size_params.teta0 = model.teta0 		/* v4.7  */
-				    + model.lteta0 * Inv_L
-				    + model.wteta0 * Inv_W
-				    + model.pteta0 * Inv_LW;
-        size_params.tvoffcv = model.tvoffcv 	/* v4.8.0  */
-				    + model.ltvoffcv * Inv_L
-				    + model.wtvoffcv * Inv_W
-				    + model.ptvoffcv * Inv_LW;
-        size_params.etab =
-            model.etab + model.letab * Inv_L + model.wetab * Inv_W + model.petab * Inv_LW;
-        size_params.pclm =
-            model.pclm + model.lpclm * Inv_L + model.wpclm * Inv_W + model.ppclm * Inv_LW;
-        size_params.pdibl1 = model.pdiblc1
-            + model.lpdiblc1 * Inv_L
-            + model.wpdiblc1 * Inv_W
-            + model.ppdiblc1 * Inv_LW;
-        size_params.pdibl2 = model.pdiblc2
-            + model.lpdiblc2 * Inv_L
-            + model.wpdiblc2 * Inv_W
-            + model.ppdiblc2 * Inv_LW;
-        size_params.pdiblb = model.pdiblcb
-            + model.lpdiblcb * Inv_L
-            + model.wpdiblcb * Inv_W
-            + model.ppdiblcb * Inv_LW;
-        size_params.pscbe1 =
-            model.pscbe1 + model.lpscbe1 * Inv_L + model.wpscbe1 * Inv_W + model.ppscbe1 * Inv_LW;
-        size_params.pscbe2 =
-            model.pscbe2 + model.lpscbe2 * Inv_L + model.wpscbe2 * Inv_W + model.ppscbe2 * Inv_LW;
-        size_params.pvag =
-            model.pvag + model.lpvag * Inv_L + model.wpvag * Inv_W + model.ppvag * Inv_LW;
+        size_params.eta0 = model.eta0 + model.leta0 * Inv_L + model.weta0 * Inv_W + model.peta0 * Inv_LW;
+        size_params.teta0 = model.teta0 + model.lteta0 * Inv_L + model.wteta0 * Inv_W + model.pteta0 * Inv_LW;
+        size_params.tvoffcv = model.tvoffcv + model.ltvoffcv * Inv_L + model.wtvoffcv * Inv_W + model.ptvoffcv * Inv_LW;
+        size_params.etab = model.etab + model.letab * Inv_L + model.wetab * Inv_W + model.petab * Inv_LW;
+        size_params.pclm = model.pclm + model.lpclm * Inv_L + model.wpclm * Inv_W + model.ppclm * Inv_LW;
+        size_params.pdibl1 = model.pdiblc1 + model.lpdiblc1 * Inv_L + model.wpdiblc1 * Inv_W + model.ppdiblc1 * Inv_LW;
+        size_params.pdibl2 = model.pdiblc2 + model.lpdiblc2 * Inv_L + model.wpdiblc2 * Inv_W + model.ppdiblc2 * Inv_LW;
+        size_params.pdiblb = model.pdiblcb + model.lpdiblcb * Inv_L + model.wpdiblcb * Inv_W + model.ppdiblcb * Inv_LW;
+        size_params.pscbe1 = model.pscbe1 + model.lpscbe1 * Inv_L + model.wpscbe1 * Inv_W + model.ppscbe1 * Inv_LW;
+        size_params.pscbe2 = model.pscbe2 + model.lpscbe2 * Inv_L + model.wpscbe2 * Inv_W + model.ppscbe2 * Inv_LW;
+        size_params.pvag = model.pvag + model.lpvag * Inv_L + model.wpvag * Inv_W + model.ppvag * Inv_LW;
         size_params.wr = model.wr + model.lwr * Inv_L + model.wwr * Inv_W + model.pwr * Inv_LW;
         size_params.dwg = model.dwg + model.ldwg * Inv_L + model.wdwg * Inv_W + model.pdwg * Inv_LW;
         size_params.dwb = model.dwb + model.ldwb * Inv_L + model.wdwb * Inv_W + model.pdwb * Inv_LW;
         size_params.b0 = model.b0 + model.lb0 * Inv_L + model.wb0 * Inv_W + model.pb0 * Inv_LW;
         size_params.b1 = model.b1 + model.lb1 * Inv_L + model.wb1 * Inv_W + model.pb1 * Inv_LW;
-        size_params.alpha0 =
-            model.alpha0 + model.lalpha0 * Inv_L + model.walpha0 * Inv_W + model.palpha0 * Inv_LW;
-        size_params.alpha1 =
-            model.alpha1 + model.lalpha1 * Inv_L + model.walpha1 * Inv_W + model.palpha1 * Inv_LW;
-        size_params.beta0 =
-            model.beta0 + model.lbeta0 * Inv_L + model.wbeta0 * Inv_W + model.pbeta0 * Inv_LW;
-        size_params.agidl =
-            model.agidl + model.lagidl * Inv_L + model.wagidl * Inv_W + model.pagidl * Inv_LW;
-        size_params.bgidl =
-            model.bgidl + model.lbgidl * Inv_L + model.wbgidl * Inv_W + model.pbgidl * Inv_LW;
-        size_params.cgidl =
-            model.cgidl + model.lcgidl * Inv_L + model.wcgidl * Inv_W + model.pcgidl * Inv_LW;
-        size_params.egidl =
-            model.egidl + model.legidl * Inv_L + model.wegidl * Inv_W + model.pegidl * Inv_LW;
-        size_params.rgidl = model.rgidl		/* v4.7 New GIDL/GISL */
-                                     + model.lrgidl * Inv_L
-                                     + model.wrgidl * Inv_W
-                                     + model.prgidl * Inv_LW;
-        size_params.kgidl = model.kgidl		/* v4.7 New GIDL/GISL */
-                                     + model.lkgidl * Inv_L
-                                     + model.wkgidl * Inv_W
-                                     + model.pkgidl * Inv_LW;
-        size_params.fgidl = model.fgidl		/* v4.7 New GIDL/GISL */
-                                     + model.lfgidl * Inv_L
-                                     + model.wfgidl * Inv_W
-                                     + model.pfgidl * Inv_LW;
-        size_params.agisl =
-            model.agisl + model.lagisl * Inv_L + model.wagisl * Inv_W + model.pagisl * Inv_LW;
-        size_params.bgisl =
-            model.bgisl + model.lbgisl * Inv_L + model.wbgisl * Inv_W + model.pbgisl * Inv_LW;
-        size_params.cgisl =
-            model.cgisl + model.lcgisl * Inv_L + model.wcgisl * Inv_W + model.pcgisl * Inv_LW;
-        size_params.egisl =
-            model.egisl + model.legisl * Inv_L + model.wegisl * Inv_W + model.pegisl * Inv_LW;
-        size_params.rgisl = model.rgisl		/* v4.7 New GIDL/GISL */
-                                     + model.lrgisl * Inv_L
-                                     + model.wrgisl * Inv_W
-                                     + model.prgisl * Inv_LW;
-        size_params.kgisl = model.kgisl		/* v4.7 New GIDL/GISL */
-                                     + model.lkgisl * Inv_L
-                                     + model.wkgisl * Inv_W
-                                     + model.pkgisl * Inv_LW;
-        size_params.fgisl = model.fgisl		/* v4.7 New GIDL/GISL */
-                                     + model.lfgisl * Inv_L
-                                     + model.wfgisl * Inv_W
-                                     + model.pfgisl * Inv_LW;
-        size_params.aigc =
-            model.aigc + model.laigc * Inv_L + model.waigc * Inv_W + model.paigc * Inv_LW;
-        size_params.bigc =
-            model.bigc + model.lbigc * Inv_L + model.wbigc * Inv_W + model.pbigc * Inv_LW;
-        size_params.cigc =
-            model.cigc + model.lcigc * Inv_L + model.wcigc * Inv_W + model.pcigc * Inv_LW;
-        size_params.aigsd =
-            model.aigsd + model.laigsd * Inv_L + model.waigsd * Inv_W + model.paigsd * Inv_LW;
-        size_params.bigsd =
-            model.bigsd + model.lbigsd * Inv_L + model.wbigsd * Inv_W + model.pbigsd * Inv_LW;
-        size_params.cigsd =
-            model.cigsd + model.lcigsd * Inv_L + model.wcigsd * Inv_W + model.pcigsd * Inv_LW;
-        size_params.aigs =
-            model.aigs + model.laigs * Inv_L + model.waigs * Inv_W + model.paigs * Inv_LW;
-        size_params.bigs =
-            model.bigs + model.lbigs * Inv_L + model.wbigs * Inv_W + model.pbigs * Inv_LW;
-        size_params.cigs =
-            model.cigs + model.lcigs * Inv_L + model.wcigs * Inv_W + model.pcigs * Inv_LW;
-        size_params.aigd =
-            model.aigd + model.laigd * Inv_L + model.waigd * Inv_W + model.paigd * Inv_LW;
-        size_params.bigd =
-            model.bigd + model.lbigd * Inv_L + model.wbigd * Inv_W + model.pbigd * Inv_LW;
-        size_params.cigd =
-            model.cigd + model.lcigd * Inv_L + model.wcigd * Inv_W + model.pcigd * Inv_LW;
-        size_params.aigbacc = model.aigbacc
-            + model.laigbacc * Inv_L
-            + model.waigbacc * Inv_W
-            + model.paigbacc * Inv_LW;
-        size_params.bigbacc = model.bigbacc
-            + model.lbigbacc * Inv_L
-            + model.wbigbacc * Inv_W
-            + model.pbigbacc * Inv_LW;
-        size_params.cigbacc = model.cigbacc
-            + model.lcigbacc * Inv_L
-            + model.wcigbacc * Inv_W
-            + model.pcigbacc * Inv_LW;
-        size_params.aigbinv = model.aigbinv
-            + model.laigbinv * Inv_L
-            + model.waigbinv * Inv_W
-            + model.paigbinv * Inv_LW;
-        size_params.bigbinv = model.bigbinv
-            + model.lbigbinv * Inv_L
-            + model.wbigbinv * Inv_W
-            + model.pbigbinv * Inv_LW;
-        size_params.cigbinv = model.cigbinv
-            + model.lcigbinv * Inv_L
-            + model.wcigbinv * Inv_W
-            + model.pcigbinv * Inv_LW;
-        size_params.nigc =
-            model.nigc + model.lnigc * Inv_L + model.wnigc * Inv_W + model.pnigc * Inv_LW;
-        size_params.nigbacc = model.nigbacc
-            + model.lnigbacc * Inv_L
-            + model.wnigbacc * Inv_W
-            + model.pnigbacc * Inv_LW;
-        size_params.nigbinv = model.nigbinv
-            + model.lnigbinv * Inv_L
-            + model.wnigbinv * Inv_W
-            + model.pnigbinv * Inv_LW;
-        size_params.ntox =
-            model.ntox + model.lntox * Inv_L + model.wntox * Inv_W + model.pntox * Inv_LW;
-        size_params.eigbinv = model.eigbinv
-            + model.leigbinv * Inv_L
-            + model.weigbinv * Inv_W
-            + model.peigbinv * Inv_LW;
-        size_params.pigcd =
-            model.pigcd + model.lpigcd * Inv_L + model.wpigcd * Inv_W + model.ppigcd * Inv_LW;
-        size_params.poxedge = model.poxedge
-            + model.lpoxedge * Inv_L
-            + model.wpoxedge * Inv_W
-            + model.ppoxedge * Inv_LW;
-        size_params.xrcrg1 =
-            model.xrcrg1 + model.lxrcrg1 * Inv_L + model.wxrcrg1 * Inv_W + model.pxrcrg1 * Inv_LW;
-        size_params.xrcrg2 =
-            model.xrcrg2 + model.lxrcrg2 * Inv_L + model.wxrcrg2 * Inv_W + model.pxrcrg2 * Inv_LW;
-        size_params.lambda =
-            model.lambda + model.llambda * Inv_L + model.wlambda * Inv_W + model.plambda * Inv_LW;
+        size_params.alpha0 = model.alpha0 + model.lalpha0 * Inv_L + model.walpha0 * Inv_W + model.palpha0 * Inv_LW;
+        size_params.alpha1 = model.alpha1 + model.lalpha1 * Inv_L + model.walpha1 * Inv_W + model.palpha1 * Inv_LW;
+        size_params.beta0 = model.beta0 + model.lbeta0 * Inv_L + model.wbeta0 * Inv_W + model.pbeta0 * Inv_LW;
+        size_params.agidl = model.agidl + model.lagidl * Inv_L + model.wagidl * Inv_W + model.pagidl * Inv_LW;
+        size_params.bgidl = model.bgidl + model.lbgidl * Inv_L + model.wbgidl * Inv_W + model.pbgidl * Inv_LW;
+        size_params.cgidl = model.cgidl + model.lcgidl * Inv_L + model.wcgidl * Inv_W + model.pcgidl * Inv_LW;
+        size_params.egidl = model.egidl + model.legidl * Inv_L + model.wegidl * Inv_W + model.pegidl * Inv_LW;
+        size_params.rgidl = model.rgidl + model.lrgidl * Inv_L + model.wrgidl * Inv_W + model.prgidl * Inv_LW;
+        size_params.kgidl = model.kgidl + model.lkgidl * Inv_L + model.wkgidl * Inv_W + model.pkgidl * Inv_LW;
+        size_params.fgidl = model.fgidl + model.lfgidl * Inv_L + model.wfgidl * Inv_W + model.pfgidl * Inv_LW;
+        size_params.agisl = model.agisl + model.lagisl * Inv_L + model.wagisl * Inv_W + model.pagisl * Inv_LW;
+        size_params.bgisl = model.bgisl + model.lbgisl * Inv_L + model.wbgisl * Inv_W + model.pbgisl * Inv_LW;
+        size_params.cgisl = model.cgisl + model.lcgisl * Inv_L + model.wcgisl * Inv_W + model.pcgisl * Inv_LW;
+        size_params.egisl = model.egisl + model.legisl * Inv_L + model.wegisl * Inv_W + model.pegisl * Inv_LW;
+        size_params.rgisl = model.rgisl + model.lrgisl * Inv_L + model.wrgisl * Inv_W + model.prgisl * Inv_LW;
+        size_params.kgisl = model.kgisl + model.lkgisl * Inv_L + model.wkgisl * Inv_W + model.pkgisl * Inv_LW;
+        size_params.fgisl = model.fgisl + model.lfgisl * Inv_L + model.wfgisl * Inv_W + model.pfgisl * Inv_LW;
+        size_params.aigc = model.aigc + model.laigc * Inv_L + model.waigc * Inv_W + model.paigc * Inv_LW;
+        size_params.bigc = model.bigc + model.lbigc * Inv_L + model.wbigc * Inv_W + model.pbigc * Inv_LW;
+        size_params.cigc = model.cigc + model.lcigc * Inv_L + model.wcigc * Inv_W + model.pcigc * Inv_LW;
+        size_params.aigsd = model.aigsd + model.laigsd * Inv_L + model.waigsd * Inv_W + model.paigsd * Inv_LW;
+        size_params.bigsd = model.bigsd + model.lbigsd * Inv_L + model.wbigsd * Inv_W + model.pbigsd * Inv_LW;
+        size_params.cigsd = model.cigsd + model.lcigsd * Inv_L + model.wcigsd * Inv_W + model.pcigsd * Inv_LW;
+        size_params.aigs = model.aigs + model.laigs * Inv_L + model.waigs * Inv_W + model.paigs * Inv_LW;
+        size_params.bigs = model.bigs + model.lbigs * Inv_L + model.wbigs * Inv_W + model.pbigs * Inv_LW;
+        size_params.cigs = model.cigs + model.lcigs * Inv_L + model.wcigs * Inv_W + model.pcigs * Inv_LW;
+        size_params.aigd = model.aigd + model.laigd * Inv_L + model.waigd * Inv_W + model.paigd * Inv_LW;
+        size_params.bigd = model.bigd + model.lbigd * Inv_L + model.wbigd * Inv_W + model.pbigd * Inv_LW;
+        size_params.cigd = model.cigd + model.lcigd * Inv_L + model.wcigd * Inv_W + model.pcigd * Inv_LW;
+        size_params.aigbacc = model.aigbacc + model.laigbacc * Inv_L + model.waigbacc * Inv_W + model.paigbacc * Inv_LW;
+        size_params.bigbacc = model.bigbacc + model.lbigbacc * Inv_L + model.wbigbacc * Inv_W + model.pbigbacc * Inv_LW;
+        size_params.cigbacc = model.cigbacc + model.lcigbacc * Inv_L + model.wcigbacc * Inv_W + model.pcigbacc * Inv_LW;
+        size_params.aigbinv = model.aigbinv + model.laigbinv * Inv_L + model.waigbinv * Inv_W + model.paigbinv * Inv_LW;
+        size_params.bigbinv = model.bigbinv + model.lbigbinv * Inv_L + model.wbigbinv * Inv_W + model.pbigbinv * Inv_LW;
+        size_params.cigbinv = model.cigbinv + model.lcigbinv * Inv_L + model.wcigbinv * Inv_W + model.pcigbinv * Inv_LW;
+        size_params.nigc = model.nigc + model.lnigc * Inv_L + model.wnigc * Inv_W + model.pnigc * Inv_LW;
+        size_params.nigbacc = model.nigbacc + model.lnigbacc * Inv_L + model.wnigbacc * Inv_W + model.pnigbacc * Inv_LW;
+        size_params.nigbinv = model.nigbinv + model.lnigbinv * Inv_L + model.wnigbinv * Inv_W + model.pnigbinv * Inv_LW;
+        size_params.ntox = model.ntox + model.lntox * Inv_L + model.wntox * Inv_W + model.pntox * Inv_LW;
+        size_params.eigbinv = model.eigbinv + model.leigbinv * Inv_L + model.weigbinv * Inv_W + model.peigbinv * Inv_LW;
+        size_params.pigcd = model.pigcd + model.lpigcd * Inv_L + model.wpigcd * Inv_W + model.ppigcd * Inv_LW;
+        size_params.poxedge = model.poxedge + model.lpoxedge * Inv_L + model.wpoxedge * Inv_W + model.ppoxedge * Inv_LW;
+        size_params.xrcrg1 = model.xrcrg1 + model.lxrcrg1 * Inv_L + model.wxrcrg1 * Inv_W + model.pxrcrg1 * Inv_LW;
+        size_params.xrcrg2 = model.xrcrg2 + model.lxrcrg2 * Inv_L + model.wxrcrg2 * Inv_W + model.pxrcrg2 * Inv_LW;
+        size_params.lambda = model.lambda + model.llambda * Inv_L + model.wlambda * Inv_W + model.plambda * Inv_LW;
         size_params.vtl = model.vtl + model.lvtl * Inv_L + model.wvtl * Inv_W + model.pvtl * Inv_LW;
         size_params.xn = model.xn + model.lxn * Inv_L + model.wxn * Inv_W + model.pxn * Inv_LW;
-        size_params.vfbsdoff = model.vfbsdoff
-            + model.lvfbsdoff * Inv_L
-            + model.wvfbsdoff * Inv_W
-            + model.pvfbsdoff * Inv_LW;
-        size_params.tvfbsdoff = model.tvfbsdoff
-            + model.ltvfbsdoff * Inv_L
-            + model.wtvfbsdoff * Inv_W
-            + model.ptvfbsdoff * Inv_LW;
+        size_params.vfbsdoff = model.vfbsdoff + model.lvfbsdoff * Inv_L + model.wvfbsdoff * Inv_W + model.pvfbsdoff * Inv_LW;
+        size_params.tvfbsdoff = model.tvfbsdoff + model.ltvfbsdoff * Inv_L + model.wtvfbsdoff * Inv_W + model.ptvfbsdoff * Inv_LW;
 
-        size_params.cgsl =
-            model.cgsl + model.lcgsl * Inv_L + model.wcgsl * Inv_W + model.pcgsl * Inv_LW;
-        size_params.cgdl =
-            model.cgdl + model.lcgdl * Inv_L + model.wcgdl * Inv_W + model.pcgdl * Inv_LW;
-        size_params.ckappas = model.ckappas
-            + model.lckappas * Inv_L
-            + model.wckappas * Inv_W
-            + model.pckappas * Inv_LW;
-        size_params.ckappad = model.ckappad
-            + model.lckappad * Inv_L
-            + model.wckappad * Inv_W
-            + model.pckappad * Inv_LW;
+        size_params.cgsl = model.cgsl + model.lcgsl * Inv_L + model.wcgsl * Inv_W + model.pcgsl * Inv_LW;
+        size_params.cgdl = model.cgdl + model.lcgdl * Inv_L + model.wcgdl * Inv_W + model.pcgdl * Inv_LW;
+        size_params.ckappas = model.ckappas + model.lckappas * Inv_L + model.wckappas * Inv_W + model.pckappas * Inv_LW;
+        size_params.ckappad = model.ckappad + model.lckappad * Inv_L + model.wckappad * Inv_W + model.pckappad * Inv_LW;
         size_params.cf = model.cf + model.lcf * Inv_L + model.wcf * Inv_W + model.pcf * Inv_LW;
         size_params.clc = model.clc + model.lclc * Inv_L + model.wclc * Inv_W + model.pclc * Inv_LW;
         size_params.cle = model.cle + model.lcle * Inv_L + model.wcle * Inv_W + model.pcle * Inv_LW;
-        size_params.vfbcv =
-            model.vfbcv + model.lvfbcv * Inv_L + model.wvfbcv * Inv_W + model.pvfbcv * Inv_LW;
-        size_params.acde =
-            model.acde + model.lacde * Inv_L + model.wacde * Inv_W + model.pacde * Inv_LW;
-        size_params.moin =
-            model.moin + model.lmoin * Inv_L + model.wmoin * Inv_W + model.pmoin * Inv_LW;
-        size_params.noff =
-            model.noff + model.lnoff * Inv_L + model.wnoff * Inv_W + model.pnoff * Inv_LW;
-        size_params.voffcv =
-            model.voffcv + model.lvoffcv * Inv_L + model.wvoffcv * Inv_W + model.pvoffcv * Inv_LW;
-        size_params.kvth0we = model.kvth0we
-            + model.lkvth0we * Inv_L
-            + model.wkvth0we * Inv_W
-            + model.pkvth0we * Inv_LW;
-        size_params.k2we =
-            model.k2we + model.lk2we * Inv_L + model.wk2we * Inv_W + model.pk2we * Inv_LW;
-        size_params.ku0we =
-            model.ku0we + model.lku0we * Inv_L + model.wku0we * Inv_W + model.pku0we * Inv_LW;
+        size_params.vfbcv = model.vfbcv + model.lvfbcv * Inv_L + model.wvfbcv * Inv_W + model.pvfbcv * Inv_LW;
+        size_params.acde = model.acde + model.lacde * Inv_L + model.wacde * Inv_W + model.pacde * Inv_LW;
+        size_params.moin = model.moin + model.lmoin * Inv_L + model.wmoin * Inv_W + model.pmoin * Inv_LW;
+        size_params.noff = model.noff + model.lnoff * Inv_L + model.wnoff * Inv_W + model.pnoff * Inv_LW;
+        size_params.voffcv = model.voffcv + model.lvoffcv * Inv_L + model.wvoffcv * Inv_W + model.pvoffcv * Inv_LW;
+        size_params.kvth0we = model.kvth0we + model.lkvth0we * Inv_L + model.wkvth0we * Inv_W + model.pkvth0we * Inv_LW;
+        size_params.k2we = model.k2we + model.lk2we * Inv_L + model.wk2we * Inv_W + model.pk2we * Inv_LW;
+        size_params.ku0we = model.ku0we + model.lku0we * Inv_L + model.wku0we * Inv_W + model.pku0we * Inv_LW;
+        size_params.abulkCVfactor = 1.0 + pow((size_params.clc / size_params.leffCV), size_params.cle);
 
-        size_params.abulkCVfactor =
-            1.0 + pow((size_params.clc / size_params.leffCV), size_params.cle);
-
-        T0 = (TRatio - 1.0);
+        T0 = model_derived.TempRatio - 1.0;
 
         PowWeffWr = pow(size_params.weffCJ * 1.0e6, size_params.wr) * intp.nf;
 
@@ -551,8 +376,8 @@ fn from(
         T2 = 0.0;
         T3 = 0.0;
         T4 = 0.0;
-        size_params.ucs = size_params.ucs * pow(TRatio, size_params.ucste);
-        if (model.tempmod == 0) {
+        size_params.ucs = size_params.ucs * pow(model_derived.TempRatio, size_params.ucste);
+        if model.tempmod == 0 {
             size_params.ua = size_params.ua + size_params.ua1 * T0;
             size_params.ub = size_params.ub + size_params.ub1 * T0;
             size_params.uc = size_params.uc + size_params.uc1 * T0;
@@ -571,11 +396,11 @@ fn from(
             size_params.rds0 = (size_params.rdsw + T10) * intp.nf / PowWeffWr;
             size_params.rdswmin = (model.rdswmin + T10) * intp.nf / PowWeffWr;
         } else {
-            if (model.tempmod == 3) {
-                size_params.ua = size_params.ua * pow(TRatio, size_params.ua1);
-                size_params.ub = size_params.ub * pow(TRatio, size_params.ub1);
-                size_params.uc = size_params.uc * pow(TRatio, size_params.uc1);
-                size_params.ud = size_params.ud * pow(TRatio, size_params.ud1);
+            if model.tempmod == 3 {
+                size_params.ua = size_params.ua * pow(model_derived.TempRatio, size_params.ua1);
+                size_params.ub = size_params.ub * pow(model_derived.TempRatio, size_params.ub1);
+                size_params.uc = size_params.uc * pow(model_derived.TempRatio, size_params.uc1);
+                size_params.ud = size_params.ud * pow(model_derived.TempRatio, size_params.ud1);
             } else {
                 /* tempMod = 1, 2 */
                 size_params.ua = size_params.ua * (1.0 + size_params.ua1 * delTemp);
@@ -599,53 +424,53 @@ fn from(
             size_params.rdswmin = model.rdswmin * T10 * intp.nf / PowWeffWr;
         }
 
-        if (T1 < 0.0) {
+        if T1 < 0.0 {
             T1 = 0.0;
-            panic!("Warning: Rdw at current temperature is negative; set to 0.\n");
+            println!("Warning: Rdw at current temperature is negative; set to 0.\n");
         }
-        if (T2 < 0.0) {
+        if T2 < 0.0 {
             T2 = 0.0;
-            panic!("Warning: Rdwmin at current temperature is negative; set to 0.\n");
+            println!("Warning: Rdwmin at current temperature is negative; set to 0.\n");
         }
         size_params.rd0 = T1 / PowWeffWr;
         size_params.rdwmin = T2 / PowWeffWr;
-        if (T3 < 0.0) {
+        if T3 < 0.0 {
             T3 = 0.0;
-            panic!("Warning: Rsw at current temperature is negative; set to 0.\n");
+            println!("Warning: Rsw at current temperature is negative; set to 0.\n");
         }
-        if (T4 < 0.0) {
+        if T4 < 0.0 {
             T4 = 0.0;
-            panic!("Warning: Rswmin at current temperature is negative; set to 0.\n");
+            println!("Warning: Rswmin at current temperature is negative; set to 0.\n");
         }
         size_params.rs0 = T3 / PowWeffWr;
         size_params.rswmin = T4 / PowWeffWr;
 
-        if (size_params.u0 > 1.0) {
+        if size_params.u0 > 1.0 {
             size_params.u0 = size_params.u0 / 1.0e4;
         }
 
         /* mobility channel length dependence */
         T5 = 1.0 - size_params.up * exp(-size_params.leff / size_params.lp);
-        size_params.u0temp = size_params.u0 * T5 * pow(TRatio, size_params.ute);
-        if (size_params.eu < 0.0) {
+        size_params.u0temp = size_params.u0 * T5 * pow(model_derived.TempRatio, size_params.ute);
+        if size_params.eu < 0.0 {
             size_params.eu = 0.0;
-            panic!("Warning: eu has been negative; reset to 0.0.\n");
+            println!("Warning: eu has been negative; reset to 0.0.\n");
         }
-        if (size_params.ucs < 0.0) {
+        if size_params.ucs < 0.0 {
             size_params.ucs = 0.0;
-            panic!("Warning: ucs has been negative; reset to 0.0.\n");
+            println!("Warning: ucs has been negative; reset to 0.0.\n");
         }
 
         size_params.vfbsdoff = size_params.vfbsdoff * (1.0 + size_params.tvfbsdoff * delTemp);
         size_params.voff = size_params.voff * (1.0 + size_params.tvoff * delTemp);
 
-        size_params.nfactor = size_params.nfactor + size_params.tnfactor * delTemp / Tnom; /* v4.7 temp dep of leakage currents */
-        size_params.voffcv = size_params.voffcv * (1.0 + size_params.tvoffcv * delTemp); /*	 v4.7 temp dep of leakage currents */
-        size_params.eta0 = size_params.eta0 + size_params.teta0 * delTemp / Tnom; /*	 v4.7 temp dep of leakage currents */
+        size_params.nfactor = size_params.nfactor + size_params.tnfactor * delTemp / Tnom;
+        size_params.voffcv = size_params.voffcv * (1.0 + size_params.tvoffcv * delTemp);
+        size_params.eta0 = size_params.eta0 + size_params.teta0 * delTemp / Tnom;
 
         /* Source End Velocity Limit  */
         if ((model.vtlGiven) && (model.vtl > 0.0)) {
-            if (model.lc < 0.0) {
+            if model.lc < 0.0 {
                 size_params.lc = 0.0;
             } else {
                 size_params.lc = model.lc;
@@ -658,7 +483,7 @@ fn from(
         size_params.cgso = (model.cgso + size_params.cf) * size_params.weffCV;
         size_params.cgbo = model.cgbo * size_params.leffCV * intp.nf;
 
-        if (!model.ndepGiven && model.gamma1Given) {
+        if !model.ndepGiven && model.gamma1Given {
             T0 = size_params.gamma1 * model_derived.coxe;
             size_params.ndep = 3.01248e22 * T0 * T0;
         }
@@ -668,11 +493,10 @@ fn from(
         size_params.sqrtPhi = sqrt(size_params.phi);
         size_params.phis3 = size_params.sqrtPhi * size_params.phi;
 
-        size_params.Xdep0 =
-            sqrt(2.0 * epssub / (Q * size_params.ndep * 1.0e6)) * size_params.sqrtPhi;
+        size_params.Xdep0 = sqrt(2.0 * epssub / (Q * size_params.ndep * 1.0e6)) * size_params.sqrtPhi;
         size_params.sqrtXdep0 = sqrt(size_params.Xdep0);
 
-        if (model.mtrlmod == 0) {
+        if model.mtrlmod == 0 {
             size_params.litl = sqrt(3.0 * 3.9 / epsrox * size_params.xj * toxe);
         } else {
             size_params.litl = sqrt(model.epsrsub / epsrox * size_params.xj * toxe);
@@ -680,8 +504,8 @@ fn from(
 
         size_params.vbi = Vtm0 * log(size_params.nsd * size_params.ndep / (ni * ni));
 
-        if (model.mtrlmod == 0) {
-            if (size_params.ngate > 0.0) {
+        if model.mtrlmod == 0 {
+            if size_params.ngate > 0.0 {
                 size_params.vfbsd = Vtm0 * log(size_params.ngate / size_params.nsd);
             } else {
                 size_params.vfbsd = 0.0;
@@ -689,7 +513,7 @@ fn from(
         } else {
             T0 = Vtm0 * log(size_params.nsd / ni);
             T1 = 0.5 * Eg0;
-            if (T0 > T1) {
+            if T0 > T1 {
                 T0 = T1;
             }
             T2 = model.easub + T1 - model.p() * T0;
@@ -700,11 +524,7 @@ fn from(
 
         size_params.ToxRatio = exp(size_params.ntox * log(model.toxref / toxe)) / toxe / toxe;
         size_params.ToxRatioEdge =
-            exp(size_params.ntox * log(model.toxref / (toxe * size_params.poxedge)))
-                / toxe
-                / toxe
-                / size_params.poxedge
-                / size_params.poxedge;
+            exp(size_params.ntox * log(model.toxref / (toxe * size_params.poxedge))) / toxe / toxe / size_params.poxedge / size_params.poxedge;
         size_params.Aechvb = if model.p() == 1.0 {
             // FIXME: MOS enum
             4.97232e-7
@@ -717,10 +537,8 @@ fn from(
         } else {
             1.16645e12
         };
-        size_params.AechvbEdgeS =
-            size_params.Aechvb * size_params.weff * model.dlcig * size_params.ToxRatioEdge;
-        size_params.AechvbEdgeD =
-            size_params.Aechvb * size_params.weff * model.dlcigd * size_params.ToxRatioEdge;
+        size_params.AechvbEdgeS = size_params.Aechvb * size_params.weff * model.dlcig * size_params.ToxRatioEdge;
+        size_params.AechvbEdgeD = size_params.Aechvb * size_params.weff * model.dlcigd * size_params.ToxRatioEdge;
         size_params.BechvbEdge = -size_params.Bechvb * toxe * size_params.poxedge;
         size_params.Aechvb *= size_params.weff * size_params.leff * size_params.ToxRatio;
         size_params.Bechvb *= -toxe;
@@ -733,46 +551,45 @@ fn from(
         size_params.ldeb = sqrt(epssub * Vtm0 / (Q * size_params.ndep * 1.0e6)) / 3.0;
         size_params.acde *= pow((size_params.ndep / 2.0e16), -0.25);
 
-        if (model.k1Given || model.k2Given) {
-            if (!model.k1Given) {
+        if model.k1Given || model.k2Given {
+            if !model.k1Given {
                 size_params.k1 = 0.53;
-                panic!("Warning: k1 should be specified with k2.\n");
+                println!("Warning: k1 should be specified with k2.\n");
             }
-            if (!model.k2Given) {
+            if !model.k2Given {
                 size_params.k2 = -0.0186;
-                panic!("Warning: k2 should be specified with k1.\n");
+                println!("Warning: k2 should be specified with k1.\n");
             }
-            if (model.nsubGiven) {
-                panic!("Warning: nsub is ignored because k1 or k2 is given.\n",);
+            if model.nsubGiven {
+                println!("Warning: nsub is ignored because k1 or k2 is given.\n",);
             }
-            if (model.xtGiven) {
-                panic!("Warning: xt is ignored because k1 or k2 is given.\n",);
+            if model.xtGiven {
+                println!("Warning: xt is ignored because k1 or k2 is given.\n",);
             }
-            if (model.vbxGiven) {
-                panic!("Warning: vbx is ignored because k1 or k2 is given.\n",);
+            if model.vbxGiven {
+                println!("Warning: vbx is ignored because k1 or k2 is given.\n",);
             }
-            if (model.gamma1Given) {
-                panic!("Warning: gamma1 is ignored because k1 or k2 is given.\n",);
+            if model.gamma1Given {
+                println!("Warning: gamma1 is ignored because k1 or k2 is given.\n",);
             }
-            if (model.gamma2Given) {
-                panic!("Warning: gamma2 is ignored because k1 or k2 is given.\n",);
+            if model.gamma2Given {
+                println!("Warning: gamma2 is ignored because k1 or k2 is given.\n",);
             }
         } else {
-            if (!model.vbxGiven) {
-                size_params.vbx = size_params.phi
-                    - 7.7348e-4 * size_params.ndep * size_params.xt * size_params.xt;
+            if !model.vbxGiven {
+                size_params.vbx = size_params.phi - 7.7348e-4 * size_params.ndep * size_params.xt * size_params.xt;
             }
-            if (size_params.vbx > 0.0) {
+            if size_params.vbx > 0.0 {
                 size_params.vbx = -size_params.vbx;
             }
-            if (size_params.vbm > 0.0) {
+            if size_params.vbm > 0.0 {
                 size_params.vbm = -size_params.vbm;
             }
 
-            if (!model.gamma1Given) {
+            if !model.gamma1Given {
                 size_params.gamma1 = 5.753e-12 * sqrt(size_params.ndep) / model_derived.coxe;
             }
-            if (!model.gamma2Given) {
+            if !model.gamma2Given {
                 size_params.gamma2 = 5.753e-12 * sqrt(size_params.nsub) / model_derived.coxe;
             }
 
@@ -780,20 +597,17 @@ fn from(
             T1 = sqrt(size_params.phi - size_params.vbx) - size_params.sqrtPhi;
             T2 = sqrt(size_params.phi * (size_params.phi - size_params.vbm)) - size_params.phi;
             size_params.k2 = T0 * T1 / (2.0 * T2 + size_params.vbm);
-            size_params.k1 =
-                size_params.gamma2 - 2.0 * size_params.k2 * sqrt(size_params.phi - size_params.vbm);
+            size_params.k1 = size_params.gamma2 - 2.0 * size_params.k2 * sqrt(size_params.phi - size_params.vbm);
         }
 
-        if (!model.vfbGiven) {
-            if (model.vth0Given) {
-                size_params.vfb = model.p() * size_params.vth0
-                    - size_params.phi
-                    - size_params.k1 * size_params.sqrtPhi;
+        if !model.vfbGiven {
+            if model.vth0Given {
+                size_params.vfb = model.p() * size_params.vth0 - size_params.phi - size_params.k1 * size_params.sqrtPhi;
             } else {
                 if ((model.mtrlmod) && (model.phigGiven) && (model.nsubGiven)) {
                     T0 = Vtm0 * log(size_params.nsub / ni);
                     T1 = 0.5 * Eg0;
-                    if (T0 > T1) {
+                    if T0 > T1 {
                         T0 = T1;
                     }
                     T2 = model.easub + T1 + model.p() * T0;
@@ -803,16 +617,15 @@ fn from(
                 }
             }
         }
-        if (!model.vth0Given) {
-            size_params.vth0 = model.p()
-                * (size_params.vfb + size_params.phi + size_params.k1 * size_params.sqrtPhi);
+        if !model.vth0Given {
+            size_params.vth0 = model.p() * (size_params.vfb + size_params.phi + size_params.k1 * size_params.sqrtPhi);
         }
 
         size_params.k1ox = size_params.k1 * toxe / model.toxm;
 
         tmp = sqrt(epssub / (epsrox * EPS0) * toxe * size_params.Xdep0);
         T0 = size_params.dsub * size_params.leff / tmp;
-        if (T0 < EXP_THRESHOLD) {
+        if T0 < EXP_THRESHOLD {
             T1 = exp(T0);
             T2 = T1 - 1.0;
             T3 = T2 * T2;
@@ -823,7 +636,7 @@ fn from(
         }
 
         T0 = size_params.drout * size_params.leff / tmp;
-        if (T0 < EXP_THRESHOLD) {
+        if T0 < EXP_THRESHOLD {
             T1 = exp(T0);
             T2 = T1 - 1.0;
             T3 = T2 * T2;
@@ -839,7 +652,7 @@ fn from(
         tmp2 = model_derived.factor1 * tmp;
 
         T0 = size_params.dvt1w * size_params.weff * size_params.leff / tmp2;
-        if (T0 < EXP_THRESHOLD) {
+        if T0 < EXP_THRESHOLD {
             T1 = exp(T0);
             T2 = T1 - 1.0;
             T3 = T2 * T2;
@@ -852,7 +665,7 @@ fn from(
         T8 = T0 * tmp1;
 
         T0 = size_params.dvt1 * size_params.leff / tmp2;
-        if (T0 < EXP_THRESHOLD) {
+        if T0 < EXP_THRESHOLD {
             T1 = exp(T0);
             T2 = T1 - 1.0;
             T3 = T2 * T2;
@@ -867,29 +680,18 @@ fn from(
 
         T0 = sqrt(1.0 + size_params.lpe0 / size_params.leff);
         if ((model.tempMod == 1) || (model.tempmod == 0)) {
-            T3 = (size_params.kt1 + size_params.kt1l / size_params.leff) * (TRatio - 1.0);
+            T3 = (size_params.kt1 + size_params.kt1l / size_params.leff) * (model_derived.TempRatio - 1.0);
         }
         if ((model.tempMod == 2) || (model.tempmod == 3)) {
-            T3 = -size_params.kt1 * (TRatio - 1.0);
+            T3 = -size_params.kt1 * (model_derived.TempRatio - 1.0);
         }
 
         T5 = size_params.k1ox * (T0 - 1.0) * size_params.sqrtPhi + T3;
-        size_params.vfbzbfactor = -T8 - T9 + size_params.k3 * T4 + T5
-            - size_params.phi
-            - size_params.k1 * size_params.sqrtPhi;
+        size_params.vfbzbfactor = -T8 - T9 + size_params.k3 * T4 + T5 - size_params.phi - size_params.k1 * size_params.sqrtPhi;
 
         /* stress effect */
-
-        wlod = model.wlod;
-        if (model.wlod < 0.0) {
-            panic!(
-                "Warning: WLOD = %g is less than 0. 0.0 is used\n",
-                model.wlod,
-            );
-            wlod = 0.0;
-        }
         T0 = pow(Lnew, model.llodku0);
-        W_tmp = Wnew + wlod;
+        W_tmp = Wnew + model.wlod;
         T1 = pow(W_tmp, model.wlodku0);
         tmp1 = model.lku0 / T0 + model.wku0 / T1 + model.pku0 / (T0 * T1);
         size_params.ku0 = 1.0 + tmp1;
@@ -900,7 +702,7 @@ fn from(
         size_params.kvth0 = 1.0 + tmp1;
         size_params.kvth0 = sqrt(size_params.kvth0 * size_params.kvth0 + DELTA);
 
-        T0 = (TRatio - 1.0);
+        T0 = (model_derived.TempRatio - 1.0);
         size_params.ku0temp = size_params.ku0 * (1.0 + model.tku0 * T0) + DELTA;
 
         Inv_saref = 1.0 / (model.saref + 0.5 * Ldrn);
@@ -910,11 +712,11 @@ fn from(
 
         /*high k*/
         /*Calculate VgsteffVth for mobMod=3*/
-        if (model.mobmod == 3) {
+        if model.mobmod == 3 {
             /*Calculate n @ Vbs=Vds=0*/
             lt1 = model_derived.factor1 * size_params.sqrtXdep0;
             T0 = size_params.dvt1 * size_params.leff / lt1;
-            if (T0 < EXP_THRESHOLD) {
+            if T0 < EXP_THRESHOLD {
                 T1 = exp(T0);
                 T2 = T1 - 1.0;
                 T3 = T2 * T2;
@@ -927,7 +729,7 @@ fn from(
             tmp1 = epssub / size_params.Xdep0;
             tmp2 = size_params.nfactor * tmp1;
             tmp3 = (tmp2 + size_params.cdsc * Theta0 + size_params.cit) / model_derived.coxe;
-            if (tmp3 >= -0.5) {
+            if tmp3 >= -0.5 {
                 n0 = 1.0 + tmp3;
             } else {
                 T0 = 1.0 / (3.0 + 8.0 * tmp3);
@@ -937,10 +739,10 @@ fn from(
             T0 = n0 * model_derived.vtm;
             T1 = size_params.voffcbn;
             T2 = T1 / T0;
-            if (T2 < -EXP_THRESHOLD) {
+            if T2 < -EXP_THRESHOLD {
                 T3 = model_derived.coxe * MIN_EXP / size_params.cdep0;
                 T4 = size_params.mstar + T3 * n0;
-            } else if (T2 > EXP_THRESHOLD) {
+            } else if T2 > EXP_THRESHOLD {
                 T3 = model_derived.coxe * MAX_EXP / size_params.cdep0;
                 T4 = size_params.mstar + T3 * n0;
             } else {
@@ -957,27 +759,18 @@ fn from(
     } /* End of SizeNotFound */
 
     /*  stress effect */
-    if ((intp.sa > 0.0)
-        && (intp.sb > 0.0)
-        && ((intp.nf == 1.0) || ((intp.nf > 1.0) && (intp.sd > 0.0))))
-    {
+    if ((intp.sa > 0.0) && (intp.sb > 0.0) && ((intp.nf == 1.0) || ((intp.nf > 1.0) && (intp.sd > 0.0)))) {
         Inv_sa = 0.0;
         Inv_sb = 0.0;
 
         kvsat = model.kvsat;
-        if (model.kvsat < -1.0) {
-            panic!(
-                "Warning: KVSAT = %g is too small; -1.0 is used.\n",
-                model.kvsat,
-            );
+        if model.kvsat < -1.0 {
             kvsat = -1.0;
+            println!("Warning: KVSAT = %g is too small; -1.0 is used.\n", model.kvsat,);
         }
-        if (model.kvsat > 1.0) {
-            panic!(
-                "Warning: KVSAT = %g is too big; 1.0 is used.\n",
-                model.kvsat,
-            );
+        if model.kvsat > 1.0 {
             kvsat = 1.0;
+            println!("Warning: KVSAT = %g is too big; 1.0 is used.\n", model.kvsat,);
         }
         let nfi = intp.nf as usize;
         for i in 0..nfi {
@@ -1024,37 +817,34 @@ fn from(
                     - (0.05 * T1 + 0.0025 * model.scref) * exp(-20.0 * T1 * T2))
                     / Wdrn;
             } else {
-                panic!("Warning: No WPE as none of SCA, SCB, SCC, SC is given and/or SC not positive.\n");
+                println!("Warning: No WPE as none of SCA, SCB, SCC, SC is given and/or SC not positive.\n");
             }
         }
 
-        if (intp.sca < 0.0) {
+        if intp.sca < 0.0 {
             intp.sca = 0.0;
-            panic!("Warning: SCA = %g is negative. Set to 0.0.\n", intp.sca);
+            println!("Warning: SCA = %g is negative. Set to 0.0.\n", intp.sca);
         }
-        if (intp.scb < 0.0) {
+        if intp.scb < 0.0 {
             intp.scb = 0.0;
-            panic!("Warning: SCB = %g is negative. Set to 0.0.\n", intp.scb);
+            println!("Warning: SCB = %g is negative. Set to 0.0.\n", intp.scb);
         }
-        if (intp.scc < 0.0) {
+        if intp.scc < 0.0 {
             intp.scc = 0.0;
-            panic!("Warning: SCC = %g is negative. Set to 0.0.\n", intp.scc);
+            println!("Warning: SCC = %g is negative. Set to 0.0.\n", intp.scc);
         }
-        if (intp.sc < 0.0) {
+        if intp.sc < 0.0 {
             intp.sc = 0.0;
-            panic!("Warning: SC = %g is negative. Set to 0.0.\n", intp.sc);
+            println!("Warning: SC = %g is negative. Set to 0.0.\n", intp.sc);
         }
         /*4.6.2*/
         sceff = intp.sca + model.web * intp.scb + model.wec * intp.scc;
         intp.vth0 += size_params.kvth0we * sceff;
         intp.k2 += size_params.k2we * sceff;
         T3 = 1.0 + size_params.ku0we * sceff;
-        if (T3 <= 0.0) {
+        if T3 <= 0.0 {
             T3 = 0.0;
-            panic!(
-                "Warning: ku0we = %g is negatively too high. Negative mobility! \n",
-                size_params.ku0we,
-            );
+            println!("Warning: ku0we = %g is negatively too high. Negative mobility! \n", size_params.ku0we,);
         }
         intp.u0temp *= T3;
     }
@@ -1068,27 +858,27 @@ fn from(
     T4 = T3 + T3;
     T5 = 2.5 * T3;
     intp.vtfbphi1 = if model.p() > 0.0 { T4 } else { T5 };
-    if (intp.vtfbphi1 < 0.0) {
+    if intp.vtfbphi1 < 0.0 {
         intp.vtfbphi1 = 0.0;
     }
 
     intp.vtfbphi2 = 4.0 * T3;
-    if (intp.vtfbphi2 < 0.0) {
+    if intp.vtfbphi2 < 0.0 {
         intp.vtfbphi2 = 0.0;
     }
 
-    if (intp.k2 < 0.0) {
+    if intp.k2 < 0.0 {
         T0 = 0.5 * size_params.k1 / intp.k2;
         intp.vbsc = 0.9 * (size_params.phi - T0 * T0);
-        if (intp.vbsc > -3.0) {
+        if intp.vbsc > -3.0 {
             intp.vbsc = -3.0;
-        } else if (intp.vbsc < -30.0) {
+        } else if intp.vbsc < -30.0 {
             intp.vbsc = -30.0;
         }
     } else {
         intp.vbsc = -30.0;
     }
-    if (intp.vbsc > size_params.vbm) {
+    if intp.vbsc > size_params.vbm {
         intp.vbsc = size_params.vbm;
     }
     intp.k2ox = intp.k2 * toxe / model.toxm;
@@ -1105,33 +895,25 @@ fn from(
     bodymode = 5;
     if ((!model.rbps0Given) || (!model.rbpd0Given)) {
         bodymode = 1;
-    } else if ((!model.rbsbx0Given && !model.rbsby0Given)
-        || (!model.rbdbx0Given && !model.rbdby0Given))
-    {
+    } else if ((!model.rbsbx0Given && !model.rbsby0Given) || (!model.rbdbx0Given && !model.rbdby0Given)) {
         bodymode = 3;
     }
 
-    if (model.rbodymod == 2) {
-        if (bodymode == 5) {
-            rbsbx = model.rbsbx0
-                * exp(model.rbsdbxl * lnl + model.rbsdbxw * lnw + model.rbsdbxnf * lnnf);
-            rbsby = model.rbsby0
-                * exp(model.rbsdbyl * lnl + model.rbsdbyw * lnw + model.rbsdbynf * lnnf);
+    if model.rbodymod == 2 {
+        if bodymode == 5 {
+            rbsbx = model.rbsbx0 * exp(model.rbsdbxl * lnl + model.rbsdbxw * lnw + model.rbsdbxnf * lnnf);
+            rbsby = model.rbsby0 * exp(model.rbsdbyl * lnl + model.rbsdbyw * lnw + model.rbsdbynf * lnnf);
             intp.rbsb = rbsbx * rbsby / (rbsbx + rbsby);
 
-            rbdbx = model.rbdbx0
-                * exp(model.rbsdbxl * lnl + model.rbsdbxw * lnw + model.rbsdbxnf * lnnf);
-            rbdby = model.rbdby0
-                * exp(model.rbsdbyl * lnl + model.rbsdbyw * lnw + model.rbsdbynf * lnnf);
+            rbdbx = model.rbdbx0 * exp(model.rbsdbxl * lnl + model.rbsdbxw * lnw + model.rbsdbxnf * lnnf);
+            rbdby = model.rbdby0 * exp(model.rbsdbyl * lnl + model.rbsdbyw * lnw + model.rbsdbynf * lnnf);
 
             intp.rbdb = rbdbx * rbdby / (rbdbx + rbdby);
         }
 
         if ((bodymode == 3) || (bodymode == 5)) {
-            intp.rbps =
-                model.rbps0 * exp(model.rbpsl * lnl + model.rbpsw * lnw + model.rbpsnf * lnnf);
-            intp.rbpd =
-                model.rbpd0 * exp(model.rbpdl * lnl + model.rbpdw * lnw + model.rbpdnf * lnnf);
+            intp.rbps = model.rbps0 * exp(model.rbpsl * lnl + model.rbpsw * lnw + model.rbpsnf * lnnf);
+            intp.rbpd = model.rbpd0 * exp(model.rbpdl * lnl + model.rbpdw * lnw + model.rbpdnf * lnnf);
         }
         rbpbx = model.rbpbx0 * exp(model.rbpbxl * lnl + model.rbpbxw * lnw + model.rbpbxnf * lnnf);
         rbpby = model.rbpby0 * exp(model.rbpbyl * lnl + model.rbpbyw * lnw + model.rbpbynf * lnnf);
@@ -1140,27 +922,27 @@ fn from(
     }
 
     if ((model.rbodymod == 1) || ((model.rbodymod == 2) && (bodymode == 5))) {
-        if (intp.rbdb < 1.0e-3) {
+        if intp.rbdb < 1.0e-3 {
             intp.grbdb = 1.0e3; /* in mho */
         } else {
             intp.grbdb = model.gbmin + 1.0 / intp.rbdb;
         }
-        if (intp.rbpb < 1.0e-3) {
+        if intp.rbpb < 1.0e-3 {
             intp.grbpb = 1.0e3;
         } else {
             intp.grbpb = model.gbmin + 1.0 / intp.rbpb;
         }
-        if (intp.rbps < 1.0e-3) {
+        if intp.rbps < 1.0e-3 {
             intp.grbps = 1.0e3;
         } else {
             intp.grbps = model.gbmin + 1.0 / intp.rbps;
         }
-        if (intp.rbsb < 1.0e-3) {
+        if intp.rbsb < 1.0e-3 {
             intp.grbsb = 1.0e3;
         } else {
             intp.grbsb = model.gbmin + 1.0 / intp.rbsb;
         }
-        if (intp.rbpd < 1.0e-3) {
+        if intp.rbpd < 1.0e-3 {
             intp.grbpd = 1.0e3;
         } else {
             intp.grbpd = model.gbmin + 1.0 / intp.rbpd;
@@ -1170,17 +952,17 @@ fn from(
     if ((model.rbodymod == 2) && (bodymode == 3)) {
         intp.grbdb = model.gbmin;
         intp.grbsb = model.gbmin;
-        if (intp.rbpb < 1.0e-3) {
+        if intp.rbpb < 1.0e-3 {
             intp.grbpb = 1.0e3;
         } else {
             intp.grbpb = model.gbmin + 1.0 / intp.rbpb;
         }
-        if (intp.rbps < 1.0e-3) {
+        if intp.rbps < 1.0e-3 {
             intp.grbps = 1.0e3;
         } else {
             intp.grbps = model.gbmin + 1.0 / intp.rbps;
         }
-        if (intp.rbpd < 1.0e-3) {
+        if intp.rbpd < 1.0e-3 {
             intp.grbpd = 1.0e3;
         } else {
             intp.grbpd = model.gbmin + 1.0 / intp.rbpd;
@@ -1192,7 +974,7 @@ fn from(
         intp.grbsb = model.gbmin;
         intp.grbps = 1.0e3;
         intp.grbpd = 1.0e3;
-        if (intp.rbpb < 1.0e-3) {
+        if intp.rbpb < 1.0e-3 {
             intp.grbpb = 1.0e3;
         } else {
             intp.grbpb = model.gbmin + 1.0 / intp.rbpb;
@@ -1203,14 +985,13 @@ fn from(
      * Process geomertry dependent parasitics
      */
 
-    intp.grgeltd = model.rshg * (intp.xgw + size_params.weffCJ / 3.0 / intp.ngcon)
-        / (intp.ngcon * intp.nf * (Lnew - model.xgl));
-    if (intp.grgeltd > 0.0) {
+    intp.grgeltd = model.rshg * (intp.xgw + size_params.weffCJ / 3.0 / intp.ngcon) / (intp.ngcon * intp.nf * (Lnew - model.xgl));
+    if intp.grgeltd > 0.0 {
         intp.grgeltd = 1.0 / intp.grgeltd;
     } else {
         intp.grgeltd = 1.0e3; /* mho */
-        if (model.rgatemod != 0) {
-            panic!("Warning: The gate conductance reset to 1.0e3 mho.\n");
+        if model.rgatemod != 0 {
+            println!("Warning: The gate conductance reset to 1.0e3 mho.\n");
         }
     }
 
@@ -1219,15 +1000,15 @@ fn from(
     DMDGeff = model.dmdg - model.dmcgt;
 
     /* New Diode Model v4.7*/
-    if (intp.sourcePerimeterGiven) {
+    if intp.sourcePerimeterGiven {
         /* given */
-        if (intp.sourcePerimeter == 0.0) {
+        if intp.sourcePerimeter == 0.0 {
             intp.Pseff = 0.0;
-        } else if (intp.sourcePerimeter < 0.0) {
-            panic!("Warning: Source Perimeter is specified as negative, it is set to zero.\n");
+        } else if intp.sourcePerimeter < 0.0 {
+            println!("Warning: Source Perimeter is specified as negative, it is set to zero.\n");
             intp.Pseff = 0.0;
         } else {
-            if (model.permod == 0) {
+            if model.permod == 0 {
                 intp.Pseff = intp.sourcePerimeter;
             } else {
                 intp.Pseff = intp.sourcePerimeter - size_params.weffCJ * intp.nf;
@@ -1251,20 +1032,20 @@ fn from(
         );
     }
 
-    if (intp.Pseff < 0.0) {
+    if intp.Pseff < 0.0 {
         intp.Pseff = 0.0;
-        panic!("Warning: Pseff is negative, it is set to zero.\n");
+        println!("Warning: Pseff is negative, it is set to zero.\n");
     }
 
-    if (intp.drainPerimeterGiven) {
+    if intp.drainPerimeterGiven {
         /* given */
-        if (intp.drainPerimeter == 0.0) {
+        if intp.drainPerimeter == 0.0 {
             intp.Pdeff = 0.0;
-        } else if (intp.drainPerimeter < 0.0) {
-            panic!("Warning: Drain Perimeter is specified as negative, it is set to zero.\n");
+        } else if intp.drainPerimeter < 0.0 {
+            println!("Warning: Drain Perimeter is specified as negative, it is set to zero.\n");
             intp.Pdeff = 0.0;
         } else {
-            if (model.permod == 0) {
+            if model.permod == 0 {
                 intp.Pdeff = intp.drainPerimeter;
             } else {
                 intp.Pdeff = intp.drainPerimeter - size_params.weffCJ * intp.nf;
@@ -1288,11 +1069,11 @@ fn from(
         );
     }
 
-    if (intp.Pdeff < 0.0) {
+    if intp.Pdeff < 0.0 {
         intp.Pdeff = 0.0; /*New Diode v4.7*/
-        panic!("Warning: Pdeff is negative, it is set to zero.\n");
+        println!("Warning: Pdeff is negative, it is set to zero.\n");
     }
-    if (intp.sourceAreaGiven) {
+    if intp.sourceAreaGiven {
         intp.Aseff = intp.sourceArea;
     } else {
         BSIM4PAeffGeo(
@@ -1309,11 +1090,11 @@ fn from(
             &dumAd,
         );
     }
-    if (intp.Aseff < 0.0) {
+    if intp.Aseff < 0.0 {
         intp.Aseff = 0.0; /* v4.7 */
-        panic!("Warning: Aseff is negative, it is set to zero.\n");
+        println!("Warning: Aseff is negative, it is set to zero.\n");
     }
-    if (intp.drainAreaGiven) {
+    if intp.drainAreaGiven {
         intp.Adeff = intp.drainArea;
     } else {
         BSIM4PAeffGeo(
@@ -1330,19 +1111,19 @@ fn from(
             &(intp.Adeff),
         );
     }
-    if (intp.Adeff < 0.0) {
+    if intp.Adeff < 0.0 {
         intp.Adeff = 0.0; /* v4.7 */
-        panic!("Warning: Adeff is negative, it is set to zero.\n");
+        println!("Warning: Adeff is negative, it is set to zero.\n");
     }
 
     // // FIXME: these nodes won't be available here, figure out when & where to do this
     // // probably just do it here per geometry, and each instance will decide whether to use it.
     // /* Processing S/D resistance and conductance below */
-    // if (intp.sNodePrime != intp.sNode) {
+    // if intp.sNodePrime != intp.sNode {
     //     intp.sourceConductance = 0.0;
-    //     if (intp.sourceSquaresGiven) {
+    //     if intp.sourceSquaresGiven {
     //         intp.sourceConductance = model.sheetResistance * intp.sourceSquares;
-    //     } else if (model.rgeomod > 0) {
+    //     } else if model.rgeomod > 0 {
     //         BSIM4RdseffGeo(
     //             intp.nf,
     //             model.geomod,
@@ -1359,20 +1140,20 @@ fn from(
     //     } else {
     //         intp.sourceConductance = 0.0;
     //     }
-    //     if (intp.sourceConductance > 0.0) {
+    //     if intp.sourceConductance > 0.0 {
     //         intp.sourceConductance = 1.0 / intp.sourceConductance;
     //     } else {
     //         intp.sourceConductance = 1.0e3; /* mho */
-    //         panic!("Warning: Source conductance reset to 1.0e3 mho.\n");
+    //         println!("Warning: Source conductance reset to 1.0e3 mho.\n");
     //     }
     // } else {
     //     intp.sourceConductance = 0.0;
     // }
-    // if (intp.dNodePrime != intp.dNode) {
+    // if intp.dNodePrime != intp.dNode {
     //     intp.drainConductance = 0.0;
-    //     if (intp.drainSquaresGiven) {
+    //     if intp.drainSquaresGiven {
     //         intp.drainConductance = model.sheetResistance * intp.drainSquares;
-    //     } else if (model.rgeomod > 0) {
+    //     } else if model.rgeomod > 0 {
     //         BSIM4RdseffGeo(
     //             intp.nf,
     //             model.geomod,
@@ -1389,17 +1170,17 @@ fn from(
     //     } else {
     //         intp.drainConductance = 0.0;
     //     }
-    //     if (intp.drainConductance > 0.0) {
+    //     if intp.drainConductance > 0.0 {
     //         intp.drainConductance = 1.0 / intp.drainConductance;
     //     } else {
     //         intp.drainConductance = 1.0e3; /* mho */
-    //         panic!("Warning: Drain conductance reset to 1.0e3 mho.\n");
+    //         println!("Warning: Drain conductance reset to 1.0e3 mho.\n");
     //     }
     // } else {
     //     intp.drainConductance = 0.0;
     // }
     // /* End of Rsd processing */
-    Nvtms = model_derived.vtm * model_derived.SjctEmissionCoeff;
+    Nvtms = model_derived.vtm * model.njs;
     if ((intp.Aseff <= 0.0) && (intp.Pseff <= 0.0)) {
         SourceSatCurrent = 0.0;
     } else {
@@ -1407,7 +1188,7 @@ fn from(
             + intp.Pseff * model_derived.SjctSidewallTempSatCurDensity
             + size_params.weffCJ * intp.nf * model_derived.SjctGateSidewallTempSatCurDensity;
     }
-    if (SourceSatCurrent > 0.0) {
+    if SourceSatCurrent > 0.0 {
         match model.diomod {
             0 => {
                 if ((model.bvs / Nvtms) > EXP_THRESHOLD) {
@@ -1430,27 +1211,26 @@ fn from(
                     intp.XExpBVS *= model.xjbvs;
                 }
 
-                intp.vjsmFwd =
-                    BSIM4DioIjthVjmEval(Nvtms, model.ijthsfwd, SourceSatCurrent, intp.XExpBVS);
+                intp.vjsmFwd = BSIM4DioIjthVjmEval(Nvtms, model.ijthsfwd, SourceSatCurrent, intp.XExpBVS);
                 T0 = exp(intp.vjsmFwd / Nvtms);
                 intp.IVjsmFwd = SourceSatCurrent * (T0 - intp.XExpBVS / T0 + intp.XExpBVS - 1.0);
                 intp.SslpFwd = SourceSatCurrent * (T0 + intp.XExpBVS / T0) / Nvtms;
 
                 T2 = model.ijthsrev / SourceSatCurrent;
-                if (T2 < 1.0) {
+                if T2 < 1.0 {
                     T2 = 10.0;
-                    panic!("Warning: ijthsrev too small and set to 10 times IsbSat.\n",);
+                    println!("Warning: ijthsrev too small and set to 10 times IsbSat.\n",);
                 }
                 intp.vjsmRev = -model.bvs - Nvtms * log((T2 - 1.0) / model.xjbvs);
                 T1 = model.xjbvs * exp(-(model.bvs + intp.vjsmRev) / Nvtms);
                 intp.IVjsmRev = SourceSatCurrent * (1.0 + T1);
                 intp.SslpRev = -SourceSatCurrent * T1 / Nvtms;
             }
-            _ => panic!("Specified dioMod %d not matched\n", model.diomod),
+            _ => println!("Specified dioMod %d not matched\n", model.diomod),
         }
     }
 
-    Nvtmd = model_derived.vtm * model_derived.DjctEmissionCoeff;
+    Nvtmd = model_derived.vtm * model.njd;
     if ((intp.Adeff <= 0.0) && (intp.Pdeff <= 0.0)) {
         /* DrainSatCurrent = 1.0e-14; 	v4.7 */
         DrainSatCurrent = 0.0;
@@ -1459,7 +1239,7 @@ fn from(
             + intp.Pdeff * model_derived.DjctSidewallTempSatCurDensity
             + size_params.weffCJ * intp.nf * model_derived.DjctGateSidewallTempSatCurDensity;
     }
-    if (DrainSatCurrent > 0.0) {
+    if DrainSatCurrent > 0.0 {
         match model.diomod {
             0 => {
                 if ((model.bvd / Nvtmd) > EXP_THRESHOLD) {
@@ -1482,23 +1262,22 @@ fn from(
                     intp.XExpBVD *= model.xjbvd;
                 }
 
-                intp.vjdmFwd =
-                    BSIM4DioIjthVjmEval(Nvtmd, model.ijthdfwd, DrainSatCurrent, intp.XExpBVD);
+                intp.vjdmFwd = BSIM4DioIjthVjmEval(Nvtmd, model.ijthdfwd, DrainSatCurrent, intp.XExpBVD);
                 T0 = exp(intp.vjdmFwd / Nvtmd);
                 intp.IVjdmFwd = DrainSatCurrent * (T0 - intp.XExpBVD / T0 + intp.XExpBVD - 1.0);
                 intp.DslpFwd = DrainSatCurrent * (T0 + intp.XExpBVD / T0) / Nvtmd;
 
                 T2 = model.ijthdrev / DrainSatCurrent;
-                if (T2 < 1.0) {
+                if T2 < 1.0 {
                     T2 = 10.0;
-                    panic!("Warning: ijthdrev too small and set to 10 times IdbSat.\n",);
+                    println!("Warning: ijthdrev too small and set to 10 times IdbSat.\n",);
                 }
                 intp.vjdmRev = -model.bvd - Nvtmd * log((T2 - 1.0) / model.xjbvd); /* bugfix */
                 T1 = model.xjbvd * exp(-(model.bvd + intp.vjdmRev) / Nvtmd);
                 intp.IVjdmRev = DrainSatCurrent * (1.0 + T1);
                 intp.DslpRev = -DrainSatCurrent * T1 / Nvtmd;
             }
-            _ => panic!("Specified dioMod %d not matched\n", model.diomod),
+            _ => println!("Specified dioMod %d not matched\n", model.diomod),
         }
     }
 
@@ -1525,7 +1304,7 @@ fn from(
     intp.SswgTempRevSatCur = T5 * T10 * T11 * model.jtsswgs;
     intp.DswgTempRevSatCur = T6 * T10 * T11 * model.jtsswgd;
 
-    if (model.mtrlmod != 0 && model.mtrlcompatmod == 0) {
+    if model.mtrlmod != 0 && model.mtrlcompatmod == 0 {
         /* Calculate TOXP from EOT */
         /* Calculate Vgs_eff @ Vgs = VDD with Poly Depletion Effect */
         Vtm0eot = KB_OVER_Q * model.tempeot;
@@ -1535,11 +1314,7 @@ fn from(
         tmp2 = intp.vfb + phieot;
         vddeot = model.p() * model.vddeot;
         T0 = model.epsrgate * EPS0;
-        if ((size_params.ngate > 1.0e18)
-            && (size_params.ngate < 1.0e25)
-            && (vddeot > tmp2)
-            && (T0 != 0.0))
-        {
+        if ((size_params.ngate > 1.0e18) && (size_params.ngate < 1.0e25) && (vddeot > tmp2) && (T0 != 0.0)) {
             T1 = 1.0e6 * Q * T0 * size_params.ngate / (model_derived.coxe * model_derived.coxe);
             T8 = vddeot - tmp2;
             T4 = sqrt(1.0 + 2.0 * T8 / T1);
@@ -1559,7 +1334,7 @@ fn from(
         lt1 = model_derived.factor1 * size_params.sqrtXdep0;
         ltw = lt1;
         T0 = size_params.dvt1 * model.leffeot / lt1;
-        if (T0 < EXP_THRESHOLD) {
+        if T0 < EXP_THRESHOLD {
             T1 = exp(T0);
             T2 = T1 - 1.0;
             T3 = T2 * T2;
@@ -1570,7 +1345,7 @@ fn from(
         }
         Delt_vth = size_params.dvt0 * Theta0 * V0;
         T0 = size_params.dvt1w * model.weffeot * model.leffeot / ltw;
-        if (T0 < EXP_THRESHOLD) {
+        if T0 < EXP_THRESHOLD {
             T1 = exp(T0);
             T2 = T1 - 1.0;
             T3 = T2 * T2;
@@ -1582,21 +1357,16 @@ fn from(
         T2 = size_params.dvt0w * T5 * V0;
         TempRatioeot = model.tempeot / model.tnom - 1.0;
         T0 = sqrt(1.0 + size_params.lpe0 / model.leffeot);
-        T1 = size_params.k1ox * (T0 - 1.0) * sqrt(phieot)
-            + (size_params.kt1 + size_params.kt1l / model.leffeot) * TempRatioeot;
+        T1 = size_params.k1ox * (T0 - 1.0) * sqrt(phieot) + (size_params.kt1 + size_params.kt1l / model.leffeot) * TempRatioeot;
         Vth_NarrowW = toxe * phieot / (model.weffeot + size_params.w0);
         Lpe_Vb = sqrt(1.0 + size_params.lpeb / model.leffeot);
-        Vth = model.p() * intp.vth0 + (size_params.k1ox - size_params.k1) * sqrt(phieot) * Lpe_Vb
-            - Delt_vth
-            - T2
-            + size_params.k3 * Vth_NarrowW
-            + T1;
+        Vth = model.p() * intp.vth0 + (size_params.k1ox - size_params.k1) * sqrt(phieot) * Lpe_Vb - Delt_vth - T2 + size_params.k3 * Vth_NarrowW + T1;
 
         /* Calculate n */
         tmp1 = epssub / size_params.Xdep0;
         tmp2 = size_params.nfactor * tmp1;
         tmp3 = (tmp2 + size_params.cdsc * Theta0 + size_params.cit) / model_derived.coxe;
-        if (tmp3 >= -0.5) {
+        if tmp3 >= -0.5 {
             n = 1.0 + tmp3;
         } else {
             T0 = 1.0 / (3.0 + 8.0 * tmp3);
@@ -1604,9 +1374,9 @@ fn from(
         }
 
         /* Vth correction for Pocket implant */
-        if (size_params.dvtp0 > 0.0) {
+        if size_params.dvtp0 > 0.0 {
             T3 = model.leffeot + size_params.dvtp0 * 2.0;
-            if (model.tempmod < 2) {
+            if model.tempmod < 2 {
                 T4 = Vtmeot * log(model.leffeot / T3);
             } else {
                 T4 = Vtm0eot * log(model.leffeot / T3);
@@ -1620,7 +1390,7 @@ fn from(
         T5 = 2.5 * T3;
 
         vtfbphi2eot = 4.0 * T3;
-        if (vtfbphi2eot < 0.0) {
+        if vtfbphi2eot < 0.0 {
             vtfbphi2eot = 0.0;
         }
 

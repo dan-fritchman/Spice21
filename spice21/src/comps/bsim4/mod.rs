@@ -5,7 +5,7 @@
 pub mod bsim4defs;
 pub mod bsim4modelvals;
 pub mod bsim4derive;
-// pub mod bsim4inst;
+pub mod bsim4inst;
 pub use bsim4defs::*;
 // use super::bsim4derive::*;
 
