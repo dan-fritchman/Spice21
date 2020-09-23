@@ -376,7 +376,6 @@ pub(crate) fn from(
         size_params.xn = model.xn + model.lxn * Inv_L + model.wxn * Inv_W + model.pxn * Inv_LW;
         size_params.vfbsdoff = model.vfbsdoff + model.lvfbsdoff * Inv_L + model.wvfbsdoff * Inv_W + model.pvfbsdoff * Inv_LW;
         size_params.tvfbsdoff = model.tvfbsdoff + model.ltvfbsdoff * Inv_L + model.wtvfbsdoff * Inv_W + model.ptvfbsdoff * Inv_LW;
-
         size_params.cgsl = model.cgsl + model.lcgsl * Inv_L + model.wcgsl * Inv_W + model.pcgsl * Inv_LW;
         size_params.cgdl = model.cgdl + model.lcgdl * Inv_L + model.wcgdl * Inv_W + model.pcgdl * Inv_LW;
         size_params.ckappas = model.ckappas + model.lckappas * Inv_L + model.wckappas * Inv_W + model.pckappas * Inv_LW;
@@ -1074,20 +1073,18 @@ pub(crate) fn from(
         let rs = if let Some(nrs) = inst.nrs {
             model.rsh * nrs
         } else if intp.rgeomod > 0 {
-            1e-3
-            // FIXME: make these geometric calcs
-            // BSIM4RdseffGeo(
-            //     intp.nf,
-            //     model.geomod,
-            //     model.rgeomod,
-            //     intp.min,
-            //     size_params.weffCJ,
-            //     model.rsh,
-            //     DMCGeff,
-            //     DMCIeff,
-            //     DMDGeff,
-            //     1,
-            // );
+            BSIM4RdseffGeo(
+                intp.nf,
+                model.geomod,
+                intp.rgeomod,
+                intp.min,
+                size_params.weffCJ,
+                model.rsh,
+                DMCGeff,
+                DMCIeff,
+                DMDGeff,
+                1,
+            )
         } else {
             0.0
         };
@@ -1101,20 +1098,18 @@ pub(crate) fn from(
         let rd = if let Some(nrd) = inst.nrd {
             model.rsh * nrd
         } else if intp.rgeomod > 0 {
-            1e-3
-            // FIXME: make these geometric calcs
-            // BSIM4RdseffGeo(
-            //     intp.nf,
-            //     model.geomod,
-            //     model.rgeomod,
-            //     intp.min,
-            //     size_params.weffCJ,
-            //     model.rsh,
-            //     DMCGeff,
-            //     DMCIeff,
-            //     DMDGeff,
-            //     1,
-            // );
+            BSIM4RdseffGeo(
+                intp.nf,
+                model.geomod,
+                intp.rgeomod,
+                intp.min,
+                size_params.weffCJ,
+                model.rsh,
+                DMCGeff,
+                DMCIeff,
+                DMDGeff,
+                1,
+            )
         } else {
             0.0
         };
@@ -1225,7 +1220,7 @@ pub(crate) fn from(
         }
     }
 
-    T0 = (model_derived.TempRatio - 1.0);
+    T0 = model_derived.TempRatio - 1.0;
     T7 = model_derived.Eg0 / model_derived.vtm * T0;
     T9 = model.xtss * T7;
     T1 = dexpb(T9);
@@ -1494,4 +1489,243 @@ fn BSIM4NumFingerDiff(nf: f64, minSD: usize) -> (f64, f64, f64, f64) {
         let nuIntS = 2.0 * max((nf / 2.0 - 1.0), 0.0);
         return (nuIntD, nuEndD, nuIntS, nuEndS);
     }
+}
+
+fn BSIM4RdsEndSha(Weffcj: f64, Rsh: f64, DMCG: f64, DMCI: f64, DMDG: f64, nuEnd: f64, rgeo: usize, Type: usize) -> f64 {
+    if Type == 1 {
+        match rgeo {
+            1 | 2 | 5 => {
+                if nuEnd == 0.0 {
+                    0.0
+                } else {
+                    Rsh * DMCG / (Weffcj * nuEnd)
+                }
+            }
+            3 | 4 | 6 => {
+                if DMCG == 0.0 {
+                    println!("DMCG can not be equal to zero\n");
+                }
+                if nuEnd == 0.0 || DMCG == 0.0 {
+                    0.0
+                } else {
+                    Rsh * Weffcj / (6.0 * nuEnd * DMCG)
+                }
+            }
+            _ => {
+                println!("Warning: Specified RGEO = {} not matched\n", rgeo);
+                0.0
+            }
+        }
+    } else {
+        match rgeo {
+            1 | 3 | 7 => {
+                if nuEnd == 0.0 {
+                    0.0
+                } else {
+                    Rsh * DMCG / (Weffcj * nuEnd)
+                }
+            }
+            2 | 4 | 8 => {
+                if DMCG == 0.0 {
+                    println!("DMCG can not be equal to zero\n");
+                }
+                if nuEnd == 0.0 || DMCG == 0.0 {
+                    0.0
+                } else {
+                    Rsh * Weffcj / (6.0 * nuEnd * DMCG)
+                }
+            }
+            _ => {
+                println!("Warning: Specified RGEO = {} not matched\n", rgeo);
+                0.0
+            }
+        }
+    }
+}
+
+fn BSIM4RdsEndIso(Weffcj: f64, Rsh: f64, DMCG: f64, DMCI: f64, DMDG: f64, nuEnd: f64, rgeo: usize, Type: usize) -> f64 {
+    if Type == 1 {
+        match rgeo {
+            1 | 2 | 5 => {
+                if nuEnd == 0.0 {
+                    0.0
+                } else {
+                    Rsh * DMCG / (Weffcj * nuEnd)
+                }
+            }
+            3 | 4 | 6 => {
+                if ((DMCG + DMCI) == 0.0) {
+                    println!("(DMCG + DMCI) can not be equal to zero\n");
+                }
+                if ((nuEnd == 0.0) || ((DMCG + DMCI) == 0.0)) {
+                    0.0
+                } else {
+                    Rsh * Weffcj / (3.0 * nuEnd * (DMCG + DMCI))
+                }
+            }
+            _ => {
+                println!("Warning: Specified RGEO = {} not matched\n", rgeo);
+                0.0
+            }
+        }
+    } else {
+        match rgeo {
+            1 | 3 | 7 => {
+                if nuEnd == 0.0 {
+                    0.0
+                } else {
+                    Rsh * DMCG / (Weffcj * nuEnd)
+                }
+            }
+            2 | 4 | 8 => {
+                if ((DMCG + DMCI) == 0.0) {
+                    println!("(DMCG + DMCI) can not be equal to zero\n");
+                }
+                if ((nuEnd == 0.0) || ((DMCG + DMCI) == 0.0)) {
+                    0.0
+                } else {
+                    Rsh * Weffcj / (3.0 * nuEnd * (DMCG + DMCI))
+                }
+            }
+            _ => {
+                println!("Warning: Specified RGEO = {} not matched\n", rgeo);
+                0.0
+            }
+        }
+    }
+}
+
+fn BSIM4RdseffGeo(nf: f64, geo: usize, rgeo: usize, minSD: usize, Weffcj: f64, Rsh: f64, DMCG: f64, DMCI: f64, DMDG: f64, Type: usize) -> f64 {
+    let (nuIntD, nuEndD, nuIntS, nuEndS) = if geo < 9 {
+        /* since geo = 9 and 10 only happen when nf = even */
+        BSIM4NumFingerDiff(nf, minSD)
+    } else {
+        (0.0, 0.0, 0.0, 0.0)
+    };
+
+    let Rint = if geo < 9 {
+        /* Internal S/D resistance -- assume shared S or D and all wide contacts */
+        if Type == 1 {
+            if nuIntS == 0.0 {
+                0.0
+            } else {
+                Rsh * DMCG / (Weffcj * nuIntS)
+            }
+        } else {
+            if nuIntD == 0.0 {
+                0.0
+            } else {
+                Rsh * DMCG / (Weffcj * nuIntD)
+            }
+        }
+    } else {
+        0.0
+    };
+
+    let mut Rint = 0.0;
+    let mut Rend = 0.0;
+    /* End S/D resistance  -- geo dependent */
+    match geo {
+        0 => {
+            if Type == 1 {
+                Rend = BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndS, rgeo, 1);
+            } else {
+                Rend = BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndD, rgeo, 0);
+            }
+        }
+        1 => {
+            if Type == 1 {
+                Rend = BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndS, rgeo, 1);
+            } else {
+                Rend = BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndD, rgeo, 0);
+            }
+        }
+        2 => {
+            if Type == 1 {
+                Rend = BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndS, rgeo, 1);
+            } else {
+                Rend = BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndD, rgeo, 0);
+            }
+        }
+        3 => {
+            if Type == 1 {
+                Rend = BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndS, rgeo, 1);
+            } else {
+                Rend = BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndD, rgeo, 0);
+            }
+        }
+        4 => {
+            if Type == 1 {
+                Rend = BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndS, rgeo, 1);
+            } else {
+                Rend = Rsh * DMDG / Weffcj;
+            }
+        }
+        5 => {
+            if Type == 1 {
+                Rend = BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndS, rgeo, 1);
+            } else {
+                Rend = Rsh * DMDG / (Weffcj * nuEndD);
+            }
+        }
+        6 => {
+            if Type == 1 {
+                Rend = Rsh * DMDG / Weffcj;
+            } else {
+                Rend = BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndD, rgeo, 0);
+            }
+        }
+        7 => {
+            if Type == 1 {
+                Rend = Rsh * DMDG / (Weffcj * nuEndS);
+            } else {
+                Rend = BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG, nuEndD, rgeo, 0);
+            }
+        }
+        8 => {
+            Rend = Rsh * DMDG / Weffcj;
+        }
+        9 => {
+            /* all wide contacts assumed for geo = 9 and 10 */
+            if Type == 1 {
+                Rend = 0.5 * Rsh * DMCG / Weffcj;
+                if nf == 2.0 {
+                    Rint = 0.0;
+                } else {
+                    Rint = Rsh * DMCG / (Weffcj * (nf - 2.0));
+                }
+            } else {
+                Rend = 0.0;
+                Rint = Rsh * DMCG / (Weffcj * nf);
+            }
+        }
+        10 => {
+            if Type == 1 {
+                Rend = 0.0;
+                Rint = Rsh * DMCG / (Weffcj * nf);
+            } else {
+                Rend = 0.5 * Rsh * DMCG / Weffcj;
+                if nf == 2.0 {
+                    Rint = 0.0;
+                } else {
+                    Rint = Rsh * DMCG / (Weffcj * (nf - 2.0));
+                }
+            }
+        }
+        _ => {
+            println!("Warning: Specified GEO = {} not matched\n", geo);
+        }
+    }
+
+    let rv = if Rint <= 0.0 {
+        Rend
+    } else if Rend <= 0.0 {
+        Rint
+    } else {
+        Rint * Rend / (Rint + Rend)
+    };
+    if rv == 0.0 {
+        println!("Warning: Zero resistance returned from RdseffGeo\n");
+    }
+    return rv;
 }
