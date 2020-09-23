@@ -14,13 +14,14 @@ use crate::SpNum;
 
 /// Mos Terminals, in SPICE order: g, d, s, b
 #[derive(Clone, Copy)]
-enum MosTerm {
+pub(crate) enum MosTerm {
     G = 0,
     D = 1,
     S = 2,
     B = 3,
 }
 
+#[derive(Default)]
 pub(crate) struct MosTerminals([Option<VarIndex>; 4]);
 
 impl Index<MosTerm> for MosTerminals {

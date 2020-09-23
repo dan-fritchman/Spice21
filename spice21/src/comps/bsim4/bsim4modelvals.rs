@@ -5,7 +5,7 @@ use crate::comps::MosType;
 
 /// Resolve input-provided model-specs into their values,
 /// incorporating defaults and limiting constraints.
-fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
+pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     let mut vals = Bsim4ModelVals::default();
     use MosType::{NMOS, PMOS};
 

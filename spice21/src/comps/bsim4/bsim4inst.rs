@@ -6,7 +6,11 @@ use crate::comps::mos::MosType;
 const DELTA: f64 = 1e-9;
 
 /// Derive Bsim4 Internal Instance Parameters from Model and Instance params
-fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &Bsim4InstSpecs) -> Bsim4InternalParams {
+pub(crate) fn from(
+    model: &Bsim4ModelVals,
+    model_derived: &Bsim4ModelDerivedParams,
+    inst: &Bsim4InstSpecs,
+) -> (Bsim4InternalParams, Bsim4SizeDepParams) {
     let mut tmp: f64;
     let mut tmp1: f64;
     let mut tmp2: f64;
@@ -129,11 +133,18 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
     intp.ngcon = if let Some(val) = inst.ngcon { val } else { model.ngcon };
 
     // More modes
+    // FIXME: support for per-instance versions
     // intp.trnqsmod = if let Some(val) = inst.trnqsmod { val } else { model.trnqsmod };
     // intp.acnqsmod = if let Some(val) = inst.acnqsmod { val } else { model.acnqsmod };
     // intp.rbodymod = if let Some(val) = inst.rbodymod { val } else { model.rbodymod };
     // intp.rgatemod = if let Some(val) = inst.rgatemod { val } else { model.rgatemod };
     // intp.geomod = if let Some(val) = inst.geomod { val } else { model.geomod };
+    // Take the model values
+    intp.trnqsmod = model.trnqsmod;
+    intp.acnqsmod = model.acnqsmod;
+    intp.rbodymod = model.rbodymod;
+    intp.rgatemod = model.rgatemod;
+    intp.rgatemod = model.rgatemod;
 
     // FIXME: set up a hash table of these size params, cache it, etc.
     Size_Not_Found = true;
@@ -484,7 +495,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         size_params.eta0 = size_params.eta0 + size_params.teta0 * delTemp / model.tnom;
 
         /* Source End Velocity Limit  */
-        if ((model.vtlGiven) && (model.vtl > 0.0)) {
+        if (model.vtlGiven) && (model.vtl > 0.0) {
             if model.lc < 0.0 {
                 size_params.lc = 0.0;
             } else {
@@ -620,7 +631,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
             if model.vth0Given {
                 size_params.vfb = model.p() * size_params.vth0 - size_params.phi - size_params.k1 * size_params.sqrtPhi;
             } else {
-                if ((model.mtrlmod != 0) && (model.phigGiven) && (model.nsubGiven)) {
+                if (model.mtrlmod != 0) && (model.phigGiven) && (model.nsubGiven) {
                     T0 = model_derived.vtm0 * log(size_params.nsub / model_derived.ni);
                     T1 = 0.5 * model_derived.Eg0;
                     if T0 > T1 {
@@ -695,10 +706,10 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         T4 = model.toxe * size_params.phi / (size_params.weff + size_params.w0);
 
         T0 = sqrt(1.0 + size_params.lpe0 / size_params.leff);
-        if ((model.tempmod == 1) || (model.tempmod == 0)) {
+        if (model.tempmod == 1) || (model.tempmod == 0) {
             T3 = (size_params.kt1 + size_params.kt1l / size_params.leff) * (model_derived.TempRatio - 1.0);
         }
-        if ((model.tempmod == 2) || (model.tempmod == 3)) {
+        if (model.tempmod == 2) || (model.tempmod == 3) {
             T3 = -size_params.kt1 * (model_derived.TempRatio - 1.0);
         }
 
@@ -775,7 +786,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
     } /* End of SizeNotFound */
 
     /*  stress effect */
-    if ((intp.sa > 0.0) && (intp.sb > 0.0) && ((intp.nf == 1.0) || ((intp.nf > 1.0) && (intp.sd > 0.0)))) {
+    if (intp.sa > 0.0) && (intp.sb > 0.0) && ((intp.nf == 1.0) || ((intp.nf > 1.0) && (intp.sd > 0.0))) {
         Inv_sa = 0.0;
         Inv_sb = 0.0;
 
@@ -827,8 +838,8 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         intp.scb = if let Some(val) = inst.scb { val } else { 0.0 };
         intp.scc = if let Some(val) = inst.scc { val } else { 0.0 };
 
-        if ((!inst.sca.is_some()) && (!inst.scb.is_some()) && (!inst.scc.is_some())) {
-            if ((inst.sc.is_some()) && (intp.sc > 0.0)) {
+        if (!inst.sca.is_some()) && (!inst.scb.is_some()) && (!inst.scc.is_some()) {
+            if (inst.sc.is_some()) && (intp.sc > 0.0) {
                 T1 = intp.sc + Wdrn;
                 T2 = 1.0 / model.scref;
                 intp.sca = model.scref * model.scref / (intp.sc * T1);
@@ -925,7 +936,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
             intp.rbdb = rbdbx * rbdby / (rbdbx + rbdby);
         }
 
-        if ((model.bodymode == 3) || (model.bodymode == 5)) {
+        if (model.bodymode == 3) || (model.bodymode == 5) {
             intp.rbps = model.rbps0 * exp(model.rbpsl * lnl + model.rbpsw * lnw + model.rbpsnf * lnnf);
             intp.rbpd = model.rbpd0 * exp(model.rbpdl * lnl + model.rbpdw * lnw + model.rbpdnf * lnnf);
         }
@@ -935,7 +946,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         intp.rbpb = rbpbx * rbpby / (rbpbx + rbpby);
     }
 
-    if ((model.rbodymod == 1) || ((model.rbodymod == 2) && (model.bodymode == 5))) {
+    if (model.rbodymod == 1) || ((model.rbodymod == 2) && (model.bodymode == 5)) {
         if intp.rbdb < 1.0e-3 {
             intp.grbdb = 1.0e3; /* in mho */
         } else {
@@ -963,7 +974,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         }
     }
 
-    if ((model.rbodymod == 2) && (model.bodymode == 3)) {
+    if (model.rbodymod == 2) && (model.bodymode == 3) {
         intp.grbdb = model.gbmin;
         intp.grbsb = model.gbmin;
         if intp.rbpb < 1.0e-3 {
@@ -983,7 +994,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         }
     }
 
-    if ((model.rbodymod == 2) && (model.bodymode == 1)) {
+    if (model.rbodymod == 2) && (model.bodymode == 1) {
         intp.grbdb = model.gbmin;
         intp.grbsb = model.gbmin;
         intp.grbps = 1.0e3;
@@ -1058,72 +1069,64 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         println!("Warning: Adeff is negative, it is set to zero.\n");
     }
 
-    // // FIXME: these nodes won't be available here, figure out when & where to do this
-    // // probably just do it here per geometry, and each instance will decide whether to use it.
-    // /* Processing S/D resistance and conductance below */
-    // if intp.sNodePrime != intp.sNode {
-    //     intp.sourceConductance = 0.0;
-    //     if inst.nrsGiven {
-    //         intp.sourceConductance = model.sheetResistance * inst.nrs;
-    //     } else if model.rgeomod > 0 {
-    //         BSIM4RdseffGeo(
-    //             intp.nf,
-    //             model.geomod,
-    //             model.rgeomod,
-    //             intp.min,
-    //             size_params.weffCJ,
-    //             model.sheetResistance,
-    //             DMCGeff,
-    //             DMCIeff,
-    //             DMDGeff,
-    //             1,
-    //             &(intp.sourceConductance),
-    //         );
-    //     } else {
-    //         intp.sourceConductance = 0.0;
-    //     }
-    //     if intp.sourceConductance > 0.0 {
-    //         intp.sourceConductance = 1.0 / intp.sourceConductance;
-    //     } else {
-    //         intp.sourceConductance = 1.0e3; /* mho */
-    //         println!("Warning: Source conductance reset to 1.0e3 mho.\n");
-    //     }
-    // } else {
-    //     intp.sourceConductance = 0.0;
-    // }
-    // if intp.dNodePrime != intp.dNode {
-    //     intp.drainConductance = 0.0;
-    //     if inst.nrdGiven {
-    //         intp.drainConductance = model.sheetResistance * inst.nrd;
-    //     } else if model.rgeomod > 0 {
-    //         BSIM4RdseffGeo(
-    //             intp.nf,
-    //             model.geomod,
-    //             model.rgeomod,
-    //             intp.min,
-    //             size_params.weffCJ,
-    //             model.sheetResistance,
-    //             DMCGeff,
-    //             DMCIeff,
-    //             DMDGeff,
-    //             0,
-    //             &(intp.drainConductance),
-    //         );
-    //     } else {
-    //         intp.drainConductance = 0.0;
-    //     }
-    //     if intp.drainConductance > 0.0 {
-    //         intp.drainConductance = 1.0 / intp.drainConductance;
-    //     } else {
-    //         intp.drainConductance = 1.0e3; /* mho */
-    //         println!("Warning: Drain conductance reset to 1.0e3 mho.\n");
-    //     }
-    // } else {
-    //     intp.drainConductance = 0.0;
-    // }
-    // /* End of Rsd processing */
+    // Source & Drain Resistances
+    {
+        let rs = if let Some(nrs) = inst.nrs {
+            model.rsh * nrs
+        } else if intp.rgeomod > 0 {
+            1e-3
+            // FIXME: make these geometric calcs
+            // BSIM4RdseffGeo(
+            //     intp.nf,
+            //     model.geomod,
+            //     model.rgeomod,
+            //     intp.min,
+            //     size_params.weffCJ,
+            //     model.rsh,
+            //     DMCGeff,
+            //     DMCIeff,
+            //     DMDGeff,
+            //     1,
+            // );
+        } else {
+            0.0
+        };
+        intp.sourceConductance = if rs > 0.0 {
+            1.0 / rs
+        } else {
+            1.0e3 /* mho */
+        };
+    }
+    {
+        let rd = if let Some(nrd) = inst.nrd {
+            model.rsh * nrd
+        } else if intp.rgeomod > 0 {
+            1e-3
+            // FIXME: make these geometric calcs
+            // BSIM4RdseffGeo(
+            //     intp.nf,
+            //     model.geomod,
+            //     model.rgeomod,
+            //     intp.min,
+            //     size_params.weffCJ,
+            //     model.rsh,
+            //     DMCGeff,
+            //     DMCIeff,
+            //     DMDGeff,
+            //     1,
+            // );
+        } else {
+            0.0
+        };
+        intp.drainConductance = if rd > 0.0 {
+            1.0 / rd
+        } else {
+            1.0e3 /* mho */
+        };
+    }
+
     let Nvtms = model_derived.vtm * model.njs;
-    if ((intp.Aseff <= 0.0) && (intp.Pseff <= 0.0)) {
+    if (intp.Aseff <= 0.0) && (intp.Pseff <= 0.0) {
         SourceSatCurrent = 0.0;
     } else {
         SourceSatCurrent = intp.Aseff * model_derived.SjctTempSatCurDensity
@@ -1173,7 +1176,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
     }
 
     let Nvtmd = model_derived.vtm * model.njd;
-    if ((intp.Adeff <= 0.0) && (intp.Pdeff <= 0.0)) {
+    if (intp.Adeff <= 0.0) && (intp.Pdeff <= 0.0) {
         DrainSatCurrent = 0.0;
     } else {
         DrainSatCurrent = intp.Adeff * model_derived.DjctTempSatCurDensity
@@ -1256,7 +1259,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
         tmp2 = intp.vfb + phieot;
         vddeot = model.p() * model.vddeot;
         T0 = model.epsrgate * EPS0;
-        if ((size_params.ngate > 1.0e18) && (size_params.ngate < 1.0e25) && (vddeot > tmp2) && (T0 != 0.0)) {
+        if (size_params.ngate > 1.0e18) && (size_params.ngate < 1.0e25) && (vddeot > tmp2) && (T0 != 0.0) {
             T1 = 1.0e6 * Q * T0 * size_params.ngate / (model_derived.coxe * model_derived.coxe);
             T8 = vddeot - tmp2;
             T4 = sqrt(1.0 + 2.0 * T8 / T1);
@@ -1359,7 +1362,7 @@ fn from(model: &Bsim4ModelVals, model_derived: &Bsim4ModelDerivedParams, inst: &
 
     // FIXME: linking these two, or returning both
     // intp.size_params = size_params;
-    return intp;
+    return (intp, size_params);
 }
 
 fn BSIM4DioIjthVjmEval(Nvtm: f64, Ijth: f64, Isb: f64, XExpBV: f64) -> f64 {

@@ -4,7 +4,7 @@ use crate::comps::consts::*;
 
 /// BSIM4 Model
 /// Derive internal parameters from specified param-values 
-fn derive(model: &Bsim4ModelVals) -> Bsim4ModelDerivedParams {
+pub(crate) fn derive(model: &Bsim4ModelVals) -> Bsim4ModelDerivedParams {
     let mut Eg: f64;
     let mut Eg0: f64;
     let mut ni: f64;

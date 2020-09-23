@@ -7,6 +7,9 @@ pub mod bsim4modelvals;
 pub mod bsim4derive;
 pub mod bsim4inst;
 pub use bsim4defs::*;
+pub mod bsim4ports;
+
+use bsim4ports::Bsim4Ports;
 
 use super::consts::*;
 use super::Component;
@@ -43,30 +46,9 @@ pub(crate) fn dexpc(A: f64) -> f64 {
 
 impl Bsim4ModelVals {
     /// Polarity function
-    pub(crate) fn p(&self) -> f64 {
-        // FIXME: use mos_type enum
-        if self.nmos {
-            1.0
-        } else {
-            -1.0
-        }
-    }
+    pub(crate) fn p(&self) -> f64 { self.mos_type.p() }
 }
 
-pub(crate) struct Bsim4Ports {
-    dNode: Option<VarIndex>,
-    gNodeExt: Option<VarIndex>,
-    sNode: Option<VarIndex>,
-    bNode: Option<VarIndex>,
-    dNodePrime: Option<VarIndex>,
-    gNodePrime: Option<VarIndex>,
-    gNodeMid: Option<VarIndex>,
-    sNodePrime: Option<VarIndex>,
-    bNodePrime: Option<VarIndex>,
-    dbNode: Option<VarIndex>,
-    sbNode: Option<VarIndex>,
-    qNode: Option<VarIndex>,
-}
 
 /// Bsim4 Internal, Derived Parameters
 /// These are the numbers calculated offline and used during sim-time, 
@@ -163,11 +145,11 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) rbpd: f64,
 
     // Instance-specific mode-selections not (yet?) supported 
-    // trnqsmod: isize,
-    // acnqsmod: isize,
-    // rbodymod: isize,
-    // rgatemod: isize,
-    // geomod: isize,
+    trnqsmod: usize,
+    acnqsmod: usize,
+    rbodymod: usize,
+    rgatemod: usize,
+    geomod: usize,
 
     // Note these are *also* the names of (derived) model parameters
     pub(crate) coxp: f64,
@@ -620,6 +602,7 @@ pub(crate) struct Bsim4SizeDepParams {
 }
 
 /// # BSIM4 Matrix Pointers
+#[derive(Default)]
 struct Bsim4MatrixPointers {
     GEgePtr: Option<Eindex>,
     GPgePtr: Option<Eindex>,
@@ -723,7 +706,94 @@ pub(crate) struct Bsim4 {
 }
 
 impl Component for Bsim4 {
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {} // FIXME!
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+        use crate::comps::make_matrix_elem;
+
+        self.matps.DPbpPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.bNodePrime);
+        self.matps.GPbpPtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.bNodePrime);
+        self.matps.SPbpPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.bNodePrime);
+
+        self.matps.BPdpPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.dNodePrime);
+        self.matps.BPgpPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.gNodePrime);
+        self.matps.BPspPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.sNodePrime);
+        self.matps.BPbpPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.bNodePrime);
+
+        self.matps.DdPtr = make_matrix_elem(mat, self.ports.dNode, self.ports.dNode);
+        self.matps.GPgpPtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.gNodePrime);
+        self.matps.SsPtr = make_matrix_elem(mat, self.ports.sNode, self.ports.sNode);
+        self.matps.DPdpPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.dNodePrime);
+        self.matps.SPspPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.sNodePrime);
+        self.matps.DdpPtr = make_matrix_elem(mat, self.ports.dNode, self.ports.dNodePrime);
+        self.matps.GPdpPtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.dNodePrime);
+        self.matps.GPspPtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.sNodePrime);
+        self.matps.SspPtr = make_matrix_elem(mat, self.ports.sNode, self.ports.sNodePrime);
+        self.matps.DPspPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.sNodePrime);
+        self.matps.DPdPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.dNode);
+        self.matps.DPgpPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.gNodePrime);
+        self.matps.SPgpPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.gNodePrime);
+        self.matps.SPsPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.sNode);
+        self.matps.SPdpPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.dNodePrime);
+
+        self.matps.QqPtr = make_matrix_elem(mat, self.ports.qNode, self.ports.qNode);
+        self.matps.QbpPtr = make_matrix_elem(mat, self.ports.qNode, self.ports.bNodePrime); 
+        self.matps.QdpPtr = make_matrix_elem(mat, self.ports.qNode, self.ports.dNodePrime);
+        self.matps.QspPtr = make_matrix_elem(mat, self.ports.qNode, self.ports.sNodePrime);
+        self.matps.QgpPtr = make_matrix_elem(mat, self.ports.qNode, self.ports.gNodePrime);
+        self.matps.DPqPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.qNode);
+        self.matps.SPqPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.qNode);
+        self.matps.GPqPtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.qNode);
+
+         if self.intp.rgatemod != 0 { 
+            self.matps.GEgePtr = make_matrix_elem(mat, self.ports.gNodeExt, self.ports.gNodeExt);
+            self.matps.GEgpPtr = make_matrix_elem(mat, self.ports.gNodeExt, self.ports.gNodePrime);
+            self.matps.GPgePtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.gNodeExt);
+            self.matps.GEdpPtr = make_matrix_elem(mat, self.ports.gNodeExt, self.ports.dNodePrime);
+            self.matps.GEspPtr = make_matrix_elem(mat, self.ports.gNodeExt, self.ports.sNodePrime);
+            self.matps.GEbpPtr = make_matrix_elem(mat, self.ports.gNodeExt, self.ports.bNodePrime);
+            self.matps.GMdpPtr = make_matrix_elem(mat, self.ports.gNodeMid, self.ports.dNodePrime);
+            self.matps.GMgpPtr = make_matrix_elem(mat, self.ports.gNodeMid, self.ports.gNodePrime);
+            self.matps.GMgmPtr = make_matrix_elem(mat, self.ports.gNodeMid, self.ports.gNodeMid);
+            self.matps.GMgePtr = make_matrix_elem(mat, self.ports.gNodeMid, self.ports.gNodeExt);
+            self.matps.GMspPtr = make_matrix_elem(mat, self.ports.gNodeMid, self.ports.sNodePrime);
+            self.matps.GMbpPtr = make_matrix_elem(mat, self.ports.gNodeMid, self.ports.bNodePrime);
+            self.matps.DPgmPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.gNodeMid);
+            self.matps.GPgmPtr = make_matrix_elem(mat, self.ports.gNodePrime, self.ports.gNodeMid);
+            self.matps.GEgmPtr = make_matrix_elem(mat, self.ports.gNodeExt, self.ports.gNodeMid);
+            self.matps.SPgmPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.gNodeMid);
+            self.matps.BPgmPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.gNodeMid);
+        }	
+        if self.intp.rbodymod ==1 || self.intp.rbodymod ==2 {   
+            self.matps.DPdbPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.dbNode);
+            self.matps.SPsbPtr = make_matrix_elem(mat, self.ports.sNodePrime, self.ports.sbNode);
+
+            self.matps.DBdpPtr = make_matrix_elem(mat, self.ports.dbNode, self.ports.dNodePrime);
+            self.matps.DBdbPtr = make_matrix_elem(mat, self.ports.dbNode, self.ports.dbNode);
+            self.matps.DBbpPtr = make_matrix_elem(mat, self.ports.dbNode, self.ports.bNodePrime);
+            self.matps.DBbPtr = make_matrix_elem(mat, self.ports.dbNode, self.ports.bNode);
+
+            self.matps.BPdbPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.dbNode);
+            self.matps.BPbPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.bNode);
+            self.matps.BPsbPtr = make_matrix_elem(mat, self.ports.bNodePrime, self.ports.sbNode);
+
+            self.matps.SBspPtr = make_matrix_elem(mat, self.ports.sbNode, self.ports.sNodePrime);
+            self.matps.SBbpPtr = make_matrix_elem(mat, self.ports.sbNode, self.ports.bNodePrime);
+            self.matps.SBbPtr = make_matrix_elem(mat, self.ports.sbNode, self.ports.bNode);
+            self.matps.SBsbPtr = make_matrix_elem(mat, self.ports.sbNode, self.ports.sbNode);
+
+            self.matps.BdbPtr = make_matrix_elem(mat, self.ports.bNode, self.ports.dbNode);
+            self.matps.BbpPtr = make_matrix_elem(mat, self.ports.bNode, self.ports.bNodePrime);
+            self.matps.BsbPtr = make_matrix_elem(mat, self.ports.bNode, self.ports.sbNode);
+            self.matps.BbPtr = make_matrix_elem(mat, self.ports.bNode, self.ports.bNode);
+        }
+        if self.model.rdsmod != 0{   
+            self.matps.DgpPtr = make_matrix_elem(mat, self.ports.dNode, self.ports.gNodePrime);
+            self.matps.DspPtr = make_matrix_elem(mat, self.ports.dNode, self.ports.sNodePrime);
+            self.matps.DbpPtr = make_matrix_elem(mat, self.ports.dNode, self.ports.bNodePrime);
+            self.matps.SdpPtr = make_matrix_elem(mat, self.ports.sNode, self.ports.dNodePrime);
+            self.matps.SgpPtr = make_matrix_elem(mat, self.ports.sNode, self.ports.gNodePrime);
+            self.matps.SbpPtr = make_matrix_elem(mat, self.ports.sNode, self.ports.bNodePrime);
+        }
+    } 
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         // Start by declaring about 700 local float variables!
         let mut ceqgstot: f64;
@@ -2211,7 +2281,7 @@ impl Component for Bsim4 {
             dWeff_dVb *= T0;
         }
 
-        if (self.model.rdsmod == 1) {
+        if self.model.rdsmod == 1 {
             Rds = 0.0;
             dRds_dVg = 0.0;
             dRds_dVb = 0.0;
@@ -2232,7 +2302,7 @@ impl Component for Bsim4 {
             dRds_dVg = T4 * dT3_dVg;
             dRds_dVb = T4 * dT3_dVb;
 
-            if (Rds > 0.0) {
+            if Rds > 0.0 {
                 newop.grdsw = 1.0 / Rds * self.intp.nf; /*4.6.2*/
             } else {
                 newop.grdsw = 0.0;
@@ -2584,7 +2654,7 @@ impl Component for Bsim4 {
             dVdseff_dVb = 0.0;
         }
 
-        if (Vdseff > Vds) {
+        if Vdseff > Vds {
             Vdseff = Vds;
         }
         diffVds = Vds - Vdseff;
@@ -2854,7 +2924,7 @@ impl Component for Bsim4 {
         if ((self.size_params.pscbe2 > 0.0) && (self.size_params.pscbe1 >= 0.0))
         /*4.6.2*/
         {
-            if (diffVds > self.size_params.pscbe1 * self.size_params.litl / EXP_THRESHOLD) {
+            if diffVds > self.size_params.pscbe1 * self.size_params.litl / EXP_THRESHOLD {
                 T0 = self.size_params.pscbe1 * self.size_params.litl / diffVds;
                 VASCBE = Leff * exp(T0) / self.size_params.pscbe2;
                 T1 = T0 * VASCBE / diffVds;
@@ -3011,7 +3081,7 @@ impl Component for Bsim4 {
         newop.gm = Gm;
         newop.gmbs = Gmb;
         newop.IdovVds = Ids;
-        if (newop.IdovVds <= 1.0e-9) {
+        if newop.IdovVds <= 1.0e-9 {
             newop.IdovVds = 1.0e-9;
         }
 
@@ -3134,7 +3204,7 @@ impl Component for Bsim4 {
 
         /* GIDL/GISL Models */
 
-        if (self.model.mtrlmod == 0) {
+        if self.model.mtrlmod == 0 {
             T0 = 3.0 * toxe;
         } else {
             T0 = self.model.epsrsub * toxe / epsrox;
@@ -3147,8 +3217,8 @@ impl Component for Bsim4 {
         vgd_eff = newop.vgd_eff;
         dvgd_eff_dvg = newop.dvgd_eff_dvg;
 
-        if (self.model.gidlmod == 0) {
-            if (self.model.mtrlmod == 0) {
+        if self.model.gidlmod == 0 {
+            if self.model.mtrlmod == 0 {
                 T1 = (vds - vgs_eff - self.size_params.egidl) / T0;
             } else {
                 T1 = (vds - vgs_eff - self.size_params.egidl + self.size_params.vfbsd) / T0;
@@ -3196,7 +3266,7 @@ impl Component for Bsim4 {
             newop.ggidlb = Ggidlb;
             /* Calculate GISL current  */
 
-            if (self.model.mtrlmod == 0) {
+            if self.model.mtrlmod == 0 {
                 T1 = (-vds - vgd_eff - self.size_params.egisl) / T0;
             } else {
                 T1 = (-vds - vgd_eff - self.size_params.egisl + self.size_params.vfbsd) / T0;
@@ -3246,7 +3316,7 @@ impl Component for Bsim4 {
             /* v4.7 New Gidl/GISL model */
 
             /* GISL */
-            if (self.model.mtrlmod == 0) {
+            if self.model.mtrlmod == 0 {
                 T1 = (-vds - self.size_params.rgisl * vgd_eff - self.size_params.egisl) / T0;
             } else {
                 T1 = (-vds - self.size_params.rgisl * vgd_eff - self.size_params.egisl
@@ -3280,7 +3350,7 @@ impl Component for Bsim4 {
                 }
                 T4 = vbs - self.size_params.fgisl;
 
-                if (T4 == 0.0) {
+                if T4 == 0.0 {
                     T5 = EXPL_THRESHOLD;
                 } else {
                     T5 = self.size_params.kgisl / T4;
@@ -3303,7 +3373,7 @@ impl Component for Bsim4 {
             /* End of GISL */
 
             /* GIDL */
-            if (self.model.mtrlmod == 0) {
+            if self.model.mtrlmod == 0 {
                 T1 = (vds - self.size_params.rgidl * vgs_eff - self.size_params.egidl) / T0;
             } else {
                 T1 = (vds - self.size_params.rgidl * vgs_eff - self.size_params.egidl
@@ -3336,7 +3406,7 @@ impl Component for Bsim4 {
                     Ggidlg = T3 * dT1_dVg;
                 }
                 T4 = vbd - self.size_params.fgidl;
-                if (T4 == 0.0) {
+                if T4 == 0.0 {
                     T5 = EXPL_THRESHOLD;
                 } else {
                     T5 = self.size_params.kgidl / T4;
@@ -3364,7 +3434,7 @@ impl Component for Bsim4 {
         if (self.model.igcmod != 0) || (self.model.igbmod != 0) {
             Vfb = self.intp.vfbzb;
             V3 = Vfb - Vgs_eff + Vbseff - DELTA_3;
-            if (Vfb <= 0.0) {
+            if Vfb <= 0.0 {
                 T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * Vfb);
             } else {
                 T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * Vfb);
@@ -3387,7 +3457,7 @@ impl Component for Bsim4 {
 
             T0 = 0.5 * self.size_params.k1ox;
             T3 = Vgs_eff - Vfbeff - Vbseff - Vgsteff;
-            if (self.size_params.k1ox == 0.0) {
+            if self.size_params.k1ox == 0.0 {
                 Voxdepinv = 0.0;
                 dVoxdepinv_dVg = 0.0;
                 dVoxdepinv_dVd = 0.0;
@@ -3412,7 +3482,7 @@ impl Component for Bsim4 {
             dVoxdepinv_dVb += dVgsteff_dVb;
         }
 
-        if (self.model.tempmod < 2) {
+        if self.model.tempmod < 2 {
             tmp = Vtm;
         } else
         /* self.model.tempmod = 2, 3*/
@@ -3431,7 +3501,7 @@ impl Component for Bsim4 {
                     dVaux_dVb = 0.0;
                 }
             } else {
-                // if (self.model.igcmod == 2) {
+                // if self.model.igcmod == 2 {
                 VxNVt = (Vgs_eff - newop.von) / T0;
                 if VxNVt > EXP_THRESHOLD {
                     Vaux = Vgs_eff - newop.von;
@@ -3454,9 +3524,9 @@ impl Component for Bsim4 {
                     dVaux_dVd = 0.0;
                     dVaux_dVb = 0.0;
                 } else {
-                    // if (self.model.igcmod == 2) {
-                    dVaux_dVd = -dVaux_dVg * dVth_dVd; /* Synopsys 08/30/2013 modify */
-                    dVaux_dVb = -dVaux_dVg * dVth_dVb; /* Synopsys 08/30/2013 modify */
+                    // if self.model.igcmod == 2 {
+                    dVaux_dVd = -dVaux_dVg * dVth_dVd; 
+                    dVaux_dVb = -dVaux_dVg * dVth_dVb; 
                 }
                 dVaux_dVg *= dVgs_eff_dVg;
             }
@@ -4167,7 +4237,7 @@ impl Component for Bsim4 {
                     * self.size_params.leffCV
                     * self.intp.nf;
 
-                if (self.model.cvchargemod == 0) {
+                if self.model.cvchargemod == 0 {
                     /* Seperate VgsteffCV with noff and voffcv */
                     noff = n * self.size_params.noff;
                     dnoff_dVd = self.size_params.noff * dn_dVd;
@@ -4262,7 +4332,7 @@ impl Component for Bsim4 {
                 if self.model.capmod == 1 {
                     Vfb = self.intp.vfbzb;
                     V3 = Vfb - Vgs_eff + VbseffCV - DELTA_3;
-                    if (Vfb <= 0.0) {
+                    if Vfb <= 0.0 {
                         T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * Vfb);
                     } else {
                         T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * Vfb);
@@ -4419,7 +4489,7 @@ impl Component for Bsim4 {
                 /* Charge-Thickness capmod (CTM) begins */
                 else if self.model.capmod == 2 {
                     V3 = self.intp.vfbzb - Vgs_eff + VbseffCV - DELTA_3;
-                    if (self.intp.vfbzb <= 0.0) {
+                    if self.intp.vfbzb <= 0.0 {
                         T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * self.intp.vfbzb);
                     } else {
                         T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * self.intp.vfbzb);
@@ -4724,7 +4794,6 @@ impl Component for Bsim4 {
                     let (_g, i, _r) =
                         state.integrate(newop.qcheq - self.op.qcheq, 0.0, 0.0, self.op.cqcheq);
                     newop.cqcheq = i;
-                    // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qcheq);
                 }
             }
         }
@@ -4757,7 +4826,7 @@ impl Component for Bsim4 {
             } else if vbs_jct < 0.0 {
                 if czbs > 0.0 {
                     arg = 1.0 - vbs_jct / self.model_derived.PhiBS;
-                    if (MJS == 0.5) {
+                    if MJS == 0.5 {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJS * log(arg));
@@ -4770,7 +4839,7 @@ impl Component for Bsim4 {
                 }
                 if czbssw > 0.0 {
                     arg = 1.0 - vbs_jct / self.model_derived.PhiBSWS;
-                    if (MJSWS == 0.5) {
+                    if MJSWS == 0.5 {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWS * log(arg));
@@ -4780,7 +4849,7 @@ impl Component for Bsim4 {
                 }
                 if czbsswg > 0.0 {
                     arg = 1.0 - vbs_jct / self.model_derived.PhiBSWGS;
-                    if (MJSWGS == 0.5) {
+                    if MJSWGS == 0.5 {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWGS * log(arg));
@@ -4805,7 +4874,7 @@ impl Component for Bsim4 {
             } else if vbd_jct < 0.0 {
                 if czbd > 0.0 {
                     arg = 1.0 - vbd_jct / self.model_derived.PhiBD;
-                    if (MJD == 0.5) {
+                    if MJD == 0.5 {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJD * log(arg));
@@ -4818,7 +4887,7 @@ impl Component for Bsim4 {
                 }
                 if czbdsw > 0.0 {
                     arg = 1.0 - vbd_jct / self.model_derived.PhiBSWD;
-                    if (MJSWD == 0.5) {
+                    if MJSWD == 0.5 {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWD * log(arg));
@@ -4828,7 +4897,7 @@ impl Component for Bsim4 {
                 }
                 if czbdswg > 0.0 {
                     arg = 1.0 - vbd_jct / self.model_derived.PhiBSWGD;
-                    if (MJSWGD == 0.5) {
+                    if MJSWGD == 0.5 {
                         sarg = 1.0 / sqrt(arg);
                     } else {
                         sarg = exp(-MJSWGD * log(arg));
@@ -5408,28 +5477,22 @@ impl Component for Bsim4 {
                 newop.qb = qbulk;
             }
 
-            // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qb);
             let (_g, i, _r) = state.integrate(newop.qb - self.op.qb, 0.0, 0.0, self.op.cqb);
             newop.cqb = i;
-            // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qg);
             let (_g, i, _r) = state.integrate(newop.qg - self.op.qg, 0.0, 0.0, self.op.cqg);
             newop.cqg = i;
-            // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qd);
             let (_g, i, _r) = state.integrate(newop.qd - self.op.qd, 0.0, 0.0, self.op.cqd);
             newop.cqd = i;
 
             if self.model.rgatemod == 3 {
-                // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qgmid);
                 let (_g, i, _r) =
                     state.integrate(newop.qgmid - self.op.qgmid, 0.0, 0.0, self.op.cqgmid);
                 newop.cqgmid = i;
             }
 
             if self.model.rbodymod != 0 {
-                // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qbs);
                 let (_g, i, _r) = state.integrate(newop.qbs - self.op.qbs, 0.0, 0.0, self.op.cqbs);
                 newop.cqbs = i;
-                // error = NIintegrate(ckt, &geq, &ceq, 0.0, newop.qbd);
                 let (_g, i, _r) = state.integrate(newop.qbd - self.op.qbd, 0.0, 0.0, self.op.cqbd);
                 newop.cqbd = i;
             }
@@ -5562,9 +5625,9 @@ impl Component for Bsim4 {
                 Igtoteq = 0.0;
             }
 
-            if (self.model.rgatemod == 2) {
+            if self.model.rgatemod == 2 {
                 T0 = vges - vgs;
-            } else if (self.model.rgatemod == 3) {
+            } else if self.model.rgatemod == 3 {
                 T0 = vgms - vgs;
             }
             if self.model.rgatemod > 1 {
@@ -5671,9 +5734,9 @@ impl Component for Bsim4 {
                 Igtoteq = 0.0;
             }
 
-            if (self.model.rgatemod == 2) {
+            if self.model.rgatemod == 2 {
                 T0 = vges - vgs;
-            } else if (self.model.rgatemod == 3) {
+            } else if self.model.rgatemod == 3 {
                 T0 = vgms - vgs;
             }
             if self.model.rgatemod > 1 {
@@ -5761,9 +5824,9 @@ impl Component for Bsim4 {
         ));
         b.push((self.ports.gNodePrime, -(ceqqg - ceqgcrg + Igtoteq)));
 
-        if (self.model.rgatemod == 2) {
+        if self.model.rgatemod == 2 {
             b.push((self.ports.gNodeExt, -ceqgcrg));
-        } else if (self.model.rgatemod == 3) {
+        } else if self.model.rgatemod == 3 {
             b.push((self.ports.gNodeMid, -(ceqqgmid + ceqgcrg)));
         }
 
@@ -6144,4 +6207,43 @@ pub(crate) fn pow(a: f64, b:f64) -> f64 {
 }
 pub(crate) fn max(a: f64, b:f64) -> f64 {
     a.max(b)
+}
+
+impl Bsim4 {
+    pub(crate) fn new() -> Self {
+        use super::bsim4derive::derive;
+        use super::bsim4modelvals::resolve;
+        use super::bsim4inst::from;
+        use crate::comps::mos::MosTerminals;
+
+        let model_specs = Bsim4ModelSpecs::default();
+        let model = resolve(&model_specs);
+        let model_derived = derive(&model);
+        let inst = Bsim4InstSpecs::default();
+        let (intp, size_params) = from(&model, &model_derived, &inst);
+
+        // fake solver 
+        use crate::analysis::{Solver, Options};
+        use crate::circuit::Ckt;
+        let mut solver = Solver::<f64>::new(Ckt::new(), Options::default());
+
+        let ports = Bsim4Ports::from(
+            String::from("inst0"),
+            &MosTerminals::default(),
+            &model,
+            &intp,
+            &mut solver,
+        );
+        let solver = Bsim4 {
+            ports: Bsim4Ports::default(),
+            model,
+            model_derived,
+            size_params,
+            intp,
+            guess: Bsim4OpPoint::default(),
+            op: Bsim4OpPoint::default(),
+            matps: Bsim4MatrixPointers::default(),
+        };
+        solver
+    }
 }

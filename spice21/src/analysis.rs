@@ -28,7 +28,7 @@ impl<NumT: SpNum> Stamps<NumT> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum VarKind {
     V = 0,
-    I,
+    I, Q,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -259,7 +259,7 @@ impl Solver<Complex<f64>> {
 
 impl<NumT: SpNum> Solver<NumT> {
     /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
-    fn new(ckt: Ckt, opts: Options) -> Solver<NumT> {
+    pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<NumT> {
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),

@@ -15,16 +15,16 @@ attr!(
     [
         (tnom, f64, 300.15, "Parameter measurement temperature"), // FIXME: defaults have to be literals in our macro
         (is, f64, 1e-14, "Saturation current"),
-        (n, f64, 1.0, "Emission Coefficient"), //
-        (tt, f64, 0.0, "Transit Time"),        //
-        (vj, f64, 1.0, "Junction potential"),  //
-        (m, f64, 0.5, "Grading coefficient"),  //
-        (eg, f64, 1.11, "Activation energy"),  //
-        (xti, f64, 3.0, "Saturation current temperature exp."), //
-        (kf, f64, 0.0, "flicker noise coefficient"), //
-        (af, f64, 1.0, "flicker noise exponent"), //
-        (fc, f64, 0.5, "Forward bias junction fit parameter"), //
-        (bv, f64, 0.0, "Reverse breakdown voltage"), // FIXME: Optional, default effectively -inf, default val
+        (n, f64, 1.0, "Emission Coefficient"),                    //
+        (tt, f64, 0.0, "Transit Time"),                           //
+        (vj, f64, 1.0, "Junction potential"),                     //
+        (m, f64, 0.5, "Grading coefficient"),                     //
+        (eg, f64, 1.11, "Activation energy"),                     //
+        (xti, f64, 3.0, "Saturation current temperature exp."),   //
+        (kf, f64, 0.0, "flicker noise coefficient"),              //
+        (af, f64, 1.0, "flicker noise exponent"),                 //
+        (fc, f64, 0.5, "Forward bias junction fit parameter"),    //
+        (bv, f64, 0.0, "Reverse breakdown voltage"),              // FIXME: Optional, default effectively -inf, default val
         (ibv, f64, 1e-3, "Current at reverse breakdown voltage"), //
         (rs, f64, 0.0, "Ohmic resistance"),
         (cj0, f64, 0.0, "Junction capacitance"),
@@ -110,11 +110,7 @@ impl DiodeIntParams {
     /// Derive Diode internal parameters from model, instance, and circuit options.
     fn derive(model: &DiodeModel, inst: &DiodeInstParams, opts: &Options) -> Self {
         let tnom = model.tnom;
-        let temp = if let Some(t) = inst.temp {
-            t
-        } else {
-            opts.temp
-        };
+        let temp = if let Some(t) = inst.temp { t } else { opts.temp };
         let area = if let Some(a) = inst.area { a } else { 1.0 };
         let gs = if model.has_rs() { 1.0 / model.rs } else { 0.0 };
 
@@ -126,12 +122,10 @@ impl DiodeIntParams {
         // (That's a SPICE joke.)
         let fact2 = temp / consts::TEMP_REF;
         let egfet = 1.16 - (7.02e-4 * temp * temp) / (temp + 1108.0);
-        let arg =
-            -egfet / (2.0 * consts::KB * temp) + 1.1150877 / (2.0 * consts::KB * consts::TEMP_REF);
+        let arg = -egfet / (2.0 * consts::KB * temp) + 1.1150877 / (2.0 * consts::KB * consts::TEMP_REF);
         let pbfact = -2.0 * vt * (1.5 * fact2.ln() + consts::Q * arg);
         let egfet1 = 1.16 - (7.02e-4 * tnom) / (tnom + 1108.0);
-        let arg1 =
-            -egfet1 / (consts::KB * 2.0 * tnom) + 1.1150877 / (2.0 * consts::KB * consts::TEMP_REF);
+        let arg1 = -egfet1 / (consts::KB * 2.0 * tnom) + 1.1150877 / (2.0 * consts::KB * consts::TEMP_REF);
         let fact1 = tnom / consts::TEMP_REF;
         let pbfact1 = -2.0 * vtnom * (1.5 * fact1.ln() + consts::Q * arg1);
         let pbo = (model.vj - pbfact1) / fact1;
@@ -142,10 +136,7 @@ impl DiodeIntParams {
         cjunc *= 1.0 + model.m * (400e-6 * (temp - consts::TEMP_REF) - gmanew);
 
         // Temperature-dependent saturation current
-        let isat = model.is
-            * (((temp / tnom) - 1.0) * model.eg / model.n * vt
-                + model.xti / model.n * (temp / tnom).ln())
-            .exp();
+        let isat = model.is * (((temp / tnom) - 1.0) * model.eg / model.n * vt + model.xti / model.n * (temp / tnom).ln()).exp();
         let xfc = 1.0 - model.fc.ln();
         let f1 = vjunc * (1.0 - (1.0 - model.m * xfc).exp()) / (1.0 - model.m);
         let dep_threshold = model.fc * model.vj;
@@ -203,13 +194,7 @@ impl Diode {
     /// Create a new Diode solver from a Circuit (parser) Diode
     pub(crate) fn from<T: SpNum>(d: Ds, solver: &mut Solver<T>) -> Diode {
         // Destruct the key parser-diode attributes
-        let Ds {
-            mut name,
-            model,
-            inst,
-            p,
-            n,
-        } = d;
+        let Ds { mut name, model, inst, p, n } = d;
         // Create or retrive the solver node-variables
         let p = solver.node_var(p);
         let n = solver.node_var(n);
@@ -343,10 +328,7 @@ impl Component for Diode {
             // Forward-bias model, adapted from Spice's polynomial approach
             let qd = self.model.tt * id
                 + cz * f1
-                + cz2
-                    * (f3 * (vd - dep_threshold)
-                        + self.model.m / 2.0 / self.model.vj
-                            * (vd * vd - dep_threshold * dep_threshold));
+                + cz2 * (f3 * (vd - dep_threshold) + self.model.m / 2.0 / self.model.vj * (vd * vd - dep_threshold * dep_threshold));
             let cd = self.model.tt + cz2 * f3 + self.model.m * vd / self.model.vj;
             (qd, cd)
         };
