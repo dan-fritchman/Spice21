@@ -1,8 +1,8 @@
-use super::{Bsim4InternalParams};
 use super::bsim4defs::*;
-use crate::{SpNum};
+use super::Bsim4InternalParams;
 use crate::analysis::{Solver, VarIndex, VarKind};
 use crate::comps::mos::{MosTerm, MosTerminals};
+use crate::SpNum;
 
 #[derive(Default)]
 pub(crate) struct Bsim4Ports {
@@ -88,7 +88,7 @@ impl Bsim4Ports {
             (bNode, bNode, bNode)
         };
 
-        // NQS charge node 
+        // NQS charge node
         let qNode = if intp.trnqsmod != 0 {
             let mut name = iname.clone();
             name.push_str("_charge");

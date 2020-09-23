@@ -3,6 +3,13 @@ use super::log;
 use crate::comps::consts::*;
 use crate::comps::MosType;
 
+impl Bsim4ModelVals {
+    /// Polarity function
+    pub(crate) fn p(&self) -> f64 {
+        self.mos_type.p()
+    }
+}
+
 /// Resolve input-provided model-specs into their values,
 /// incorporating defaults and limiting constraints.
 pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
