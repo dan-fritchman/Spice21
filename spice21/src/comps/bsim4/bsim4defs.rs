@@ -1,5 +1,6 @@
 use crate::comps::mos::MosType;
 use crate::{paramstruct, specgen};
+use serde::{Serialize, Deserialize};
 
 specgen! {
     Bsim4InstSpecs,

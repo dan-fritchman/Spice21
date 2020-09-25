@@ -17,8 +17,8 @@ pub mod diode;
 pub(crate) use diode::{Diode, DiodeInstParams, DiodeModel};
 pub mod mos;
 pub(crate) use mos::*;
-pub mod bsim4;
-pub(crate) use bsim4::*;
+// pub mod bsim4;
+// use bsim4::Bsim4;
 
 /// Constants
 pub mod consts {
@@ -60,6 +60,7 @@ pub(crate) enum ComponentSolver {
     Diode,
     Mos0,
     Mos1,
+    // Bsim4,
 }
 
 #[enum_dispatch(ComponentSolver)]

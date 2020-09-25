@@ -1,6 +1,8 @@
 //! # Spice21 Analyses
 //!
+use serde::{Deserialize, Serialize};
 
+use crate::circuit;
 use crate::circuit::{Ckt, Comp, NodeRef};
 use crate::comps::{Component, ComponentSolver};
 use crate::sparse21::{Eindex, Matrix};
@@ -18,22 +20,21 @@ pub(crate) struct Stamps<NumT> {
 }
 impl<NumT: SpNum> Stamps<NumT> {
     pub fn new() -> Stamps<NumT> {
-        Stamps {
-            g: vec![],
-            b: vec![],
-        }
+        Stamps { g: vec![], b: vec![] }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub(crate) enum VarKind {
     V = 0,
-    I, Q,
+    I,
+    Q,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct VarIndex(pub usize);
 
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Variables<NumT> {
     kinds: Vec<VarKind>,
     values: Vec<NumT>,
@@ -142,7 +143,7 @@ impl Solver<f64> {
                 for c in self.comps.iter_mut() {
                     c.commit();
                 }
-                return Ok(self.vars.values.clone());
+                return Ok(self.vars.values.clone()); // FIXME: stop cloning
             }
             // Haven't Converged. Solve for our update.
             dx = self.mat.solve(res)?;
@@ -357,6 +358,9 @@ impl<NumT: SpNum> Solver<NumT> {
                 ];
                 Mos1::new(model.clone(), params.clone(), ports.into()).into()
             }
+            // Comp::Bsim4(_) => {
+            //     panic!("!!!");
+            // }
         };
 
         // And add to our Component vector
@@ -677,8 +681,6 @@ impl Default for AcOptions {
         }
     }
 }
-
-use serde::{Deserialize, Serialize};
 
 /// AcResult
 /// In-Memory Store for Complex-Valued AC Data

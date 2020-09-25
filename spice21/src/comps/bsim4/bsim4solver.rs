@@ -9,6 +9,7 @@ use crate::sparse21::{Eindex, Matrix};
 use crate::SpNum;
 
 /// BSIM4 MOSFET Solver
+#[derive(Default)]
 pub(crate) struct Bsim4 {
     ports: Bsim4Ports,
     // inst: Bsim4Inst, // Think we need these? nope
@@ -530,7 +531,7 @@ impl Component for Bsim4 {
         let mut dDITS_Sft_dVb: f64;
         let mut dDITS_Sft_dVd: f64;
         let mut DITS_Sft2: f64;
-        let mut dDITS_Sft2_dVd: f64; /* v4.7 New DITS */
+        let mut dDITS_Sft2_dVd: f64;
         let mut VACLM: f64;
         let mut dVACLM_dVg: f64;
         let mut dVACLM_dVd: f64;
@@ -1516,9 +1517,8 @@ impl Component for Bsim4 {
         dWeff_dVg = -2.0 * self.size_params.dwg;
         dWeff_dVb = -2.0 * self.size_params.dwb * dsqrtPhis_dVb;
 
-        if (Weff < 2.0e-8)
-        /* to avoid the discontinuity problem due to Weff*/
-        {
+        if (Weff < 2.0e-8) {
+            /* to avoid the discontinuity problem due to Weff*/
             T0 = 1.0 / (6.0e-8 - 2.0 * Weff);
             Weff = 2.0e-8 * (4.0e-8 - Weff) * T0;
             T0 *= T0 * 4.0e-16;
@@ -1578,9 +1578,8 @@ impl Component for Bsim4 {
         Abulk = Abulk0 + dAbulk_dVg * Vgsteff;
         dAbulk_dVb = dAbulk0_dVb - T8 * Vgsteff * (dT1_dVb + 3.0 * T1 * dT2_dVb);
 
-        if (Abulk0 < 0.1)
-        /* added to avoid the problems caused by Abulk0 */
-        {
+        if (Abulk0 < 0.1) {
+            /* added to avoid the problems caused by Abulk0 */
             T9 = 1.0 / (3.0 - 20.0 * Abulk0);
             Abulk0 = (0.2 - Abulk0) * T9;
             dAbulk0_dVb *= T9 * T9;
@@ -1670,9 +1669,7 @@ impl Component for Bsim4 {
             T13 = 2.0 * (T11 + T8);
             dDenomi_dVd = T13 * dVth_dVd;
             dDenomi_dVb = T13 * dVth_dVb + T1 * self.size_params.uc;
-        } else if (self.model.mobmod == 4)
-        /* Synopsys 08/30/2013 add */
-        {
+        } else if (self.model.mobmod == 4) {
             T0 = Vgsteff + self.intp.vtfbphi1 - T14;
             T2 = self.size_params.ua + self.size_params.uc * Vbseff;
             T3 = T0 / toxe;
@@ -1687,9 +1684,7 @@ impl Component for Bsim4 {
             dDenomi_dVd = 0.0;
             dDenomi_dVb = self.size_params.uc * T3;
             dDenomi_dVg += T7;
-        } else if (self.model.mobmod == 5)
-        /* Synopsys 08/30/2013 add */
-        {
+        } else if (self.model.mobmod == 5) {
             T0 = Vgsteff + self.intp.vtfbphi1 - T14;
             T2 = 1.0 + self.size_params.uc * Vbseff;
             T3 = T0 / toxe;
@@ -1705,9 +1700,7 @@ impl Component for Bsim4 {
             dDenomi_dVd = 0.0;
             dDenomi_dVb = self.size_params.uc * T4;
             dDenomi_dVg += T7;
-        } else if (self.model.mobmod == 6)
-        /* Synopsys 08/30/2013 modify */
-        {
+        } else if (self.model.mobmod == 6) {
             T0 = (Vgsteff + self.intp.vtfbphi1) / toxe;
             T1 = exp(self.size_params.eu * log(T0));
             dT1_dVg = T1 * self.size_params.eu / T0 / toxe;
@@ -1723,9 +1716,8 @@ impl Component for Bsim4 {
             dDenomi_dVg = T2 * dT1_dVg + T7;
             dDenomi_dVd = 0.0;
             dDenomi_dVb = T1 * self.size_params.uc;
-        }
-        /*high K mobility*/
-        else {
+        } else {
+            /*high K mobility*/
             /*univsersal mobility*/
             T0 = (Vgsteff + self.intp.vtfbphi1) * 1.0e-8 / toxe / 6.0;
             T1 = exp(self.size_params.eu * log(T0));
@@ -2151,9 +2143,7 @@ impl Component for Bsim4 {
         }
 
         /* Calculate VASCBE */
-        if ((self.size_params.pscbe2 > 0.0) && (self.size_params.pscbe1 >= 0.0))
-        /*4.6.2*/
-        {
+        if ((self.size_params.pscbe2 > 0.0) && (self.size_params.pscbe1 >= 0.0)) {
             if diffVds > self.size_params.pscbe1 * self.size_params.litl / EXP_THRESHOLD {
                 T0 = self.size_params.pscbe1 * self.size_params.litl / diffVds;
                 VASCBE = Leff * exp(T0) / self.size_params.pscbe2;
@@ -2533,8 +2523,6 @@ impl Component for Bsim4 {
             newop.ggislg = Ggislg;
             newop.ggislb = Ggislb;
         } else {
-            /* v4.7 New Gidl/GISL model */
-
             /* GISL */
             if self.model.mtrlmod == 0 {
                 T1 = (-vds - self.size_params.rgisl * vgd_eff - self.size_params.egisl) / T0;
@@ -5273,35 +5261,35 @@ fn DEVpnjlim(vnew: f64, vold: f64, vt: f64, vcrit: f64) -> f64 {
     return vnew;
 }
 
-impl Bsim4 {
-    pub(crate) fn new() -> Self {
-        use super::bsim4derive::derive;
-        use super::bsim4inst::from;
-        use super::bsim4modelvals::resolve;
-        use crate::comps::mos::MosTerminals;
+// impl Bsim4 {
+//     pub(crate) fn new() -> Self {
+//         use super::bsim4derive::derive;
+//         use super::bsim4inst::from;
+//         use super::bsim4modelvals::resolve;
+//         use crate::comps::mos::MosTerminals;
 
-        let model_specs = Bsim4ModelSpecs::default();
-        let model = resolve(&model_specs);
-        let model_derived = derive(&model);
-        let inst = Bsim4InstSpecs::default();
-        let (intp, size_params) = from(&model, &model_derived, &inst);
+//         let model_specs = Bsim4ModelSpecs::default();
+//         let model = resolve(&model_specs);
+//         let model_derived = derive(&model);
+//         let inst = Bsim4InstSpecs::default();
+//         let (intp, size_params) = from(&model, &model_derived, &inst);
 
-        // fake solver
-        use crate::analysis::{Options, Solver};
-        use crate::circuit::Ckt;
-        let mut solver = Solver::<f64>::new(Ckt::new(), Options::default());
+//         // fake solver
+//         use crate::analysis::{Options, Solver};
+//         use crate::circuit::Ckt;
+//         let mut solver = Solver::<f64>::new(Ckt::new(), Options::default());
 
-        let ports = Bsim4Ports::from(String::from("inst0"), &MosTerminals::default(), &model, &intp, &mut solver);
-        let solver = Bsim4 {
-            ports: Bsim4Ports::default(),
-            model,
-            model_derived,
-            size_params,
-            intp,
-            guess: Bsim4OpPoint::default(),
-            op: Bsim4OpPoint::default(),
-            matps: Bsim4MatrixPointers::default(),
-        };
-        solver
-    }
-}
+//         let ports = Bsim4Ports::from(String::from("inst0"), &MosTerminals::default(), &model, &intp, &mut solver);
+//         let solver = Bsim4 {
+//             ports: Bsim4Ports::default(),
+//             model,
+//             model_derived,
+//             size_params,
+//             intp,
+//             guess: Bsim4OpPoint::default(),
+//             op: Bsim4OpPoint::default(),
+//             matps: Bsim4MatrixPointers::default(),
+//         };
+//         solver
+//     }
+// }

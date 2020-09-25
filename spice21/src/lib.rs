@@ -14,6 +14,10 @@
 /// to the rest of Spice21.
 /// Note: this must be defined *before* any uses of it.
 ///
+
+
+use serde::{Serialize, Deserialize};
+
 #[macro_use]
 pub(crate) mod macros {
     /// GetAttr-enabled struct builder.
@@ -77,7 +81,7 @@ pub(crate) mod macros {
                 pub(crate) $attr_name : Option<$attr_type> ),*
         }
         #[doc=$struct_desc]
-        #[derive(Clone, Copy, Default)]
+        #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
         pub(crate) struct $vals_name {
             $( pub(crate) $attr_name : $attr_type, )*
             $( pub(crate) $val_name : $val_type, )*

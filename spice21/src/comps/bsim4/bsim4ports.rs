@@ -3,8 +3,10 @@ use super::Bsim4InternalParams;
 use crate::analysis::{Solver, VarIndex, VarKind};
 use crate::comps::mos::{MosTerm, MosTerminals};
 use crate::SpNum;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default)]
+
+#[derive(Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4Ports {
     pub(crate) dNode: Option<VarIndex>,
     pub(crate) dNodePrime: Option<VarIndex>,
@@ -23,7 +25,7 @@ pub(crate) struct Bsim4Ports {
 impl Bsim4Ports {
     pub(crate) fn from<T: SpNum>(
         iname: String,
-        terms: &MosTerminals,
+        terms: &MosTerminals<Option<VarIndex>>,
         model: &Bsim4ModelVals,
         intp: &Bsim4InternalParams,
         solver: &mut Solver<T>,

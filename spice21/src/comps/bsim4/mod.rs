@@ -1,6 +1,7 @@
 //!
 //! BSIM4 MOSFET Implementation
 //!
+use serde::{Deserialize, Serialize};
 
 pub mod bsim4defs;
 pub mod bsim4derive;
@@ -8,6 +9,10 @@ pub mod bsim4inst;
 pub mod bsim4modelvals;
 pub mod bsim4ports;
 pub mod bsim4solver;
+
+// pub use bsim4defs::*;
+// pub use bsim4solver::*;
+
 
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
@@ -71,7 +76,7 @@ pub(crate) fn dexpc(A: f64) -> f64 {
 /// Bsim4 Internal, Derived Parameters
 /// These are the numbers calculated offline and used during sim-time,
 /// i.e. during `load`, `load_ac`, etc.
-#[derive(Default)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4InternalParams {
     pub(crate) l: f64,
     pub(crate) w: f64,
@@ -130,9 +135,6 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) vbsc: f64,
     pub(crate) k2ox: f64,
     pub(crate) eta0: f64,
-    pub(crate) icVDS: f64,
-    pub(crate) icVGS: f64,
-    pub(crate) icVBS: f64,
     pub(crate) nf: f64,
     pub(crate) grbsb: f64,
     pub(crate) grbdb: f64,
@@ -160,10 +162,10 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) rbpd: f64,
 
     // Instance-specific mode-selections not (yet?) supported
-    trnqsmod: usize,
-    acnqsmod: usize,
-    rbodymod: usize,
-    rgatemod: usize,
+    pub(crate) trnqsmod: usize,
+    pub(crate) acnqsmod: usize,
+    pub(crate) rbodymod: usize,
+    pub(crate) rgatemod: usize,
     geomod: usize,
 
     // Note these are *also* the names of (derived) model parameters
@@ -172,7 +174,7 @@ pub(crate) struct Bsim4InternalParams {
 
 /// Derived Bsim4 Model Parameters
 /// Primarily params which depend on temperature, etc.
-#[derive(Default)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4ModelDerivedParams {
     // Note these are *also* the names of internal instance parameters
     pub(crate) coxp: f64,
@@ -212,8 +214,8 @@ pub(crate) struct Bsim4ModelDerivedParams {
     pub(crate) ni: f64,
 }
 
-#[derive(Default)]
-struct Bsim4OpPoint {
+#[derive(Default, Debug, Deserialize, Serialize)]
+pub(crate) struct Bsim4OpPoint {
     pub(crate) mode: isize,
 
     pub(crate) vbd: f64,
@@ -378,7 +380,7 @@ struct Bsim4OpPoint {
     pub(crate) AbovVgst2Vtm: f64,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4SizeDepParams {
     pub(crate) Width: f64,
     pub(crate) Length: f64,
@@ -618,7 +620,7 @@ pub(crate) struct Bsim4SizeDepParams {
 
 /// # BSIM4 Matrix Pointers
 #[derive(Default)]
-struct Bsim4MatrixPointers {
+pub(crate) struct Bsim4MatrixPointers {
     GEgePtr: Option<Eindex>,
     GPgePtr: Option<Eindex>,
     GEgpPtr: Option<Eindex>,
