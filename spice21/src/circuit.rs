@@ -14,8 +14,8 @@ use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 use crate::SpResult;
 
-// use crate::comps::mos::MosTerminals;
-// use crate::comps::bsim4::{Bsim4ModelSpecs, Bsim4InstSpecs};
+use crate::comps::mos::MosTerminals;
+use crate::comps::bsim4::{Bsim4ModelSpecs, Bsim4InstSpecs};
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -50,11 +50,11 @@ pub struct Vs {
     pub n: NodeRef,
 }
 
-// impl From<Bsim4i> for Comp {
-//     fn from(x: Bsim4i) -> Self {
-//         Comp::Bsim4(x)
-//     }
-// }
+impl From<Bsim4i> for Comp {
+    fn from(x: Bsim4i) -> Self {
+        Comp::Bsim4(x)
+    }
+}
 
 impl From<Vs> for Comp {
     fn from(x: Vs) -> Self {
@@ -84,12 +84,13 @@ impl Ds {
 }
 
 
-// pub struct Bsim4i {
-//     pub(crate) name: String,
-//     pub(crate) ports: MosTerminals<NodeRef>,
-//     pub(crate) model: Bsim4ModelSpecs,
-//     pub(crate) params: Bsim4InstSpecs,
-// }
+pub struct Bsim4i {
+    pub(crate) name: String,
+    pub(crate) ports: MosTerminals<NodeRef>,
+    pub(crate) model: Bsim4ModelSpecs,
+    pub(crate) params: Bsim4InstSpecs,
+}
+
 /// Component Enum.
 /// Circuits are mostly a list of these variants.
 pub enum Comp {
@@ -108,7 +109,7 @@ pub enum Comp {
         NodeRef,
         NodeRef,
     ),
-    // Bsim4(Bsim4i),
+    Bsim4(Bsim4i),
 }
 
 impl Comp {

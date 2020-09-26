@@ -9,21 +9,21 @@ use crate::sparse21::{Eindex, Matrix};
 use crate::SpNum;
 
 /// BSIM4 MOSFET Solver
-#[derive(Default)]
-pub(crate) struct Bsim4 {
-    ports: Bsim4Ports,
-    // inst: Bsim4Inst, // Think we need these? nope
-    model: Bsim4ModelVals,
-    model_derived: Bsim4ModelDerivedParams,
-    size_params: Bsim4SizeDepParams,
-    intp: Bsim4InternalParams,
+// #[derive(Default)]
+pub struct Bsim4<'a> {
+    ports: &'a Bsim4Ports,
+    // inst: &'a Bsim4InstSpecs, // Think we need these? nope
+    model: &'a Bsim4ModelVals,
+    model_derived: &'a Bsim4ModelDerivedParams,
+    size_params: &'a Bsim4SizeDepParams,
+    intp: &'a Bsim4InternalParams,
     guess: Bsim4OpPoint,
     op: Bsim4OpPoint,
     matps: Bsim4MatrixPointers,
 }
 
-impl Component for Bsim4 {
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+impl Bsim4<'_> {
+    fn create_matps<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use crate::comps::make_matrix_elem;
 
         self.matps.DPbpPtr = make_matrix_elem(mat, self.ports.dNodePrime, self.ports.bNodePrime);
@@ -111,7 +111,9 @@ impl Component for Bsim4 {
             self.matps.SbpPtr = make_matrix_elem(mat, self.ports.sNode, self.ports.bNodePrime);
         }
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+
+    fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+
         // Start by declaring about 700 local float variables!
         let mut ceqgstot: f64;
         let mut dgstot_dvd: f64;
@@ -166,7 +168,7 @@ impl Component for Bsim4 {
         let mut tol4: f64;
         let mut tol5: f64;
         let mut tol6: f64;
-
+        
         let mut geltd: f64;
         let mut gcrg: f64;
         let mut gcrgg: f64;
@@ -193,7 +195,7 @@ impl Component for Bsim4 {
         let mut gcgmbb: f64;
         let mut gcbgmb: f64;
         let mut qgmb: f64;
-
+        
         let mut vbd: f64;
         let mut vbs: f64;
         let mut vds: f64;
@@ -214,7 +216,7 @@ impl Component for Bsim4 {
         let mut delvbs_jct: f64;
         let mut vbs_jct: f64;
         let mut vbd_jct: f64;
-
+        
         let mut SourceSatCurrent: f64;
         let mut DrainSatCurrent: f64;
         let mut ag0: f64;
@@ -568,7 +570,7 @@ impl Component for Bsim4 {
         let mut Ibtot: f64;
         let mut a1: f64;
         let mut ScalingFactor: f64;
-
+        
         let mut Vgsteff: f64;
         let mut dVgsteff_dVg: f64;
         let mut dVgsteff_dVd: f64;
@@ -577,6 +579,7 @@ impl Component for Bsim4 {
         let mut dVdseff_dVg: f64;
         let mut dVdseff_dVd: f64;
         let mut dVdseff_dVb: f64;
+                
         let mut VdseffCV: f64;
         let mut dVdseffCV_dVg: f64;
         let mut dVdseffCV_dVd: f64;
@@ -670,8 +673,13 @@ impl Component for Bsim4 {
         let mut Cdb: f64;
         let mut Qg: f64;
         let mut Qd: f64;
-        let mut Csg: f64;
-        let mut Csd: f64;
+        let mut Csg: f64; // DEBUGGER LAST WORKING VARIABLE!
+        // THE BAIL OUT!
+        return Stamps::new();
+        let mut Csd: f64; // DEBUGGER FIRST FAILING VARIABLE!
+        
+                
+                
         let mut Css: f64;
         let mut Csb: f64;
         let mut Cbg: f64;
@@ -747,6 +755,9 @@ impl Component for Bsim4 {
         let mut dVaux_dVb = 0.0;
         let mut Voxacc = 0.0;
         let mut Vfb = 0.0;
+
+        
+
 
         let ScalingFactor = 1.0e-9;
         let ChargeComputationNeeded = if let AnalysisInfo::TRAN(_a, _b) = an { true } else { false };
@@ -5153,6 +5164,15 @@ impl Component for Bsim4 {
         self.guess = newop;
         // And return our matrix stamps
         return Stamps { g: j, b };
+    }
+}
+
+impl Component for Bsim4<'_> {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+        self.create_matps(mat)
+    }
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        self.load_dc_tr(guess, an)
     }
 }
 

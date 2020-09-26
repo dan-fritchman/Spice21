@@ -10,8 +10,8 @@ pub mod bsim4modelvals;
 pub mod bsim4ports;
 pub mod bsim4solver;
 
-// pub use bsim4defs::*;
-// pub use bsim4solver::*;
+pub use bsim4defs::*;
+pub use bsim4solver::*;
 
 
 use super::consts::*;

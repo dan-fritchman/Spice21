@@ -10,20 +10,20 @@ use std::ops::{Index, IndexMut};
 
 use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use super::sparse21::{Eindex, Matrix};
-use crate::{SpNum, SpResult};
+use crate::{SpNum, SpResult, assert};
 
 use diode::Diode0;
 pub mod diode;
 pub(crate) use diode::{Diode, DiodeInstParams, DiodeModel};
 pub mod mos;
 pub(crate) use mos::*;
-// pub mod bsim4;
-// use bsim4::Bsim4;
+pub mod bsim4;
+pub use bsim4::Bsim4;
 
 /// Constants
 pub mod consts {
-    use std::f64::{MAX_EXP as MAX_EXPI, MIN_EXP as MIN_EXPI};
     pub(crate) use std::f64::consts::PI;
+    use std::f64::{MAX_EXP as MAX_EXPI, MIN_EXP as MIN_EXPI};
 
     pub(crate) const KB: f64 = 1.3806226e-23;
     pub(crate) const Q: f64 = 1.6021918e-19;
@@ -43,6 +43,25 @@ pub mod consts {
     pub(crate) const EPSSI: f64 = 1.03594e-10;
 }
 
+pub(crate) struct FakeComp<'a> {
+    pub(crate) name: &'a str,
+}
+
+impl<'a> Component for FakeComp<'a> {
+    fn commit(&mut self) {}
+    fn update(&mut self, _val: f64) {}
+    fn validate(&self) -> SpResult<()> {
+        assert::assert(self.name).eq("fake")
+    }
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        Stamps::new()
+    }
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        Stamps::new()
+    }
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {}
+}
+
 ///
 /// Spice21 ComponentSolver
 /// The primary enumeration of component-types supported in simulation.
@@ -50,20 +69,21 @@ pub mod consts {
 /// Shout-out `enum_dispatch` for "dynamic" dispatching the methods of
 /// the `Component` trait to each of these types.
 ///
-#[enum_dispatch]
-pub(crate) enum ComponentSolver {
-    Vsrc,
-    Isrc,
-    Capacitor,
-    Resistor,
-    Diode0,
-    Diode,
-    Mos0,
-    Mos1,
-    // Bsim4,
+// #[enum_dispatch]
+pub(crate) enum ComponentSolver<'a> {
+    Vsrc(Vsrc),
+    Isrc(Isrc),
+    Capacitor(Capacitor),
+    Resistor(Resistor),
+    Diode0(Diode0),
+    Diode(Diode),
+    Mos0(Mos0),
+    Mos1(Mos1),
+    Bsim4(Bsim4<'a>),
+    FakeComp(FakeComp<'a>),
 }
 
-#[enum_dispatch(ComponentSolver)]
+// #[enum_dispatch(ComponentSolver)]
 pub(crate) trait Component {
     /// Commit operating-point guesses to internal state
     fn commit(&mut self) {}
@@ -77,15 +97,152 @@ pub(crate) trait Component {
         Ok(())
     }
 
-    fn load_ac(
-        &mut self,
-        _guess: &Variables<Complex<f64>>,
-        _an: &AnalysisInfo,
-    ) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         Stamps::<Complex<f64>>::new()
     }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64>;
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>);
+}
+
+/// Sadly bit-banging the `enum_dispatch` functionality, which seem broke in two important ways:
+/// (a) can't find a way to include reference lifetimes, and
+/// (b) debugger breakpoints are dying
+impl Component for ComponentSolver<'_> {
+    fn commit(&mut self) {
+        match self {
+            ComponentSolver::Vsrc(x) => x.commit(),
+            ComponentSolver::Isrc(x) => x.commit(),
+            ComponentSolver::Capacitor(x) => x.commit(),
+            ComponentSolver::Resistor(x) => x.commit(),
+            ComponentSolver::Diode0(x) => x.commit(),
+            ComponentSolver::Diode(x) => x.commit(),
+            ComponentSolver::Mos0(x) => x.commit(),
+            ComponentSolver::Mos1(x) => x.commit(),
+            ComponentSolver::Bsim4(x) => x.commit(),
+            ComponentSolver::FakeComp(x) => x.commit(),
+        }
+    }
+    fn update(&mut self, val: f64) {
+        match self {
+            ComponentSolver::Vsrc(x) => x.update(val),
+            ComponentSolver::Isrc(x) => x.update(val),
+            ComponentSolver::Capacitor(x) => x.update(val),
+            ComponentSolver::Resistor(x) => x.update(val),
+            ComponentSolver::Diode0(x) => x.update(val),
+            ComponentSolver::Diode(x) => x.update(val),
+            ComponentSolver::Mos0(x) => x.update(val),
+            ComponentSolver::Mos1(x) => x.update(val),
+            ComponentSolver::Bsim4(x) => x.update(val),
+            ComponentSolver::FakeComp(x) => x.update(val),
+        }
+    }
+    fn validate(&self) -> SpResult<()> {
+        match self {
+            ComponentSolver::Vsrc(x) => x.validate(),
+            ComponentSolver::Isrc(x) => x.validate(),
+            ComponentSolver::Capacitor(x) => x.validate(),
+            ComponentSolver::Resistor(x) => x.validate(),
+            ComponentSolver::Diode0(x) => x.validate(),
+            ComponentSolver::Diode(x) => x.validate(),
+            ComponentSolver::Mos0(x) => x.validate(),
+            ComponentSolver::Mos1(x) => x.validate(),
+            ComponentSolver::Bsim4(x) => x.validate(),
+            ComponentSolver::FakeComp(x) => x.validate(),
+        }
+    }
+    fn load_ac(&mut self, guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+        match self {
+            ComponentSolver::Vsrc(x) => x.load_ac(guess, an),
+            ComponentSolver::Isrc(x) => x.load_ac(guess, an),
+            ComponentSolver::Capacitor(x) => x.load_ac(guess, an),
+            ComponentSolver::Resistor(x) => x.load_ac(guess, an),
+            ComponentSolver::Diode0(x) => x.load_ac(guess, an),
+            ComponentSolver::Diode(x) => x.load_ac(guess, an),
+            ComponentSolver::Mos0(x) => x.load_ac(guess, an),
+            ComponentSolver::Mos1(x) => x.load_ac(guess, an),
+            ComponentSolver::Bsim4(x) => x.load_ac(guess, an),
+            ComponentSolver::FakeComp(x) => x.load_ac(guess, an),
+        }
+    }
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        match self {
+            ComponentSolver::Vsrc(x) => x.load(guess, an),
+            ComponentSolver::Isrc(x) => x.load(guess, an),
+            ComponentSolver::Capacitor(x) => x.load(guess, an),
+            ComponentSolver::Resistor(x) => x.load(guess, an),
+            ComponentSolver::Diode0(x) => x.load(guess, an),
+            ComponentSolver::Diode(x) => x.load(guess, an),
+            ComponentSolver::Mos0(x) => x.load(guess, an),
+            ComponentSolver::Mos1(x) => x.load(guess, an),
+            ComponentSolver::Bsim4(x) => x.load(guess, an),
+            ComponentSolver::FakeComp(x) => x.load(guess, an),
+        }
+    }
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+        match self {
+            ComponentSolver::Vsrc(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Isrc(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Capacitor(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Resistor(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Diode0(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Diode(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Mos0(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Mos1(x) => x.create_matrix_elems(mat),
+            ComponentSolver::Bsim4(x) => x.create_matrix_elems(mat),
+            ComponentSolver::FakeComp(x) => x.create_matrix_elems(mat),
+        }
+    }
+}
+
+impl From<Vsrc> for ComponentSolver<'_> {
+    fn from(x: Vsrc) -> Self {
+        ComponentSolver::Vsrc(x)
+    }
+}
+impl From<Isrc> for ComponentSolver<'_> {
+    fn from(x: Isrc) -> Self {
+        ComponentSolver::Isrc(x)
+    }
+}
+impl From<Capacitor> for ComponentSolver<'_> {
+    fn from(x: Capacitor) -> Self {
+        ComponentSolver::Capacitor(x)
+    }
+}
+impl From<Resistor> for ComponentSolver<'_> {
+    fn from(x: Resistor) -> Self {
+        ComponentSolver::Resistor(x)
+    }
+}
+impl From<Diode0> for ComponentSolver<'_> {
+    fn from(x: Diode0) -> Self {
+        ComponentSolver::Diode0(x)
+    }
+}
+impl From<Diode> for ComponentSolver<'_> {
+    fn from(x: Diode) -> Self {
+        ComponentSolver::Diode(x)
+    }
+}
+impl From<Mos0> for ComponentSolver<'_> {
+    fn from(x: Mos0) -> Self {
+        ComponentSolver::Mos0(x)
+    }
+}
+impl From<Mos1> for ComponentSolver<'_> {
+    fn from(x: Mos1) -> Self {
+        ComponentSolver::Mos1(x)
+    }
+}
+impl<'a> From<Bsim4<'a>> for ComponentSolver<'a> {
+    fn from(x: Bsim4<'a>) -> Self {
+        ComponentSolver::Bsim4(x)
+    }
+}
+impl<'a> From<FakeComp<'a>> for ComponentSolver<'a> {
+    fn from(x: FakeComp<'a>) -> Self {
+        ComponentSolver::FakeComp(x)
+    }
 }
 
 pub struct Vsrc {
@@ -101,13 +258,7 @@ pub struct Vsrc {
 }
 
 impl Vsrc {
-    pub fn new(
-        vdc: f64,
-        acm: f64,
-        p: Option<VarIndex>,
-        n: Option<VarIndex>,
-        ivar: VarIndex,
-    ) -> Vsrc {
+    pub fn new(vdc: f64, acm: f64, p: Option<VarIndex>, n: Option<VarIndex>, ivar: VarIndex) -> Vsrc {
         Vsrc {
             v: vdc,
             acm,
@@ -134,20 +285,11 @@ impl Component for Vsrc {
     }
     fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         return Stamps {
-            g: vec![
-                (self.pi, 1.0),
-                (self.ip, 1.0),
-                (self.ni, -1.0),
-                (self.in_, -1.0),
-            ],
+            g: vec![(self.pi, 1.0), (self.ip, 1.0), (self.ni, -1.0), (self.in_, -1.0)],
             b: vec![(Some(self.ivar), self.v)],
         };
     }
-    fn load_ac(
-        &mut self,
-        _guess: &Variables<Complex<f64>>,
-        _an: &AnalysisInfo,
-    ) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         return Stamps {
             g: vec![
                 (self.pi, Complex::new(1.0, 0.0)),
@@ -216,11 +358,7 @@ impl Component for Capacitor {
             AnalysisInfo::OP => {
                 // FIXME: calculating this during DCOP, so we copy cleanly afterward
                 // Should probably just find a way to calculate it then
-                self.guess = CapOpPoint {
-                    v: vd,
-                    q: q,
-                    i: 0.0,
-                };
+                self.guess = CapOpPoint { v: vd, q: q, i: 0.0 };
                 return Stamps::new();
             }
             AnalysisInfo::TRAN(_, state) => {
@@ -235,11 +373,7 @@ impl Component for Capacitor {
             AnalysisInfo::AC(_o, _s) => panic!("HOW WE GET HERE?!?"),
         }
     }
-    fn load_ac(
-        &mut self,
-        _guess: &Variables<Complex<f64>>,
-        an: &AnalysisInfo,
-    ) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         let an_st = match an {
             AnalysisInfo::AC(_, state) => state,
             _ => panic!("Invalid AC AnalysisInfo"),
@@ -327,11 +461,7 @@ impl Component for Resistor {
             b: vec![],
         };
     }
-    fn load_ac(
-        &mut self,
-        _guess: &Variables<Complex<f64>>,
-        _an: &AnalysisInfo,
-    ) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         use TwoTerm::{N, P};
         return Stamps {
             g: vec![
@@ -369,11 +499,7 @@ impl Component for Isrc {
 }
 
 /// Helper function to create matrix element at (row,col) if both are non-ground
-fn make_matrix_elem<T: SpNum>(
-    mat: &mut Matrix<T>,
-    row: Option<VarIndex>,
-    col: Option<VarIndex>,
-) -> Option<Eindex> {
+fn make_matrix_elem<T: SpNum>(mat: &mut Matrix<T>, row: Option<VarIndex>, col: Option<VarIndex>) -> Option<Eindex> {
     if let (Some(r), Some(c)) = (row, col) {
         return Some(mat.make(r.0, c.0));
     }

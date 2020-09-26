@@ -91,8 +91,8 @@ struct Iteration<NumT: SpNum> {
 /// Newton-Style Iterative Solver
 /// Owns each of its circuit's ComponentSolvers,
 /// its SparseMatrix, and Variables.
-pub(crate) struct Solver<NumT: SpNum> {
-    pub(crate) comps: Vec<ComponentSolver>,
+pub(crate) struct Solver<'a, NumT: SpNum> {
+    pub(crate) comps: Vec<ComponentSolver<'a>>,
     pub(crate) vars: Variables<NumT>,
     pub(crate) mat: Matrix<NumT>,
     pub(crate) rhs: Vec<NumT>,
@@ -102,7 +102,7 @@ pub(crate) struct Solver<NumT: SpNum> {
 
 /// Real-valued Solver specifics
 /// FIXME: nearly all of this *should* eventually be share-able with the Complex Solver
-impl Solver<f64> {
+impl Solver<'_, f64> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
@@ -148,9 +148,7 @@ impl Solver<f64> {
             // Haven't Converged. Solve for our update.
             dx = self.mat.solve(res)?;
             let max_step = 1000e-3;
-            let max_abs = dx
-                .iter()
-                .fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
+            let max_abs = dx.iter().fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
             if max_abs > max_step {
                 for r in 0..dx.len() {
                     dx[r] = dx[r] * max_step / max_abs;
@@ -167,11 +165,11 @@ impl Solver<f64> {
 
 /// Complex-Valued Solver Specifics
 /// FIXME: nearly all of this *should* eventually be share-able with the Real Solver
-impl Solver<Complex<f64>> {
+impl<'a> Solver<'a, Complex<f64>> {
     /// Create a Complex solver from a real-valued one.
     /// Commonly deployed when moving from DCOP to AC analysis.
-    fn from(re: Solver<f64>) -> Self {
-        let mut op = Solver::<Complex<f64>> {
+    fn from(re: Solver<'a, f64>) -> Self {
+        let mut op = Solver::<'a, Complex<f64>> {
             comps: re.comps,
             vars: Variables::<Complex<f64>>::from(re.vars),
             mat: Matrix::new(),
@@ -234,9 +232,7 @@ impl Solver<Complex<f64>> {
             // Solve for our update
             dx = self.mat.solve(res)?;
             let max_step = 1.0;
-            let max_abs = dx
-                .iter()
-                .fold(0.0, |s, v| if v.norm() > s { v.norm() } else { s });
+            let max_abs = dx.iter().fold(0.0, |s, v| if v.norm() > s { v.norm() } else { s });
             if max_abs > max_step {
                 for r in 0..dx.len() {
                     dx[r] = dx[r] * max_step / max_abs;
@@ -258,9 +254,9 @@ impl Solver<Complex<f64>> {
     }
 }
 
-impl<NumT: SpNum> Solver<NumT> {
+impl<'a, NumT: SpNum> Solver<'a, NumT> {
     /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
-    pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<NumT> {
+    pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
@@ -358,9 +354,9 @@ impl<NumT: SpNum> Solver<NumT> {
                 ];
                 Mos1::new(model.clone(), params.clone(), ports.into()).into()
             }
-            // Comp::Bsim4(_) => {
-            //     panic!("!!!");
-            // }
+            Comp::Bsim4(_) => {
+                panic!("!!!");
+            }
         };
 
         // And add to our Component vector
@@ -438,9 +434,9 @@ impl Default for NumericalIntegration {
 }
 
 /// # TranState
-/// 
-/// Internal state of transient analysis 
-/// Often passed to Components for timesteps etc 
+///
+/// Internal state of transient analysis
+/// Often passed to Components for timesteps etc
 #[derive(Default)]
 pub(crate) struct TranState {
     pub(crate) t: f64,
@@ -479,21 +475,18 @@ pub struct TranOptions {
 
 impl Default for TranOptions {
     fn default() -> TranOptions {
-        TranOptions {
-            tstep: 1e-6,
-            tstop: 1e-3,
-        }
+        TranOptions { tstep: 1e-6, tstop: 1e-3 }
     }
 }
 
-pub(crate) struct Tran {
-    solver: Solver<f64>,
+pub(crate) struct Tran<'a> {
+    solver: Solver<'a, f64>,
     state: TranState,
     pub(crate) opts: TranOptions,
 }
 
-impl Tran {
-    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran {
+impl<'a> Tran<'a> {
+    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran<'a> {
         return Tran {
             solver: Solver::new(ckt, Options::default()),
             opts,
@@ -843,14 +836,7 @@ mod tests {
             comps: vec![
                 R(1e-5, n("vdd"), n("d")),
                 C(1e-9, n("d"), Gnd),
-                Mos1(
-                    Mos1Model::default(),
-                    Mos1InstanceParams::default(),
-                    n("g"),
-                    n("d"),
-                    Gnd,
-                    Gnd,
-                ),
+                Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n("g"), n("d"), Gnd, Gnd),
                 Comp::vdc(1.0, n("vdd"), Gnd),
                 V(Vs {
                     name: s("vg"),
@@ -882,14 +868,7 @@ mod tests {
                     p: Num(0),
                     n: Gnd,
                 }),
-                Mos1(
-                    Mos1Model::default(),
-                    Mos1InstanceParams::default(),
-                    Num(0),
-                    Num(0),
-                    Gnd,
-                    Gnd,
-                ),
+                Mos1(Mos1Model::default(), Mos1InstanceParams::default(), Num(0), Num(0), Gnd, Gnd),
             ],
         };
         let soln = ac(ckt, AcOptions::default())?;
