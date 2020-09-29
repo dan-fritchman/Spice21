@@ -9,6 +9,7 @@ use crate::sparse21::{Eindex, Matrix};
 use crate::{SpNum, SpResult};
 use num::{Complex, Float, Zero};
 
+
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.g`
@@ -97,6 +98,7 @@ pub(crate) struct Solver<'a, NumT: SpNum> {
     pub(crate) mat: Matrix<NumT>,
     pub(crate) rhs: Vec<NumT>,
     pub(crate) history: Vec<Vec<NumT>>,
+    pub(crate) models: circuit::ModelCache,
     pub(crate) opts: Options,
 }
 
@@ -175,6 +177,7 @@ impl<'a> Solver<'a, Complex<f64>> {
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
+            models: re.models,
             opts: re.opts,
         };
 
@@ -257,17 +260,19 @@ impl<'a> Solver<'a, Complex<f64>> {
 impl<'a, NumT: SpNum> Solver<'a, NumT> {
     /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
     pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
+        let Ckt {comps, models } = ckt;
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
+            models,
             opts,
         };
 
         // Convert each circuit-parser component into a corresponding component-solver
-        for comp in ckt.comps.into_iter() {
+        for comp in comps.into_iter() {
             op.add_comp(comp);
         }
         // Create the corresponding matrix-elements
@@ -354,8 +359,24 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 ];
                 Mos1::new(model.clone(), params.clone(), ports.into()).into()
             }
-            Comp::Bsim4(_) => {
-                panic!("!!!");
+            Comp::Bsim4(b4i) => {
+                use crate::comps::bsim4::bsim4ports::Bsim4Ports;
+                use crate::comps::bsim4::Bsim4;
+                use crate::comps::mos::MosTerminals;
+
+                let circuit::Bsim4i { name, ports, model, params } = b4i;
+
+                let (model, inst) = self.models.bsim4.inst(&model, params).unwrap();
+
+                let ports: MosTerminals<Option<VarIndex>> = [
+                    self.node_var(ports.g.clone()),
+                    self.node_var(ports.d.clone()),
+                    self.node_var(ports.s.clone()),
+                    self.node_var(ports.b.clone()),
+                ]
+                .into();
+                let ports = Bsim4Ports::from(name, &ports, &model.vals, &inst.intp, self);
+                Bsim4::new(ports, model, inst).into()
             }
         };
 
@@ -781,9 +802,7 @@ mod tests {
 
     #[test]
     fn test_ac1() -> TestResult {
-        let ckt = Ckt {
-            comps: vec![R(1.0, Num(0), Gnd)],
-        };
+        let ckt = Ckt::from_comps(vec![R(1.0, Num(0), Gnd)]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -793,33 +812,29 @@ mod tests {
     fn test_ac2() -> TestResult {
         use crate::circuit::Vs;
         use Comp::{C, R, V};
-        let ckt = Ckt {
-            comps: vec![
-                R(1e-3, Num(0), Num(1)),
-                C(1e-9, Num(1), Gnd),
-                V(Vs {
-                    name: s("vi"),
-                    vdc: 1.0,
-                    acm: 1.0,
-                    p: Num(0),
-                    n: Gnd,
-                }),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            R(1e-3, Num(0), Num(1)),
+            C(1e-9, Num(1), Gnd),
+            V(Vs {
+                name: s("vi"),
+                vdc: 1.0,
+                acm: 1.0,
+                p: Num(0),
+                n: Gnd,
+            }),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
         Ok(())
     }
 
     #[test]
     fn test_ac3() -> TestResult {
-        let ckt = Ckt {
-            comps: vec![
-                R(1e-3, Num(0), Num(1)),
-                C(1e-9, Num(1), Gnd),
-                Comp::vdc(1.0, Num(0), Gnd),
-                Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            R(1e-3, Num(0), Num(1)),
+            C(1e-9, Num(1), Gnd),
+            Comp::vdc(1.0, Num(0), Gnd),
+            Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -832,21 +847,19 @@ mod tests {
         use crate::comps::{Mos1InstanceParams, Mos1Model};
         use Comp::{Mos1, C, R, V};
 
-        let ckt = Ckt {
-            comps: vec![
-                R(1e-5, n("vdd"), n("d")),
-                C(1e-9, n("d"), Gnd),
-                Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n("g"), n("d"), Gnd, Gnd),
-                Comp::vdc(1.0, n("vdd"), Gnd),
-                V(Vs {
-                    name: s("vg"),
-                    vdc: 0.7,
-                    acm: 1.0,
-                    p: n("g"),
-                    n: Gnd,
-                }),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            R(1e-5, n("vdd"), n("d")),
+            C(1e-9, n("d"), Gnd),
+            Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n("g"), n("d"), Gnd, Gnd),
+            Comp::vdc(1.0, n("vdd"), Gnd),
+            V(Vs {
+                name: s("vg"),
+                vdc: 0.7,
+                acm: 1.0,
+                p: n("g"),
+                n: Gnd,
+            }),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -859,18 +872,16 @@ mod tests {
         use crate::comps::{Mos1InstanceParams, Mos1Model};
         use Comp::{Mos1, V};
 
-        let ckt = Ckt {
-            comps: vec![
-                V(Vs {
-                    name: s("vd"),
-                    vdc: 0.5,
-                    acm: 1.0,
-                    p: Num(0),
-                    n: Gnd,
-                }),
-                Mos1(Mos1Model::default(), Mos1InstanceParams::default(), Num(0), Num(0), Gnd, Gnd),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            V(Vs {
+                name: s("vd"),
+                vdc: 0.5,
+                acm: 1.0,
+                p: Num(0),
+                n: Gnd,
+            }),
+            Mos1(Mos1Model::default(), Mos1InstanceParams::default(), Num(0), Num(0), Gnd, Gnd),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())

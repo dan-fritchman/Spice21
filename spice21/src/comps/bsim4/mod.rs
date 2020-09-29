@@ -13,7 +13,6 @@ pub mod bsim4solver;
 pub use bsim4defs::*;
 pub use bsim4solver::*;
 
-
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
 
@@ -24,6 +23,73 @@ pub(crate) const DELTA_1: f64 = 0.02;
 pub(crate) const DELTA_2: f64 = 0.02;
 pub(crate) const DELTA_3: f64 = 0.02;
 pub(crate) const DELTA_4: f64 = 0.02;
+
+
+use std::collections::HashMap;
+
+#[derive(Clone)]
+pub(crate) struct Bsim4ModelEntry {
+    pub(crate) specs: Bsim4ModelSpecs,
+    pub(crate) vals: Bsim4ModelVals,
+    pub(crate) derived: Bsim4ModelDerivedParams,
+    pub(crate) insts: Vec<Bsim4InstEntry>,
+}
+
+impl Bsim4ModelEntry {
+    fn new(specs: Bsim4ModelSpecs) -> Self {
+        use bsim4derive::derive;
+        use bsim4modelvals::resolve;
+
+        let vals = resolve(&specs);
+        let derived = derive(&vals);
+        Self {
+            specs,
+            vals,
+            derived,
+            insts: vec![],
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Bsim4InstEntry {
+    pub(crate) specs: Bsim4InstSpecs,
+    pub(crate) intp: Bsim4InternalParams,
+    pub(crate) size_params: Bsim4SizeDepParams,
+}
+
+impl Bsim4InstEntry {
+    fn new(specs: Bsim4InstSpecs, model: &Bsim4ModelEntry) -> Self {
+        use bsim4inst::from;
+        let (intp, size_params) = from(&model.vals, &model.derived, &specs);
+        Self { specs, intp, size_params }
+    }
+}
+
+pub(crate) struct Bsim4ModelCache(HashMap<String, Bsim4ModelEntry>);
+
+impl Bsim4ModelCache {
+    pub(crate) fn new() -> Self {
+        Self(HashMap::new())
+    }
+    pub(crate) fn add(&mut self, name: String, specs: Bsim4ModelSpecs) {
+        let entry = Bsim4ModelEntry::new(specs);
+        self.0.insert(name, entry);
+    }
+    pub(crate) fn model(&mut self, model_name: &String) -> Option<&mut Bsim4ModelEntry> {
+        self.0.get_mut(model_name)
+    }
+    pub(crate) fn inst(&mut self, model_name: &String, specs: Bsim4InstSpecs) -> Option<(Bsim4ModelEntry, Bsim4InstEntry)> {
+        // FIXME: actually check whether these things are already in the cache!
+        let model: &mut Bsim4ModelEntry = self.0.get_mut(model_name)?;
+        let inst = Bsim4InstEntry::new(specs, &model);
+        model.insts.push(inst.clone());
+        // FIXME: stop cloning, return references
+        // Some((&*model, &model.insts[model.insts.len() - 1]))
+        Some((model.clone(), inst))
+    }
+}
+
 
 // Some helper math
 // C-style call syntax, e.g. `min(a,b)` instead of `a.min(b)`
@@ -76,7 +142,7 @@ pub(crate) fn dexpc(A: f64) -> f64 {
 /// Bsim4 Internal, Derived Parameters
 /// These are the numbers calculated offline and used during sim-time,
 /// i.e. during `load`, `load_ac`, etc.
-#[derive(Default, Debug, Deserialize, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4InternalParams {
     pub(crate) l: f64,
     pub(crate) w: f64,
@@ -147,6 +213,8 @@ pub(crate) struct Bsim4InternalParams {
     pub(crate) DswTempRevSatCur: f64,
     pub(crate) SswgTempRevSatCur: f64,
     pub(crate) DswgTempRevSatCur: f64,
+    pub(crate) SourceSatCurrent: f64,
+    pub(crate) DrainSatCurrent: f64,
 
     // Modes
     pub(crate) mode: usize,
@@ -174,7 +242,7 @@ pub(crate) struct Bsim4InternalParams {
 
 /// Derived Bsim4 Model Parameters
 /// Primarily params which depend on temperature, etc.
-#[derive(Default, Debug, Deserialize, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4ModelDerivedParams {
     // Note these are *also* the names of internal instance parameters
     pub(crate) coxp: f64,
@@ -212,6 +280,14 @@ pub(crate) struct Bsim4ModelDerivedParams {
     pub(crate) TempRatio: f64,
     pub(crate) epssub: f64,
     pub(crate) ni: f64,
+    pub(crate) Nvtms: f64,
+        pub(crate) Nvtmd: f64,
+        pub(crate) Nvtmrss: f64,
+        pub(crate) Nvtmrssws: f64,
+        pub(crate) Nvtmrsswgs: f64,
+        pub(crate) Nvtmrsd: f64,
+        pub(crate) Nvtmrsswd: f64,
+        pub(crate) Nvtmrsswgd: f64,
 }
 
 #[derive(Default, Debug, Deserialize, Serialize)]
@@ -380,7 +456,7 @@ pub(crate) struct Bsim4OpPoint {
     pub(crate) AbovVgst2Vtm: f64,
 }
 
-#[derive(Default, Debug, Deserialize, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4SizeDepParams {
     pub(crate) Width: f64,
     pub(crate) Length: f64,

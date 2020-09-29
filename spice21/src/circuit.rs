@@ -14,8 +14,10 @@ use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 use crate::SpResult;
 
+use crate::comps::bsim4::Bsim4InstSpecs;
 use crate::comps::mos::MosTerminals;
-use crate::comps::bsim4::{Bsim4ModelSpecs, Bsim4InstSpecs};
+
+use crate::comps::bsim4::Bsim4ModelCache;
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -83,11 +85,10 @@ impl Ds {
     }
 }
 
-
 pub struct Bsim4i {
     pub(crate) name: String,
     pub(crate) ports: MosTerminals<NodeRef>,
-    pub(crate) model: Bsim4ModelSpecs,
+    pub(crate) model: String,
     pub(crate) params: Bsim4InstSpecs,
 }
 
@@ -101,14 +102,7 @@ pub enum Comp {
     D(Ds),
 
     Mos0(MosType, NodeRef, NodeRef, NodeRef, NodeRef),
-    Mos1(
-        Mos1Model,
-        Mos1InstanceParams,
-        NodeRef,
-        NodeRef,
-        NodeRef,
-        NodeRef,
-    ),
+    Mos1(Mos1Model, Mos1InstanceParams, NodeRef, NodeRef, NodeRef, NodeRef),
     Bsim4(Bsim4i),
 }
 
@@ -143,14 +137,7 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::Mos(m) => Comp::Mos1(
-                Mos1Model::default(),
-                Mos1InstanceParams::default(),
-                n(m.g),
-                n(m.d),
-                n(m.s),
-                n(m.b),
-            ),
+            CompProto::Mos(m) => Comp::Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n(m.g), n(m.d), n(m.s), n(m.b)),
         }
     }
 }
@@ -161,15 +148,36 @@ impl From<Ds> for Comp {
     }
 }
 
+pub struct ModelCache {
+    pub(crate) bsim4: Bsim4ModelCache,
+}
+impl ModelCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            bsim4: Bsim4ModelCache::new(),
+        }
+    }
+}
+
 /// Primary Circuit Structure
 pub struct Ckt {
     pub comps: Vec<Comp>,
+    pub models: ModelCache,
 }
 
 impl Ckt {
     /// Create a new, empty Circuit
     pub fn new() -> Self {
-        Self { comps: vec![] }
+        Self {
+            comps: vec![],
+            models: ModelCache::new(),
+        }
+    }
+    pub(crate) fn from_comps(comps: Vec<Comp>) -> Self {
+        Self {
+            comps: comps,
+            models: ModelCache::new(),
+        }
     }
     /// Create from a protobuf-generated circuit
     pub fn from(c: CircuitProto) -> Self {
@@ -181,7 +189,10 @@ impl Ckt {
                 cs.push(Comp::from(c));
             }
         }
-        Self { comps: cs }
+        Self {
+            comps: cs,
+            models: ModelCache::new(),
+        }
     }
     /// Decode from bytes
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
@@ -214,10 +225,8 @@ mod tests {
     #[test]
     fn test_ckt_parse() -> TestResult {
         Ckt {
-            comps: vec![
-                Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            ],
+            comps: vec![Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd), Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)],
+            models: ModelCache::new(),
         };
         Ok(())
     }

@@ -27,7 +27,7 @@ pub(crate) fn from(
     let mut T8: f64;
     let mut T9: f64;
 
-    let mut Temp: f64;
+
     let mut Inv_L: f64;
     let mut Inv_W: f64;
     let mut Inv_LW: f64;
@@ -1355,6 +1355,27 @@ pub(crate) fn from(
     //       return(E_BADPARM);
     //   }
 
+    let mut SourceSatCurrent = 0.0;
+    if (intp.Aseff <= 0.0) && (intp.Pseff <= 0.0) {
+        SourceSatCurrent = 0.0;
+    } else {
+        SourceSatCurrent = intp.Aseff * model_derived.SjctTempSatCurDensity
+            + intp.Pseff * model_derived.SjctSidewallTempSatCurDensity
+            + size_params.weffCJ * intp.nf * model_derived.SjctGateSidewallTempSatCurDensity;
+    }
+    intp.SourceSatCurrent = SourceSatCurrent;
+
+    let mut DrainSatCurrent = 0.0;
+    if (intp.Adeff <= 0.0) && (intp.Pdeff <= 0.0) {
+        DrainSatCurrent = 0.0;
+    } else {
+        DrainSatCurrent = intp.Adeff * model_derived.DjctTempSatCurDensity
+            + intp.Pdeff * model_derived.DjctSidewallTempSatCurDensity
+            + size_params.weffCJ * intp.nf * model_derived.DjctGateSidewallTempSatCurDensity;
+    }
+    intp.DrainSatCurrent = DrainSatCurrent;
+    
+
     // FIXME: linking these two, or returning both
     // intp.size_params = size_params;
     return (intp, size_params);
@@ -1727,5 +1748,7 @@ fn BSIM4RdseffGeo(nf: f64, geo: usize, rgeo: usize, minSD: usize, Weffcj: f64, R
     if rv == 0.0 {
         println!("Warning: Zero resistance returned from RdseffGeo\n");
     }
+
+    
     return rv;
 }

@@ -3,7 +3,7 @@ use super::*;
 use crate::comps::consts::*;
 
 /// BSIM4 Model
-/// Derive internal parameters from specified param-values 
+/// Derive internal parameters from specified param-values
 pub(crate) fn derive(model: &Bsim4ModelVals) -> Bsim4ModelDerivedParams {
     let mut Eg: f64;
     let mut Eg0: f64;
@@ -17,7 +17,7 @@ pub(crate) fn derive(model: &Bsim4ModelVals) -> Bsim4ModelDerivedParams {
     let mut Vtm0: f64;
     let mut Tnom: f64;
 
-    // Create our blank derived-params struct 
+    // Create our blank derived-params struct
     let mut model_derived = Bsim4ModelDerivedParams::default();
 
     // This first part is not temperature-dependent,
@@ -187,6 +187,16 @@ pub(crate) fn derive(model: &Bsim4ModelVals) -> Bsim4ModelDerivedParams {
     model_derived.njtsdtemp = model.njtsd * (1.0 + model.tnjtsd * T0);
     model_derived.njtsswdtemp = model.njtsswd * (1.0 + model.tnjtsswd * T0);
     model_derived.njtsswgdtemp = model.njtsswgd * (1.0 + model.tnjtsswgd * T0);
+
+    /* trap-assisted tunneling and recombination current for reverse bias  */
+    model_derived.Nvtms = model_derived.vtm * model.njs;
+    model_derived.Nvtmd = model_derived.vtm * model.njd;
+    model_derived.Nvtmrssws = model_derived.vtm0 * model_derived.njtsswstemp;
+    model_derived.Nvtmrsswgs = model_derived.vtm0 * model_derived.njtsswgstemp;
+    model_derived.Nvtmrss = model_derived.vtm0 * model_derived.njtsstemp;
+    model_derived.Nvtmrsswd = model_derived.vtm0 * model_derived.njtsswdtemp;
+    model_derived.Nvtmrsswgd = model_derived.vtm0 * model_derived.njtsswgdtemp;
+    model_derived.Nvtmrsd = model_derived.vtm0 * model_derived.njtsdtemp;
 
     return model_derived;
 }

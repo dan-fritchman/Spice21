@@ -4,25 +4,26 @@ use super::*;
 
 use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use crate::comps::consts::*;
+use crate::comps::mos::MosType;
 use crate::comps::Component;
 use crate::sparse21::{Eindex, Matrix};
 use crate::SpNum;
 
 /// BSIM4 MOSFET Solver
 // #[derive(Default)]
-pub struct Bsim4<'a> {
-    ports: &'a Bsim4Ports,
-    // inst: &'a Bsim4InstSpecs, // Think we need these? nope
-    model: &'a Bsim4ModelVals,
-    model_derived: &'a Bsim4ModelDerivedParams,
-    size_params: &'a Bsim4SizeDepParams,
-    intp: &'a Bsim4InternalParams,
+pub struct Bsim4 {
+    ports: Bsim4Ports,
+    // inst: Bsim4InstSpecs, // Think we need these? nope
+    model: Bsim4ModelVals,                  // FIXME: reference
+    model_derived: Bsim4ModelDerivedParams, // FIXME: reference
+    size_params: Bsim4SizeDepParams,        // FIXME: reference
+    intp: Bsim4InternalParams,              // FIXME: reference
     guess: Bsim4OpPoint,
     op: Bsim4OpPoint,
     matps: Bsim4MatrixPointers,
 }
 
-impl Bsim4<'_> {
+impl Bsim4 {
     fn create_matps<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         use crate::comps::make_matrix_elem;
 
@@ -113,263 +114,38 @@ impl Bsim4<'_> {
     }
 
     fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-
         // Start by declaring about 700 local float variables!
-        let mut ceqgstot: f64;
-        let mut dgstot_dvd: f64;
-        let mut dgstot_dvg: f64;
-        let mut dgstot_dvs: f64;
-        let mut dgstot_dvb: f64;
-        let mut ceqgdtot: f64;
-        let mut dgdtot_dvd: f64;
-        let mut dgdtot_dvg: f64;
-        let mut dgdtot_dvs: f64;
-        let mut dgdtot_dvb: f64;
-        let mut gstot: f64;
-        let mut gstotd: f64;
-        let mut gstotg: f64;
-        let mut gstots: f64;
-        let mut gstotb: f64;
-        let mut gspr: f64;
-        let mut Rs: f64;
-        let mut Rd: f64;
-        let mut gdtot: f64;
-        let mut gdtotd: f64;
-        let mut gdtotg: f64;
-        let mut gdtots: f64;
-        let mut gdtotb: f64;
-        let mut gdpr: f64;
+
+        // Used a lot
         let mut vgs_eff: f64;
         let mut vgd_eff: f64;
         let mut dvgs_eff_dvg: f64;
         let mut dvgd_eff_dvg: f64;
-        let mut dRs_dvg: f64;
-        let mut dRd_dvg: f64;
-        let mut dRs_dvb: f64;
-        let mut dRd_dvb: f64;
-        let mut dT0_dvg: f64;
-        let mut dT1_dvb: f64;
-        let mut dT3_dvg: f64;
-        let mut dT3_dvb: f64;
-        let mut vses: f64;
-        let mut vdes: f64;
-        let mut vdedo: f64;
-        let mut delvses: f64;
-        let mut delvded: f64;
-        let mut delvdes: f64;
-        let mut Isestot: f64;
-        let mut cseshat: f64;
-        let mut Idedtot: f64;
-        let mut cdedhat: f64;
-        let mut tol0: f64;
-        let mut tol1: f64;
-        let mut tol2: f64;
-        let mut tol3: f64;
-        let mut tol4: f64;
-        let mut tol5: f64;
-        let mut tol6: f64;
-        
-        let mut geltd: f64;
         let mut gcrg: f64;
         let mut gcrgg: f64;
         let mut gcrgd: f64;
         let mut gcrgs: f64;
         let mut gcrgb: f64;
         let mut ceqgcrg: f64;
-        let mut vges: f64;
-        let mut vgms: f64;
-        let mut vgedo: f64;
-        let mut vgmdo: f64;
-        let mut vged: f64;
-        let mut vgmd: f64;
-        let mut delvged: f64;
-        let mut delvgmd: f64;
-        let mut delvges: f64;
-        let mut delvgms: f64;
-        let mut vgmb: f64;
-        let mut gcgmgmb: f64;
-        let mut gcgmdb: f64;
-        let mut gcgmsb: f64;
-        let mut gcdgmb: f64;
-        let mut gcsgmb: f64;
-        let mut gcgmbb: f64;
-        let mut gcbgmb: f64;
-        let mut qgmb: f64;
-        
-        let mut vbd: f64;
-        let mut vbs: f64;
-        let mut vds: f64;
-        let mut vgb: f64;
-        let mut vgd: f64;
-        let mut vgs: f64;
-        let mut vgdo: f64;
-        let mut xfact: f64;
-        let mut vdbs: f64;
-        let mut vdbd: f64;
-        let mut vsbs: f64;
-        let mut vsbdo: f64;
-        let mut vsbd: f64;
-        let mut delvdbs: f64;
-        let mut delvdbd: f64;
-        let mut delvsbs: f64;
-        let mut delvbd_jct: f64;
-        let mut delvbs_jct: f64;
-        let mut vbs_jct: f64;
-        let mut vbd_jct: f64;
-        
-        let mut SourceSatCurrent: f64;
-        let mut DrainSatCurrent: f64;
-        let mut ag0: f64;
-        let mut qgd: f64;
-        let mut qgs: f64;
-        let mut qgb: f64;
-        let mut von: f64;
-        let mut cbhat: f64;
-        let mut VgstNVt: f64;
-        let mut ExpVgst: f64;
-        let mut ceqqb: f64;
-        let mut ceqqd: f64;
-        let mut ceqqg: f64;
-        let mut ceqqjd: f64;
-        let mut ceqqjs: f64;
-        let mut ceq: f64;
-        let mut geq: f64;
-        let mut cdrain: f64;
-        let mut cdhat: f64;
-        let mut ceqdrn: f64;
-        let mut ceqbd: f64;
-        let mut ceqbs: f64;
-        let mut ceqjd: f64;
-        let mut ceqjs: f64;
-        let mut gjbd: f64;
-        let mut gjbs: f64;
-        let mut czbd: f64;
-        let mut czbdsw: f64;
-        let mut czbdswg: f64;
-        let mut czbs: f64;
-        let mut czbssw: f64;
-        let mut czbsswg: f64;
-        let mut evbd: f64;
-        let mut evbs: f64;
-        let mut arg: f64;
-        let mut sarg: f64;
-        let mut delvbd: f64;
-        let mut delvbs: f64;
-        let mut delvds: f64;
-        let mut delvgd: f64;
-        let mut delvgs: f64;
-        let mut Vfbeff: f64;
-        let mut dVfbeff_dVg: f64;
-        let mut dVfbeff_dVb: f64;
-        let mut V3: f64;
-        let mut V4: f64;
-        let mut gcbdb: f64;
-        let mut gcbgb: f64;
-        let mut gcbsb: f64;
-        let mut gcddb: f64;
-        let mut gcdgb: f64;
-        let mut gcdsb: f64;
-        let mut gcgdb: f64;
-        let mut gcggb: f64;
-        let mut gcgsb: f64;
-        let mut gcsdb: f64;
-        let mut gcgbb: f64;
-        let mut gcdbb: f64;
-        let mut gcsbb: f64;
-        let mut gcbbb: f64;
-        let mut gcdbdb: f64;
-        let mut gcsbsb: f64;
-        let mut gcsgb: f64;
-        let mut gcssb: f64;
-        let mut MJD: f64;
-        let mut MJSWD: f64;
-        let mut MJSWGD: f64;
-        let mut MJS: f64;
-        let mut MJSWS: f64;
-        let mut MJSWGS: f64;
-        let mut cqgate: f64;
-        let mut cqbody: f64;
-        let mut cqdrn: f64;
         let mut Vdb: f64;
         let mut Vds: f64;
         let mut Vgs: f64;
         let mut Vbs: f64;
-        let mut Gmbs: f64;
-        let mut FwdSum: f64;
-        let mut RevSum: f64;
+        let mut QovCox: f64;
+        let mut Vgs_eff: f64;
+        let mut Vdsat: f64;
+        let mut n: f64;
+        let mut dn_dVb: f64;
+        let mut dn_dVd: f64;
+
+        // Not sure yet
         let mut Igidl: f64;
         let mut Ggidld: f64;
         let mut Ggidlg: f64;
         let mut Ggidlb: f64;
         let mut VxNVt: f64;
         let mut ExpVxNVt: f64;
-        let mut Igc: f64;
-        let mut dIgc_dVg: f64;
-        let mut dIgc_dVd: f64;
-        let mut dIgc_dVb: f64;
-        let mut Igcs: f64;
-        let mut dIgcs_dVg: f64;
-        let mut dIgcs_dVd: f64;
-        let mut dIgcs_dVb: f64;
-        let mut Igcd: f64;
-        let mut dIgcd_dVg: f64;
-        let mut dIgcd_dVd: f64;
-        let mut dIgcd_dVb: f64;
-        let mut Igs: f64;
-        let mut dIgs_dVg: f64;
-        let mut dIgs_dVs: f64;
-        let mut Igd: f64;
-        let mut dIgd_dVg: f64;
-        let mut dIgd_dVd: f64;
-        let mut Igbacc: f64;
-        let mut dIgbacc_dVg: f64;
-        let mut dIgbacc_dVd: f64;
-        let mut dIgbacc_dVb: f64;
-        let mut Igbinv: f64;
-        let mut dIgbinv_dVg: f64;
-        let mut dIgbinv_dVd: f64;
-        let mut dIgbinv_dVb: f64;
-        let mut Igb: f64;
-        let mut dIgb_dVg: f64;
-        let mut dIgb_dVd: f64;
-        let mut dIgb_dVb: f64;
-        let mut Pigcd: f64;
-        let mut dPigcd_dVg: f64;
-        let mut dPigcd_dVd: f64;
-        let mut dPigcd_dVb: f64;
-        let mut Istoteq: f64;
-        let mut gIstotg: f64;
-        let mut gIstotd: f64;
-        let mut gIstots: f64;
-        let mut gIstotb: f64;
-        let mut Idtoteq: f64;
-        let mut gIdtotg: f64;
-        let mut gIdtotd: f64;
-        let mut gIdtots: f64;
-        let mut gIdtotb: f64;
-        let mut Ibtoteq: f64;
-        let mut gIbtotg: f64;
-        let mut gIbtotd: f64;
-        let mut gIbtots: f64;
-        let mut gIbtotb: f64;
-        let mut Igtoteq: f64;
-        let mut gIgtotg: f64;
-        let mut gIgtotd: f64;
-        let mut gIgtots: f64;
-        let mut gIgtotb: f64;
-        let mut Igstot: f64;
-        let mut cgshat: f64;
-        let mut Igdtot: f64;
-        let mut cgdhat: f64;
-        let mut Igbtot: f64;
-        let mut cgbhat: f64;
-        let mut Vgs_eff: f64;
-        let mut dVbs_dVb: f64;
-        let mut Vth_NarrowW: f64;
-        let mut Phis: f64;
-        let mut dPhis_dVb: f64;
-        let mut sqrtPhis: f64;
-        let mut dsqrtPhis_dVb: f64;
+
         let mut Vth: f64;
         let mut dVth_dVb: f64;
         let mut dVth_dVd: f64;
@@ -377,60 +153,13 @@ impl Bsim4<'_> {
         let mut dVgst_dVg: f64;
         let mut dVgst_dVb: f64;
         let mut dVgs_eff_dVg: f64;
-        let mut Nvtms: f64;
-        let mut Nvtmd: f64;
-        let mut Vgdt: f64;
-        let mut Vgsaddvth: f64;
-        let mut Vgsaddvth2: f64;
-        let mut Vgsaddvth1o3: f64;
-        let mut Vtm: f64;
-        let mut Vtm0: f64;
-        let mut n: f64;
-        let mut dn_dVb: f64;
-        let mut dn_dVd: f64;
-        let mut voffcv: f64;
-        let mut noff: f64;
-        let mut dnoff_dVd: f64;
-        let mut dnoff_dVb: f64;
-        let mut ExpArg: f64;
-        let mut ExpArg1: f64;
         let mut V0: f64;
-        let mut CoxWLcen: f64;
-        let mut QovCox: f64;
-        let mut LINK: f64;
         let mut DeltaPhi: f64;
         let mut dDeltaPhi_dVg: f64;
         let mut VgDP: f64;
         let mut dVgDP_dVg: f64;
         let mut Cox: f64;
         let mut Tox: f64;
-        let mut Tcen: f64;
-        let mut dTcen_dVg: f64;
-        let mut dTcen_dVd: f64;
-        let mut dTcen_dVb: f64;
-        let mut Ccen: f64;
-        let mut Coxeff: f64;
-        let mut dCoxeff_dVd: f64;
-        let mut dCoxeff_dVg: f64;
-        let mut dCoxeff_dVb: f64;
-        let mut Denomi: f64;
-        let mut dDenomi_dVg: f64;
-        let mut dDenomi_dVd: f64;
-        let mut dDenomi_dVb: f64;
-        let mut ueff: f64;
-        let mut dueff_dVg: f64;
-        let mut dueff_dVd: f64;
-        let mut dueff_dVb: f64;
-        let mut Esat: f64;
-        let mut dEsat_dVg: f64;
-        let mut dEsat_dVd: f64;
-        let mut dEsat_dVb: f64;
-        let mut Vdsat: f64;
-        let mut Vdsat0: f64;
-        let mut EsatL: f64;
-        let mut dEsatL_dVg: f64;
-        let mut dEsatL_dVd: f64;
-        let mut dEsatL_dVb: f64;
         let mut Ilimit: f64;
         let mut Iexp: f64;
         let mut dIexp_dVg: f64;
@@ -439,17 +168,7 @@ impl Bsim4<'_> {
         let mut dVdsat_dVg: f64;
         let mut dVdsat_dVb: f64;
         let mut dVdsat_dVd: f64;
-        let mut Vasat: f64;
-        let mut dAlphaz_dVg: f64;
-        let mut dAlphaz_dVb: f64;
-        let mut dVasat_dVg: f64;
-        let mut dVasat_dVb: f64;
-        let mut dVasat_dVd: f64;
-        let mut Va: f64;
-        let mut Va2: f64;
-        let mut dVa_dVd: f64;
-        let mut dVa_dVg: f64;
-        let mut dVa_dVb: f64;
+
         let mut Vbseff: f64;
         let mut dVbseff_dVb: f64;
         let mut VbseffCV: f64;
@@ -458,8 +177,6 @@ impl Bsim4<'_> {
         let mut dT11_dVg: f64;
         let mut Arg1: f64;
         let mut Arg2: f64;
-        let mut One_Third_CoxWL: f64;
-        let mut Two_Third_CoxWL: f64;
         let mut Alphaz: f64;
         let mut CoxWL: f64;
         let mut T0: f64;
@@ -511,33 +228,14 @@ impl Bsim4<'_> {
         let mut T13: f64;
         let mut T14: f64;
         let mut tmp: f64;
-        let mut Abulk: f64;
-        let mut dAbulk_dVb: f64;
-        let mut Abulk0: f64;
-        let mut dAbulk0_dVb: f64;
-        let mut Cclm: f64;
-        let mut dCclm_dVg: f64;
-        let mut dCclm_dVd: f64;
-        let mut dCclm_dVb: f64;
+
         let mut FP: f64;
         let mut dFP_dVg: f64;
-        let mut PvagTerm: f64;
-        let mut dPvagTerm_dVg: f64;
-        let mut dPvagTerm_dVd: f64;
-        let mut dPvagTerm_dVb: f64;
         let mut VADITS: f64;
         let mut dVADITS_dVg: f64;
         let mut dVADITS_dVd: f64;
         let mut Lpe_Vb: f64;
-        let mut DITS_Sft: f64;
-        let mut dDITS_Sft_dVb: f64;
-        let mut dDITS_Sft_dVd: f64;
-        let mut DITS_Sft2: f64;
-        let mut dDITS_Sft2_dVd: f64;
-        let mut VACLM: f64;
-        let mut dVACLM_dVg: f64;
-        let mut dVACLM_dVd: f64;
-        let mut dVACLM_dVb: f64;
+
         let mut VADIBL: f64;
         let mut dVADIBL_dVg: f64;
         let mut dVADIBL_dVd: f64;
@@ -556,7 +254,7 @@ impl Bsim4<'_> {
         let mut dTheta1_dVb: f64;
         let mut Thetarout: f64;
         let mut dThetarout_dVb: f64;
-        let mut TempRatio: f64;
+
         let mut tmp1: f64;
         let mut tmp2: f64;
         let mut tmp3: f64;
@@ -568,9 +266,7 @@ impl Bsim4<'_> {
         let mut dLambda_dVg: f64;
         let mut Idtot: f64;
         let mut Ibtot: f64;
-        let mut a1: f64;
-        let mut ScalingFactor: f64;
-        
+
         let mut Vgsteff: f64;
         let mut dVgsteff_dVg: f64;
         let mut dVgsteff_dVd: f64;
@@ -579,34 +275,16 @@ impl Bsim4<'_> {
         let mut dVdseff_dVg: f64;
         let mut dVdseff_dVd: f64;
         let mut dVdseff_dVb: f64;
-                
         let mut VdseffCV: f64;
         let mut dVdseffCV_dVg: f64;
         let mut dVdseffCV_dVd: f64;
         let mut dVdseffCV_dVb: f64;
-        let mut diffVds: f64;
-        let mut diffVdsCV: f64;
-        let mut dAbulk_dVg: f64;
-        let mut beta: f64;
-        let mut dbeta_dVg: f64;
-        let mut dbeta_dVd: f64;
-        let mut dbeta_dVb: f64;
-        let mut gche: f64;
-        let mut dgche_dVg: f64;
-        let mut dgche_dVd: f64;
-        let mut dgche_dVb: f64;
+
         let mut fgche1: f64;
         let mut dfgche1_dVg: f64;
         let mut dfgche1_dVd: f64;
         let mut dfgche1_dVb: f64;
         let mut fgche2: f64;
-        let mut dfgche2_dVg: f64;
-        let mut dfgche2_dVd: f64;
-        let mut dfgche2_dVb: f64;
-        let mut Idl: f64;
-        let mut dIdl_dVg: f64;
-        let mut dIdl_dVd: f64;
-        let mut dIdl_dVb: f64;
         let mut Idsa: f64;
         let mut dIdsa_dVg: f64;
         let mut dIdsa_dVd: f64;
@@ -615,48 +293,18 @@ impl Bsim4<'_> {
         let mut Gm: f64;
         let mut Gds: f64;
         let mut Gmb: f64;
-        let mut devbs_dvb: f64;
-        let mut devbd_dvb: f64;
         let mut Isub: f64;
         let mut Gbd: f64;
         let mut Gbg: f64;
         let mut Gbb: f64;
-        let mut VASCBE: f64;
-        let mut dVASCBE_dVg: f64;
-        let mut dVASCBE_dVd: f64;
-        let mut dVASCBE_dVb: f64;
-        let mut CoxeffWovL: f64;
-        let mut Rds: f64;
-        let mut dRds_dVg: f64;
-        let mut dRds_dVb: f64;
+
         let mut WVCox: f64;
         let mut WVCoxRds: f64;
         let mut Vgst2Vtm: f64;
-        let mut VdsatCV: f64;
-        let mut dVdsatCV_dVd: f64;
-        let mut dVdsatCV_dVg: f64;
-        let mut dVdsatCV_dVb: f64;
-        let mut Leff: f64;
-        let mut Weff: f64;
-        let mut dWeff_dVg: f64;
-        let mut dWeff_dVb: f64;
+
         let mut AbulkCV: f64;
         let mut dAbulkCV_dVb: f64;
         let mut qcheq: f64;
-        let mut qdef: f64;
-        let mut gqdef: f64;
-        let mut cqdef: f64;
-        let mut cqcheq: f64;
-        let mut gbspsp: f64;
-        let mut gbbdp: f64;
-        let mut gbbsp: f64;
-        let mut gbspg: f64;
-        let mut gbspb: f64;
-        let mut gbspdp: f64;
-        let mut gbdpdp: f64;
-        let mut gbdpg: f64;
-        let mut gbdpb: f64;
-        let mut gbdpsp: f64;
         let mut qgdo: f64;
         let mut qgso: f64;
         let mut cgdo: f64;
@@ -673,13 +321,9 @@ impl Bsim4<'_> {
         let mut Cdb: f64;
         let mut Qg: f64;
         let mut Qd: f64;
-        let mut Csg: f64; // DEBUGGER LAST WORKING VARIABLE!
-        // THE BAIL OUT!
-        return Stamps::new();
-        let mut Csd: f64; // DEBUGGER FIRST FAILING VARIABLE!
-        
-                
-                
+        let mut Csg: f64;
+
+        let mut Csd: f64;
         let mut Css: f64;
         let mut Csb: f64;
         let mut Cbg: f64;
@@ -699,40 +343,17 @@ impl Bsim4<'_> {
         let mut Csb1: f64;
         let mut Qac0: f64;
         let mut Qsub0: f64;
-        let mut dQac0_dVg: f64;
-        let mut dQac0_dVb: f64;
         let mut dQsub0_dVg: f64;
         let mut dQsub0_dVd: f64;
         let mut dQsub0_dVb: f64;
-        let mut ggidld: f64;
-        let mut ggidlg: f64;
-        let mut ggidlb: f64;
-        let mut ggisld: f64;
-        let mut ggislg: f64;
-        let mut ggislb: f64;
-        let mut ggisls: f64;
+
         let mut Igisl: f64;
         let mut Ggisld: f64;
         let mut Ggislg: f64;
         let mut Ggislb: f64;
         let mut Ggisls: f64;
-        let mut Nvtmrss: f64;
-        let mut Nvtmrssws: f64;
-        let mut Nvtmrsswgs: f64;
-        let mut Nvtmrsd: f64;
-        let mut Nvtmrsswd: f64;
-        let mut Nvtmrsswgd: f64;
 
         let mut vs: f64;
-        let mut Fsevl: f64;
-        let mut dvs_dVg: f64;
-        let mut dvs_dVd: f64;
-        let mut dvs_dVb: f64;
-        let mut dFsevl_dVg: f64;
-        let mut dFsevl_dVd: f64;
-        let mut dFsevl_dVb: f64;
-        let mut vgdx: f64;
-        let mut vgsx: f64;
 
         // Initialized locals. Complicated code-paths do not otherwise ensure these are ever set.
         let mut qgmid = 0.0;
@@ -756,9 +377,6 @@ impl Bsim4<'_> {
         let mut Voxacc = 0.0;
         let mut Vfb = 0.0;
 
-        
-
-
         let ScalingFactor = 1.0e-9;
         let ChargeComputationNeeded = if let AnalysisInfo::TRAN(_a, _b) = an { true } else { false };
 
@@ -776,118 +394,40 @@ impl Bsim4<'_> {
         let mut vdes = self.model.p() * (guess.get(self.ports.dNode) - guess.get(self.ports.sNodePrime));
         let mut qdef = self.model.p() * (guess.get(self.ports.qNode));
 
-        vgdo = self.guess.vgs - self.guess.vds;
-        vgedo = self.guess.vges - self.guess.vds;
-        vgmdo = self.guess.vgms - self.guess.vds;
+        let mut vgdo = self.guess.vgs - self.guess.vds;
+        let mut vgedo = self.guess.vges - self.guess.vds;
+        let mut vgmdo = self.guess.vgms - self.guess.vds;
 
-        vbd = vbs - vds;
-        vdbd = vdbs - vds;
-        vgd = vgs - vds;
-        vged = vges - vds;
-        vgmd = vgms - vds;
+        let mut vbd = vbs - vds;
+        let mut vdbd = vdbs - vds;
+        let mut vgd = vgs - vds;
+        let mut vged = vges - vds;
+        let mut vgmd = vgms - vds;
 
-        delvbd = vbd - self.guess.vbd;
-        delvdbd = vdbd - self.guess.vdbd;
-        delvgd = vgd - vgdo;
-        delvged = vged - vgedo;
-        delvgmd = vgmd - vgmdo;
+        let mut delvbd = vbd - self.guess.vbd;
+        let mut delvdbd = vdbd - self.guess.vdbd;
+        let mut delvgd = vgd - vgdo;
+        let mut delvged = vged - vgedo;
+        let mut delvgmd = vgmd - vgmdo;
 
-        delvds = vds - self.guess.vds;
-        delvgs = vgs - self.guess.vgs;
-        delvges = vges - self.guess.vges;
-        delvgms = vgms - self.guess.vgms;
-        delvbs = vbs - self.guess.vbs;
-        delvdbs = vdbs - self.guess.vdbs;
-        delvsbs = vsbs - self.guess.vsbs;
+        let mut delvds = vds - self.guess.vds;
+        let mut delvgs = vgs - self.guess.vgs;
+        let mut delvges = vges - self.guess.vges;
+        let mut delvgms = vgms - self.guess.vgms;
+        let mut delvbs = vbs - self.guess.vbs;
+        let mut delvdbs = vdbs - self.guess.vdbs;
+        let mut delvsbs = vsbs - self.guess.vsbs;
 
-        delvses = vses - (self.guess.vses);
-        vdedo = self.guess.vdes - self.guess.vds;
-        delvdes = vdes - self.guess.vdes;
-        delvded = vdes - vds - vdedo;
+        let mut delvses = vses - (self.guess.vses);
+        let mut vdedo = self.guess.vdes - self.guess.vds;
+        let mut delvdes = vdes - self.guess.vdes;
+        let mut delvded = vdes - vds - vdedo;
 
-        delvbd_jct = if self.model.rbodymod != 0 { delvbd } else { delvdbd };
-        delvbs_jct = if self.model.rbodymod != 0 { delvbs } else { delvsbs };
+        let mut delvbd_jct = if self.model.rbodymod != 0 { delvbd } else { delvdbd };
+        let mut delvbs_jct = if self.model.rbodymod != 0 { delvbs } else { delvsbs };
 
-        //
-        // Convergence/ LTE criteria - to be moved elsewhere
-        //
-        // if self.guess.mode >= 0 {
-        //     Idtot = self.guess.cd + self.guess.csub - self.guess.cbd + self.guess.Igidl;
-        //     cdhat = Idtot - self.guess.gbd * delvbd_jct
-        //         + (self.guess.gmbs + self.guess.gbbs + self.guess.ggidlb) * delvbs
-        //         + (self.guess.gm + self.guess.gbgs + self.guess.ggidlg) * delvgs
-        //         + (self.guess.gds + self.guess.gbds + self.guess.ggidld) * delvds;
-        //     Ibtot = self.guess.cbs + self.guess.cbd
-        //         - self.guess.Igidl
-        //         - self.guess.Igisl
-        //         - self.guess.csub;
-        //     cbhat = Ibtot + self.guess.gbd * delvbd_jct + self.guess.gbs * delvbs_jct
-        //         - (self.guess.gbbs + self.guess.ggidlb) * delvbs
-        //         - (self.guess.gbgs + self.guess.ggidlg) * delvgs
-        //         - (self.guess.gbds + self.guess.ggidld - self.guess.ggisls) * delvds
-        //         - self.guess.ggislg * delvgd
-        //         - self.guess.ggislb * delvbd;
+        let von = self.guess.von;
 
-        //     Igstot = self.guess.Igs + self.guess.Igcs;
-        //     cgshat = Igstot
-        //         + (self.guess.gIgsg + self.guess.gIgcsg) * delvgs
-        //         + self.guess.gIgcsd * delvds
-        //         + self.guess.gIgcsb * delvbs;
-
-        //     Igdtot = self.guess.Igd + self.guess.Igcd;
-        //     cgdhat = Igdtot
-        //         + self.guess.gIgdg * delvgd
-        //         + self.guess.gIgcdg * delvgs
-        //         + self.guess.gIgcdd * delvds
-        //         + self.guess.gIgcdb * delvbs;
-
-        //     Igbtot = self.guess.Igb;
-        //     cgbhat = self.guess.Igb
-        //         + self.guess.gIgbg * delvgs
-        //         + self.guess.gIgbd * delvds
-        //         + self.guess.gIgbb * delvbs;
-        // } else {
-        //     Idtot = self.guess.cd + self.guess.cbd - self.guess.Igidl;
-        //     cdhat = Idtot
-        //         + self.guess.gbd * delvbd_jct
-        //         + self.guess.gmbs * delvbd
-        //         + self.guess.gm * delvgd
-        //         - (self.guess.gds + self.guess.ggidls) * delvds
-        //         - self.guess.ggidlg * delvgs
-        //         - self.guess.ggidlb * delvbs;
-        //     Ibtot = self.guess.cbs + self.guess.cbd
-        //         - self.guess.Igidl
-        //         - self.guess.Igisl
-        //         - self.guess.csub;
-        //     cbhat = Ibtot + self.guess.gbs * delvbs_jct + self.guess.gbd * delvbd_jct
-        //         - (self.guess.gbbs + self.guess.ggislb) * delvbd
-        //         - (self.guess.gbgs + self.guess.ggislg) * delvgd
-        //         + (self.guess.gbds + self.guess.ggisld - self.guess.ggidls) * delvds
-        //         - self.guess.ggidlg * delvgs
-        //         - self.guess.ggidlb * delvbs;
-
-        //     Igstot = self.guess.Igs + self.guess.Igcd;
-        //     cgshat = Igstot + self.guess.gIgsg * delvgs + self.guess.gIgcdg * delvgd
-        //         - self.guess.gIgcdd * delvds
-        //         + self.guess.gIgcdb * delvbd;
-
-        //     Igdtot = self.guess.Igd + self.guess.Igcs;
-        //     cgdhat = Igdtot + (self.guess.gIgdg + self.guess.gIgcsg) * delvgd
-        //         - self.guess.gIgcsd * delvds
-        //         + self.guess.gIgcsb * delvbd;
-
-        //     Igbtot = self.guess.Igb;
-        //     cgbhat = self.guess.Igb + self.guess.gIgbg * delvgd - self.guess.gIgbd * delvds
-        //         + self.guess.gIgbb * delvbd;
-        // }
-
-        Isestot = self.guess.gstot * self.guess.vses;
-        cseshat = Isestot + self.guess.gstot * delvses + self.guess.gstotd * delvds + self.guess.gstotg * delvgs + self.guess.gstotb * delvbs;
-
-        Idedtot = self.guess.gdtot * vdedo;
-        cdedhat = Idedtot + self.guess.gdtot * delvded + self.guess.gdtotd * delvds + self.guess.gdtotg * delvgs + self.guess.gdtotb * delvbs;
-
-        von = self.guess.von;
         if self.guess.vds >= 0.0 {
             vgs = DEVfetlim(vgs, self.guess.vgs, von);
             vds = vgs - vgd;
@@ -943,73 +483,65 @@ impl Bsim4<'_> {
             if self.model.rbodymod != 0 {
                 vdbd = DEVpnjlim(vdbd, self.guess.vdbd, VT_REF, self.model_derived.vcrit);
                 vdbs = vdbd + vds;
-                vsbdo = self.guess.vsbs - self.guess.vds;
-                vsbd = vsbs - vds;
-                vsbd = DEVpnjlim(vsbd, vsbdo, VT_REF, self.model_derived.vcrit);
-                vsbs = vsbd + vds;
+                let vsbdo = self.guess.vsbs - self.guess.vds;
+                let vsbd = vsbs - vds;
+                let vsbd2 = DEVpnjlim(vsbd, vsbdo, VT_REF, self.model_derived.vcrit);
+                vsbs = vsbd2 + vds;
             }
         }
 
         /* Calculate DC currents and their derivatives */
         vbd = vbs - vds;
         vgd = vgs - vds;
-        vgb = vgs - vbs;
-        vged = vges - vds;
-        vgmd = vgms - vds;
-        vgmb = vgms - vbs;
-        vdbd = vdbs - vds;
+        let vgb = vgs - vbs;
+        let vged = vges - vds;
+        let vgmd = vgms - vds;
+        let vgmb = vgms - vbs;
+        let vdbd = vdbs - vds;
 
-        vbs_jct = if self.model.rbodymod != 0 { vbs } else { vsbs };
-        vbd_jct = if self.model.rbodymod != 0 { vbd } else { vdbd };
+        let vbs_jct = if self.model.rbodymod != 0 { vbs } else { vsbs };
+        let vbd_jct = if self.model.rbodymod != 0 { vbd } else { vdbd };
 
         // Source/drain junction diode DC model begins
-        // FIXME: move offline
-        Nvtms = self.model_derived.vtm * self.model.njs;
-        if (self.intp.Aseff <= 0.0) && (self.intp.Pseff <= 0.0) {
-            SourceSatCurrent = 0.0;
-        } else {
-            SourceSatCurrent = self.intp.Aseff * self.model_derived.SjctTempSatCurDensity
-                + self.intp.Pseff * self.model_derived.SjctSidewallTempSatCurDensity
-                + self.size_params.weffCJ * self.intp.nf * self.model_derived.SjctGateSidewallTempSatCurDensity;
-        }
-
-        if SourceSatCurrent <= 0.0 {
+        if self.intp.SourceSatCurrent <= 0.0 {
             newop.gbs = gmin;
             newop.cbs = newop.gbs * vbs_jct;
         } else {
+            let mut evbs: f64;
+            let mut devbs_dvb: f64;
             match self.model.diomod {
                 0 => {
-                    evbs = exp(vbs_jct / Nvtms);
-                    T1 = self.model.xjbvs * exp(-(self.model.bvs + vbs_jct) / Nvtms);
+                    evbs = exp(vbs_jct / self.model_derived.Nvtms);
+                    T1 = self.model.xjbvs * exp(-(self.model.bvs + vbs_jct) / self.model_derived.Nvtms);
 
-                    newop.gbs = SourceSatCurrent * (evbs + T1) / Nvtms + gmin;
-                    newop.cbs = SourceSatCurrent * (evbs + self.intp.XExpBVS - T1 - 1.0) + gmin * vbs_jct;
+                    newop.gbs = self.intp.SourceSatCurrent * (evbs + T1) / self.model_derived.Nvtms + gmin;
+                    newop.cbs = self.intp.SourceSatCurrent * (evbs + self.intp.XExpBVS - T1 - 1.0) + gmin * vbs_jct;
                 }
 
                 1 => {
-                    T2 = vbs_jct / Nvtms;
+                    T2 = vbs_jct / self.model_derived.Nvtms;
                     if T2 < -EXP_THRESHOLD {
                         newop.gbs = gmin;
-                        newop.cbs = SourceSatCurrent * (MIN_EXP - 1.0) + gmin * vbs_jct;
+                        newop.cbs = self.intp.SourceSatCurrent * (MIN_EXP - 1.0) + gmin * vbs_jct;
                     } else if vbs_jct <= self.intp.vjsmFwd {
                         evbs = exp(T2);
-                        newop.gbs = SourceSatCurrent * evbs / Nvtms + gmin;
-                        newop.cbs = SourceSatCurrent * (evbs - 1.0) + gmin * vbs_jct;
+                        newop.gbs = self.intp.SourceSatCurrent * evbs / self.model_derived.Nvtms + gmin;
+                        newop.cbs = self.intp.SourceSatCurrent * (evbs - 1.0) + gmin * vbs_jct;
                     } else {
-                        T0 = self.intp.IVjsmFwd / Nvtms;
+                        T0 = self.intp.IVjsmFwd / self.model_derived.Nvtms;
                         newop.gbs = T0 + gmin;
-                        newop.cbs = self.intp.IVjsmFwd - SourceSatCurrent + T0 * (vbs_jct - self.intp.vjsmFwd) + gmin * vbs_jct;
+                        newop.cbs = self.intp.IVjsmFwd - self.intp.SourceSatCurrent + T0 * (vbs_jct - self.intp.vjsmFwd) + gmin * vbs_jct;
                     }
                 }
                 2 => {
                     if vbs_jct < self.intp.vjsmRev {
-                        T0 = vbs_jct / Nvtms;
+                        T0 = vbs_jct / self.model_derived.Nvtms;
                         if T0 < -EXP_THRESHOLD {
                             evbs = MIN_EXP;
                             devbs_dvb = 0.0;
                         } else {
                             evbs = exp(T0);
-                            devbs_dvb = evbs / Nvtms;
+                            devbs_dvb = evbs / self.model_derived.Nvtms;
                         }
 
                         T1 = evbs - 1.0;
@@ -1017,25 +549,25 @@ impl Bsim4<'_> {
                         newop.gbs = devbs_dvb * T2 + T1 * self.intp.SslpRev + gmin;
                         newop.cbs = T1 * T2 + gmin * vbs_jct;
                     } else if vbs_jct <= self.intp.vjsmFwd {
-                        T0 = vbs_jct / Nvtms;
+                        T0 = vbs_jct / self.model_derived.Nvtms;
                         if T0 < -EXP_THRESHOLD {
                             evbs = MIN_EXP;
                             devbs_dvb = 0.0;
                         } else {
                             evbs = exp(T0);
-                            devbs_dvb = evbs / Nvtms;
+                            devbs_dvb = evbs / self.model_derived.Nvtms;
                         }
 
-                        T1 = (self.model.bvs + vbs_jct) / Nvtms;
+                        T1 = (self.model.bvs + vbs_jct) / self.model_derived.Nvtms;
                         if T1 > EXP_THRESHOLD {
                             T2 = MIN_EXP;
                             T3 = 0.0;
                         } else {
                             T2 = exp(-T1);
-                            T3 = -T2 / Nvtms;
+                            T3 = -T2 / self.model_derived.Nvtms;
                         }
-                        newop.gbs = SourceSatCurrent * (devbs_dvb - self.model.xjbvs * T3) + gmin;
-                        newop.cbs = SourceSatCurrent * (evbs + self.intp.XExpBVS - 1.0 - self.model.xjbvs * T2) + gmin * vbs_jct;
+                        newop.gbs = self.intp.SourceSatCurrent * (devbs_dvb - self.model.xjbvs * T3) + gmin;
+                        newop.cbs = self.intp.SourceSatCurrent * (evbs + self.intp.XExpBVS - 1.0 - self.model.xjbvs * T2) + gmin * vbs_jct;
                     } else {
                         newop.gbs = self.intp.SslpFwd + gmin;
                         newop.cbs = self.intp.IVjsmFwd + self.intp.SslpFwd * (vbs_jct - self.intp.vjsmFwd) + gmin * vbs_jct;
@@ -1045,51 +577,43 @@ impl Bsim4<'_> {
             }
         }
 
-        Nvtmd = self.model_derived.vtm * self.model.njd;
-
-        if (self.intp.Adeff <= 0.0) && (self.intp.Pdeff <= 0.0) {
-            DrainSatCurrent = 0.0;
-        } else {
-            DrainSatCurrent = self.intp.Adeff * self.model_derived.DjctTempSatCurDensity
-                + self.intp.Pdeff * self.model_derived.DjctSidewallTempSatCurDensity
-                + self.size_params.weffCJ * self.intp.nf * self.model_derived.DjctGateSidewallTempSatCurDensity;
-        }
-
-        if DrainSatCurrent <= 0.0 {
+        if self.intp.DrainSatCurrent <= 0.0 {
             newop.gbd = gmin;
             newop.cbd = newop.gbd * vbd_jct;
         } else {
+            let mut evbd: f64;
+            let mut devbd_dvb: f64;
             match self.model.diomod {
                 0 => {
-                    evbd = exp(vbd_jct / Nvtmd);
-                    T1 = self.model.xjbvd * exp(-(self.model.bvd + vbd_jct) / Nvtmd);
-                    newop.gbd = DrainSatCurrent * (evbd + T1) / Nvtmd + gmin;
-                    newop.cbd = DrainSatCurrent * (evbd + self.intp.XExpBVD - T1 - 1.0) + gmin * vbd_jct;
+                    evbd = exp(vbd_jct / self.model_derived.Nvtmd);
+                    T1 = self.model.xjbvd * exp(-(self.model.bvd + vbd_jct) / self.model_derived.Nvtmd);
+                    newop.gbd = self.intp.DrainSatCurrent * (evbd + T1) / self.model_derived.Nvtmd + gmin;
+                    newop.cbd = self.intp.DrainSatCurrent * (evbd + self.intp.XExpBVD - T1 - 1.0) + gmin * vbd_jct;
                 }
                 1 => {
-                    T2 = vbd_jct / Nvtmd;
+                    T2 = vbd_jct / self.model_derived.Nvtmd;
                     if T2 < -EXP_THRESHOLD {
                         newop.gbd = gmin;
-                        newop.cbd = DrainSatCurrent * (MIN_EXP - 1.0) + gmin * vbd_jct;
+                        newop.cbd = self.intp.DrainSatCurrent * (MIN_EXP - 1.0) + gmin * vbd_jct;
                     } else if vbd_jct <= self.intp.vjdmFwd {
                         evbd = exp(T2);
-                        newop.gbd = DrainSatCurrent * evbd / Nvtmd + gmin;
-                        newop.cbd = DrainSatCurrent * (evbd - 1.0) + gmin * vbd_jct;
+                        newop.gbd = self.intp.DrainSatCurrent * evbd / self.model_derived.Nvtmd + gmin;
+                        newop.cbd = self.intp.DrainSatCurrent * (evbd - 1.0) + gmin * vbd_jct;
                     } else {
-                        T0 = self.intp.IVjdmFwd / Nvtmd;
+                        T0 = self.intp.IVjdmFwd / self.model_derived.Nvtmd;
                         newop.gbd = T0 + gmin;
-                        newop.cbd = self.intp.IVjdmFwd - DrainSatCurrent + T0 * (vbd_jct - self.intp.vjdmFwd) + gmin * vbd_jct;
+                        newop.cbd = self.intp.IVjdmFwd - self.intp.DrainSatCurrent + T0 * (vbd_jct - self.intp.vjdmFwd) + gmin * vbd_jct;
                     }
                 }
                 2 => {
                     if vbd_jct < self.intp.vjdmRev {
-                        T0 = vbd_jct / Nvtmd;
+                        T0 = vbd_jct / self.model_derived.Nvtmd;
                         if T0 < -EXP_THRESHOLD {
                             evbd = MIN_EXP;
                             devbd_dvb = 0.0;
                         } else {
                             evbd = exp(T0);
-                            devbd_dvb = evbd / Nvtmd;
+                            devbd_dvb = evbd / self.model_derived.Nvtmd;
                         }
 
                         T1 = evbd - 1.0;
@@ -1097,25 +621,25 @@ impl Bsim4<'_> {
                         newop.gbd = devbd_dvb * T2 + T1 * self.intp.DslpRev + gmin;
                         newop.cbd = T1 * T2 + gmin * vbd_jct;
                     } else if vbd_jct <= self.intp.vjdmFwd {
-                        T0 = vbd_jct / Nvtmd;
+                        T0 = vbd_jct / self.model_derived.Nvtmd;
                         if T0 < -EXP_THRESHOLD {
                             evbd = MIN_EXP;
                             devbd_dvb = 0.0;
                         } else {
                             evbd = exp(T0);
-                            devbd_dvb = evbd / Nvtmd;
+                            devbd_dvb = evbd / self.model_derived.Nvtmd;
                         }
 
-                        T1 = (self.model.bvd + vbd_jct) / Nvtmd;
+                        T1 = (self.model.bvd + vbd_jct) / self.model_derived.Nvtmd;
                         if T1 > EXP_THRESHOLD {
                             T2 = MIN_EXP;
                             T3 = 0.0;
                         } else {
                             T2 = exp(-T1);
-                            T3 = -T2 / Nvtmd;
+                            T3 = -T2 / self.model_derived.Nvtmd;
                         }
-                        newop.gbd = DrainSatCurrent * (devbd_dvb - self.model.xjbvd * T3) + gmin;
-                        newop.cbd = DrainSatCurrent * (evbd + self.intp.XExpBVD - 1.0 - self.model.xjbvd * T2) + gmin * vbd_jct;
+                        newop.gbd = self.intp.DrainSatCurrent * (devbd_dvb - self.model.xjbvd * T3) + gmin;
+                        newop.cbd = self.intp.DrainSatCurrent * (evbd + self.intp.XExpBVD - 1.0 - self.model.xjbvd * T2) + gmin * vbd_jct;
                     } else {
                         newop.gbd = self.intp.DslpFwd + gmin;
                         newop.cbd = self.intp.IVjdmFwd + self.intp.DslpFwd * (vbd_jct - self.intp.vjdmFwd) + gmin * vbd_jct;
@@ -1126,24 +650,16 @@ impl Bsim4<'_> {
         }
 
         /* trap-assisted tunneling and recombination current for reverse bias  */
-        // FIXME: move offline
-        Nvtmrssws = self.model_derived.vtm0 * self.model_derived.njtsswstemp;
-        Nvtmrsswgs = self.model_derived.vtm0 * self.model_derived.njtsswgstemp;
-        Nvtmrss = self.model_derived.vtm0 * self.model_derived.njtsstemp;
-        Nvtmrsswd = self.model_derived.vtm0 * self.model_derived.njtsswdtemp;
-        Nvtmrsswgd = self.model_derived.vtm0 * self.model_derived.njtsswgdtemp;
-        Nvtmrsd = self.model_derived.vtm0 * self.model_derived.njtsdtemp;
-
         if (self.model.vtss - vbs_jct) < (self.model.vtss * 1e-3) {
             T9 = 1.0e3;
-            T0 = -vbs_jct / Nvtmrss * T9;
+            T0 = -vbs_jct / self.model_derived.Nvtmrss * T9;
             T1 = dexpb(T0);
             T10 = dexpc(T0);
-            dT1_dVb = T10 / Nvtmrss * T9;
+            dT1_dVb = T10 / self.model_derived.Nvtmrss * T9;
         } else {
             T9 = 1.0 / (self.model.vtss - vbs_jct);
-            T0 = -vbs_jct / Nvtmrss * self.model.vtss * T9;
-            dT0_dVb = self.model.vtss / Nvtmrss * (T9 + vbs_jct * T9 * T9);
+            T0 = -vbs_jct / self.model_derived.Nvtmrss * self.model.vtss * T9;
+            dT0_dVb = self.model.vtss / self.model_derived.Nvtmrss * (T9 + vbs_jct * T9 * T9);
             T1 = dexpb(T0);
             T10 = dexpc(T0);
             dT1_dVb = T10 * dT0_dVb;
@@ -1151,14 +667,14 @@ impl Bsim4<'_> {
 
         if (self.model.vtsd - vbd_jct) < (self.model.vtsd * 1e-3) {
             T9 = 1.0e3;
-            T0 = -vbd_jct / Nvtmrsd * T9;
+            T0 = -vbd_jct / self.model_derived.Nvtmrsd * T9;
             T2 = dexpb(T0);
             T10 = dexpc(T0);
-            dT2_dVb = T10 / Nvtmrsd * T9;
+            dT2_dVb = T10 / self.model_derived.Nvtmrsd * T9;
         } else {
             T9 = 1.0 / (self.model.vtsd - vbd_jct);
-            T0 = -vbd_jct / Nvtmrsd * self.model.vtsd * T9;
-            dT0_dVb = self.model.vtsd / Nvtmrsd * (T9 + vbd_jct * T9 * T9);
+            T0 = -vbd_jct / self.model_derived.Nvtmrsd * self.model.vtsd * T9;
+            dT0_dVb = self.model.vtsd / self.model_derived.Nvtmrsd * (T9 + vbd_jct * T9 * T9);
             T2 = dexpb(T0);
             T10 = dexpc(T0);
             dT2_dVb = T10 * dT0_dVb;
@@ -1166,14 +682,14 @@ impl Bsim4<'_> {
 
         if (self.model.vtssws - vbs_jct) < (self.model.vtssws * 1e-3) {
             T9 = 1.0e3;
-            T0 = -vbs_jct / Nvtmrssws * T9;
+            T0 = -vbs_jct / self.model_derived.Nvtmrssws * T9;
             T3 = dexpb(T0);
             T10 = dexpc(T0);
-            dT3_dVb = T10 / Nvtmrssws * T9;
+            dT3_dVb = T10 / self.model_derived.Nvtmrssws * T9;
         } else {
             T9 = 1.0 / (self.model.vtssws - vbs_jct);
-            T0 = -vbs_jct / Nvtmrssws * self.model.vtssws * T9;
-            dT0_dVb = self.model.vtssws / Nvtmrssws * (T9 + vbs_jct * T9 * T9);
+            T0 = -vbs_jct / self.model_derived.Nvtmrssws * self.model.vtssws * T9;
+            dT0_dVb = self.model.vtssws / self.model_derived.Nvtmrssws * (T9 + vbs_jct * T9 * T9);
             T3 = dexpb(T0);
             T10 = dexpc(T0);
             dT3_dVb = T10 * dT0_dVb;
@@ -1181,14 +697,14 @@ impl Bsim4<'_> {
 
         if (self.model.vtsswd - vbd_jct) < (self.model.vtsswd * 1e-3) {
             T9 = 1.0e3;
-            T0 = -vbd_jct / Nvtmrsswd * T9;
+            T0 = -vbd_jct / self.model_derived.Nvtmrsswd * T9;
             T4 = dexpb(T0);
             T10 = dexpc(T0);
-            dT4_dVb = T10 / Nvtmrsswd * T9;
+            dT4_dVb = T10 / self.model_derived.Nvtmrsswd * T9;
         } else {
             T9 = 1.0 / (self.model.vtsswd - vbd_jct);
-            T0 = -vbd_jct / Nvtmrsswd * self.model.vtsswd * T9;
-            dT0_dVb = self.model.vtsswd / Nvtmrsswd * (T9 + vbd_jct * T9 * T9);
+            T0 = -vbd_jct / self.model_derived.Nvtmrsswd * self.model.vtsswd * T9;
+            dT0_dVb = self.model.vtsswd / self.model_derived.Nvtmrsswd * (T9 + vbd_jct * T9 * T9);
             T4 = dexpb(T0);
             T10 = dexpc(T0);
             dT4_dVb = T10 * dT0_dVb;
@@ -1196,14 +712,14 @@ impl Bsim4<'_> {
 
         if (self.model.vtsswgs - vbs_jct) < (self.model.vtsswgs * 1e-3) {
             T9 = 1.0e3;
-            T0 = -vbs_jct / Nvtmrsswgs * T9;
+            T0 = -vbs_jct / self.model_derived.Nvtmrsswgs * T9;
             T5 = dexpb(T0);
             T10 = dexpc(T0);
-            dT5_dVb = T10 / Nvtmrsswgs * T9;
+            dT5_dVb = T10 / self.model_derived.Nvtmrsswgs * T9;
         } else {
             T9 = 1.0 / (self.model.vtsswgs - vbs_jct);
-            T0 = -vbs_jct / Nvtmrsswgs * self.model.vtsswgs * T9;
-            dT0_dVb = self.model.vtsswgs / Nvtmrsswgs * (T9 + vbs_jct * T9 * T9);
+            T0 = -vbs_jct / self.model_derived.Nvtmrsswgs * self.model.vtsswgs * T9;
+            dT0_dVb = self.model.vtsswgs / self.model_derived.Nvtmrsswgs * (T9 + vbs_jct * T9 * T9);
             T5 = dexpb(T0);
             T10 = dexpc(T0);
             dT5_dVb = T10 * dT0_dVb;
@@ -1211,14 +727,14 @@ impl Bsim4<'_> {
 
         if (self.model.vtsswgd - vbd_jct) < (self.model.vtsswgd * 1e-3) {
             T9 = 1.0e3;
-            T0 = -vbd_jct / Nvtmrsswgd * T9;
+            T0 = -vbd_jct / self.model_derived.Nvtmrsswgd * T9;
             T6 = dexpb(T0);
             T10 = dexpc(T0);
-            dT6_dVb = T10 / Nvtmrsswgd * T9;
+            dT6_dVb = T10 / self.model_derived.Nvtmrsswgd * T9;
         } else {
             T9 = 1.0 / (self.model.vtsswgd - vbd_jct);
-            T0 = -vbd_jct / Nvtmrsswgd * self.model.vtsswgd * T9;
-            dT0_dVb = self.model.vtsswgd / Nvtmrsswgd * (T9 + vbd_jct * T9 * T9);
+            T0 = -vbd_jct / self.model_derived.Nvtmrsswgd * self.model.vtsswgd * T9;
+            dT0_dVb = self.model.vtsswgd / self.model_derived.Nvtmrsswgd * (T9 + vbd_jct * T9 * T9);
             T6 = dexpb(T0);
             T10 = dexpc(T0);
             dT6_dVb = T10 * dT0_dVb;
@@ -1266,17 +782,17 @@ impl Bsim4<'_> {
         T1 = sqrt(T0 * T0 + 0.004 * T9);
         Vbseff = T9 - 0.5 * (T0 + T1);
         dVbseff_dVb *= 0.5 * (1.0 + T0 / T1);
-        Phis = self.size_params.phi - Vbseff;
-        dPhis_dVb = -1.0;
-        sqrtPhis = sqrt(Phis);
-        dsqrtPhis_dVb = -0.5 / sqrtPhis;
+        let Phis = self.size_params.phi - Vbseff;
+        let dPhis_dVb = -1.0;
+        let sqrtPhis = sqrt(Phis);
+        let dsqrtPhis_dVb = -0.5 / sqrtPhis;
 
         Xdep = self.size_params.Xdep0 * sqrtPhis / self.size_params.sqrtPhi;
         dXdep_dVb = (self.size_params.Xdep0 / self.size_params.sqrtPhi) * dsqrtPhis_dVb;
 
-        Leff = self.size_params.leff;
-        Vtm = self.model_derived.vtm;
-        Vtm0 = self.model_derived.vtm0;
+        let Leff = self.size_params.leff;
+        let Vtm = self.model_derived.vtm;
+        let Vtm0 = self.model_derived.vtm0;
 
         /* Vth Calculation */
         T3 = sqrt(Xdep);
@@ -1340,11 +856,10 @@ impl Bsim4<'_> {
         T2 = T0 * V0;
         dT2_dVb = self.size_params.dvt0w * dT5_dVb * V0;
 
-        //   TempRatio =  ckt->CKTtemp / self.model.tnom - 1.0;
         T0 = sqrt(1.0 + self.size_params.lpe0 / Leff);
         T1 = self.size_params.k1ox * (T0 - 1.0) * self.size_params.sqrtPhi
             + (self.size_params.kt1 + self.size_params.kt1l / Leff + self.size_params.kt2 * Vbseff) * self.model_derived.TempRatio;
-        Vth_NarrowW = toxe * self.size_params.phi / (self.size_params.weff + self.size_params.w0);
+        let Vth_NarrowW = toxe * self.size_params.phi / (self.size_params.weff + self.size_params.w0);
 
         T3 = self.intp.eta0 + self.size_params.etab * Vbseff;
         if T3 < 1.0e-4 {
@@ -1410,8 +925,8 @@ impl Bsim4<'_> {
                 T4 = self.model_derived.vtm0 * log(Leff / T3);
                 dT4_dVd = -self.model_derived.vtm0 * dT3_dVd / T3;
             }
-            dDITS_Sft_dVd = dn_dVd * T4 + n * dT4_dVd;
-            dDITS_Sft_dVb = T4 * dn_dVb;
+            let dDITS_Sft_dVd = dn_dVd * T4 + n * dT4_dVd;
+            let dDITS_Sft_dVb = T4 * dn_dVb;
 
             Vth -= n * T4;
             dVth_dVd -= dDITS_Sft_dVd;
@@ -1419,17 +934,12 @@ impl Bsim4<'_> {
         }
 
         /* v4.7 DITS_SFT2  */
-        if ((self.size_params.dvtp4 == 0.0) || (self.size_params.dvtp2factor == 0.0)) {
-            T0 = 0.0;
-            DITS_Sft2 = 0.0;
-        } else {
-            //T0 = exp(2.0 * self.size_params.dvtp4 * Vds);   /* beta code */
+        if !((self.size_params.dvtp4 == 0.0) || (self.size_params.dvtp2factor == 0.0)) {
             T1 = 2.0 * self.size_params.dvtp4 * Vds;
             T0 = dexpb(T1);
             T10 = dexpc(T1);
-            DITS_Sft2 = self.size_params.dvtp2factor * (T0 - 1.0) / (T0 + 1.0);
-            //dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T0 / ((T0+1) * (T0+1));   /* beta code */
-            dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T10 / ((T0 + 1.0) * (T0 + 1.0));
+            let DITS_Sft2 = self.size_params.dvtp2factor * (T0 - 1.0) / (T0 + 1.0);
+            let dDITS_Sft2_dVd = self.size_params.dvtp2factor * self.size_params.dvtp4 * 4.0 * T10 / ((T0 + 1.0) * (T0 + 1.0));
             Vth -= DITS_Sft2;
             dVth_dVd -= dDITS_Sft2_dVd;
         }
@@ -1481,7 +991,7 @@ impl Bsim4<'_> {
             dT10_dVb = T10 * dn_dVb;
             T10 *= n;
         } else {
-            ExpVgst = exp(T2);
+            let ExpVgst = exp(T2);
             T3 = Vtm * log(1.0 + ExpVgst);
             T10 = n * T3;
             dT10_dVg = self.size_params.mstar * ExpVgst / (1.0 + ExpVgst);
@@ -1505,7 +1015,7 @@ impl Bsim4<'_> {
             dT9_dVd = dn_dVd * T3;
             dT9_dVb = dn_dVb * T3;
         } else {
-            ExpVgst = exp(T2);
+            let ExpVgst = exp(T2);
             T3 = self.model_derived.coxe / self.size_params.cdep0;
             T4 = T3 * ExpVgst;
             T5 = T1 * T4 / T0;
@@ -1524,11 +1034,11 @@ impl Bsim4<'_> {
 
         /* Calculate Effective Channel Geometry */
         T9 = sqrtPhis - self.size_params.sqrtPhi;
-        Weff = self.size_params.weff - 2.0 * (self.size_params.dwg * Vgsteff + self.size_params.dwb * T9);
-        dWeff_dVg = -2.0 * self.size_params.dwg;
-        dWeff_dVb = -2.0 * self.size_params.dwb * dsqrtPhis_dVb;
+        let mut Weff = self.size_params.weff - 2.0 * (self.size_params.dwg * Vgsteff + self.size_params.dwb * T9);
+        let mut dWeff_dVg = -2.0 * self.size_params.dwg;
+        let mut dWeff_dVb = -2.0 * self.size_params.dwb * dsqrtPhis_dVb;
 
-        if (Weff < 2.0e-8) {
+        if Weff < 2.0e-8 {
             /* to avoid the discontinuity problem due to Weff*/
             T0 = 1.0 / (6.0e-8 - 2.0 * Weff);
             Weff = 2.0e-8 * (4.0e-8 - Weff) * T0;
@@ -1537,11 +1047,10 @@ impl Bsim4<'_> {
             dWeff_dVb *= T0;
         }
 
-        if self.model.rdsmod == 1 {
-            Rds = 0.0;
-            dRds_dVg = 0.0;
-            dRds_dVb = 0.0;
-        } else {
+        let mut Rds = 0.0;
+        let mut dRds_dVg = 0.0;
+        let mut dRds_dVb = 0.0;
+        if self.model.rdsmod > 1 {
             T0 = 1.0 + self.size_params.prwg * Vgsteff;
             dT0_dVg = -self.size_params.prwg / T0 / T0;
             T1 = self.size_params.prwb * T9;
@@ -1581,15 +1090,15 @@ impl Bsim4<'_> {
         T6 = T5 * T5;
         T7 = T5 * T6;
 
-        Abulk0 = 1.0 + T1 * T2;
-        dAbulk0_dVb = T1 * tmp2 * dT2_dVb + T2 * dT1_dVb;
+        let mut Abulk0 = 1.0 + T1 * T2;
+        let mut dAbulk0_dVb = T1 * tmp2 * dT2_dVb + T2 * dT1_dVb;
 
         T8 = self.size_params.ags * self.size_params.a0 * T7;
-        dAbulk_dVg = -T1 * T8;
-        Abulk = Abulk0 + dAbulk_dVg * Vgsteff;
-        dAbulk_dVb = dAbulk0_dVb - T8 * Vgsteff * (dT1_dVb + 3.0 * T1 * dT2_dVb);
+        let mut dAbulk_dVg = -T1 * T8;
+        let mut Abulk = Abulk0 + dAbulk_dVg * Vgsteff;
+        let mut dAbulk_dVb = dAbulk0_dVb - T8 * Vgsteff * (dT1_dVb + 3.0 * T1 * dT2_dVb);
 
-        if (Abulk0 < 0.1) {
+        if Abulk0 < 0.1 {
             /* added to avoid the problems caused by Abulk0 */
             T9 = 1.0 / (3.0 - 20.0 * Abulk0);
             Abulk0 = (0.2 - Abulk0) * T9;
@@ -1621,12 +1130,17 @@ impl Bsim4<'_> {
         Abulk0 *= T0;
 
         /* Mobility calculation */
+
+        let mut Denomi: f64;
+        let mut dDenomi_dVg: f64;
+        let mut dDenomi_dVd: f64;
+        let mut dDenomi_dVb: f64;
+
         if self.model.mtrlmod != 0 && self.model.mtrlcompatmod == 0 {
             T14 = 2.0 * self.model.p() * (self.model.phig - self.model.easub - 0.5 * self.model_derived.Eg0 + 0.45);
         } else {
             T14 = 0.0;
         }
-
         if self.model.mobmod == 0 {
             T0 = Vgsteff + Vth + Vth - T14;
             T2 = self.size_params.ua + self.size_params.uc * Vbseff;
@@ -1680,7 +1194,7 @@ impl Bsim4<'_> {
             T13 = 2.0 * (T11 + T8);
             dDenomi_dVd = T13 * dVth_dVd;
             dDenomi_dVb = T13 * dVth_dVb + T1 * self.size_params.uc;
-        } else if (self.model.mobmod == 4) {
+        } else if self.model.mobmod == 4 {
             T0 = Vgsteff + self.intp.vtfbphi1 - T14;
             T2 = self.size_params.ua + self.size_params.uc * Vbseff;
             T3 = T0 / toxe;
@@ -1695,7 +1209,7 @@ impl Bsim4<'_> {
             dDenomi_dVd = 0.0;
             dDenomi_dVb = self.size_params.uc * T3;
             dDenomi_dVg += T7;
-        } else if (self.model.mobmod == 5) {
+        } else if self.model.mobmod == 5 {
             T0 = Vgsteff + self.intp.vtfbphi1 - T14;
             T2 = 1.0 + self.size_params.uc * Vbseff;
             T3 = T0 / toxe;
@@ -1711,7 +1225,7 @@ impl Bsim4<'_> {
             dDenomi_dVd = 0.0;
             dDenomi_dVb = self.size_params.uc * T4;
             dDenomi_dVg += T7;
-        } else if (self.model.mobmod == 6) {
+        } else if self.model.mobmod == 6 {
             T0 = (Vgsteff + self.intp.vtfbphi1) / toxe;
             T1 = exp(self.size_params.eu * log(T0));
             dT1_dVg = T1 * self.size_params.eu / T0 / toxe;
@@ -1761,30 +1275,32 @@ impl Bsim4<'_> {
         }
 
         newop.ueff = self.intp.u0temp / Denomi;
-        ueff = newop.ueff;
+        let ueff = newop.ueff;
         T9 = -ueff / Denomi;
-        dueff_dVg = T9 * dDenomi_dVg;
-        dueff_dVd = T9 * dDenomi_dVd;
-        dueff_dVb = T9 * dDenomi_dVb;
+        let dueff_dVg = T9 * dDenomi_dVg;
+        let dueff_dVd = T9 * dDenomi_dVd;
+        let dueff_dVb = T9 * dDenomi_dVb;
 
         /* Saturation Drain Voltage  Vdsat */
         WVCox = Weff * self.intp.vsattemp * self.model_derived.coxe;
         WVCoxRds = WVCox * Rds;
 
-        Esat = 2.0 * self.intp.vsattemp / ueff;
+        let Esat = 2.0 * self.intp.vsattemp / ueff;
         newop.EsatL = Esat * Leff;
-        EsatL = newop.EsatL;
+        let EsatL = newop.EsatL;
         T0 = -EsatL / ueff;
-        dEsatL_dVg = T0 * dueff_dVg;
-        dEsatL_dVd = T0 * dueff_dVd;
-        dEsatL_dVb = T0 * dueff_dVb;
+        let dEsatL_dVg = T0 * dueff_dVg;
+        let dEsatL_dVd = T0 * dueff_dVd;
+        let dEsatL_dVb = T0 * dueff_dVb;
+
+        // FIXME: BAIL OUT!
+        return Stamps::new();
 
         /* Sqrt() */
-        a1 = self.size_params.a1;
-        if a1 == 0.0 {
+        if self.size_params.a1 == 0.0 {
             Lambda = self.size_params.a2;
             dLambda_dVg = 0.0;
-        } else if a1 > 0.0 {
+        } else if self.size_params.a1 > 0.0 {
             T0 = 1.0 - self.size_params.a2;
             T1 = T0 - self.size_params.a1 * Vgsteff - 0.0001;
             T2 = sqrt(T1 * T1 + 0.0004 * T0);
@@ -1894,7 +1410,7 @@ impl Bsim4<'_> {
         if Vdseff > Vds {
             Vdseff = Vds;
         }
-        diffVds = Vds - Vdseff;
+        let diffVds = Vds - Vdseff;
         newop.Vdseff = Vdseff;
 
         /* Velocity Overshoot */
@@ -1958,10 +1474,10 @@ impl Bsim4<'_> {
         dT1_dVg = -2.0 * tmp1 + WVCoxRds * (Abulk * tmp2 + dAbulk_dVg);
         dT1_dVb = dAbulk_dVb * WVCoxRds + T9 * tmp3;
 
-        Vasat = T0 / T1;
-        dVasat_dVg = (dT0_dVg - Vasat * dT1_dVg) / T1;
-        dVasat_dVb = (dT0_dVb - Vasat * dT1_dVb) / T1;
-        dVasat_dVd = dT0_dVd / T1;
+        let Vasat = T0 / T1;
+        let dVasat_dVg = (dT0_dVg - Vasat * dT1_dVg) / T1;
+        let dVasat_dVb = (dT0_dVb - Vasat * dT1_dVb) / T1;
+        let dVasat_dVd = dT0_dVd / T1;
 
         /* Calculate Idl first */
 
@@ -1973,19 +1489,19 @@ impl Bsim4<'_> {
         tmp3 = exp(self.model.bdos * 0.7 * log(T0));
         T1 = 1.0 + tmp3;
         T2 = self.model.bdos * 0.7 * tmp3 / T0;
-        Tcen = self.model.ados * 1.9e-9 / T1;
-        dTcen_dVg = -Tcen * T2 * dT0_dVg / T1;
+        let Tcen = self.model.ados * 1.9e-9 / T1;
+        let dTcen_dVg = -Tcen * T2 * dT0_dVg / T1;
 
-        Coxeff = epssub * self.intp.coxp / (epssub + self.intp.coxp * Tcen);
+        let Coxeff = epssub * self.intp.coxp / (epssub + self.intp.coxp * Tcen);
         newop.Coxeff = Coxeff;
-        dCoxeff_dVg = -Coxeff * Coxeff * dTcen_dVg / epssub;
+        let dCoxeff_dVg = -Coxeff * Coxeff * dTcen_dVg / epssub;
 
-        CoxeffWovL = Coxeff * Weff / Leff;
-        beta = ueff * CoxeffWovL;
+        let CoxeffWovL = Coxeff * Weff / Leff;
+        let beta = ueff * CoxeffWovL;
         T3 = ueff / Leff;
-        dbeta_dVg = CoxeffWovL * dueff_dVg + T3 * (Weff * dCoxeff_dVg + Coxeff * dWeff_dVg);
-        dbeta_dVd = CoxeffWovL * dueff_dVd;
-        dbeta_dVb = CoxeffWovL * dueff_dVb + T3 * Coxeff * dWeff_dVb;
+        let dbeta_dVg = CoxeffWovL * dueff_dVg + T3 * (Weff * dCoxeff_dVg + Coxeff * dWeff_dVg);
+        let dbeta_dVd = CoxeffWovL * dueff_dVd;
+        let dbeta_dVb = CoxeffWovL * dueff_dVb + T3 * Coxeff * dWeff_dVb;
 
         newop.AbovVgst2Vtm = Abulk / Vgst2Vtm;
         T0 = 1.0 - 0.5 * Vdseff * newop.AbovVgst2Vtm;
@@ -2000,22 +1516,22 @@ impl Bsim4<'_> {
 
         T9 = Vdseff / EsatL;
         fgche2 = 1.0 + T9;
-        dfgche2_dVg = (dVdseff_dVg - T9 * dEsatL_dVg) / EsatL;
-        dfgche2_dVd = (dVdseff_dVd - T9 * dEsatL_dVd) / EsatL;
-        dfgche2_dVb = (dVdseff_dVb - T9 * dEsatL_dVb) / EsatL;
+        let dfgche2_dVg = (dVdseff_dVg - T9 * dEsatL_dVg) / EsatL;
+        let dfgche2_dVd = (dVdseff_dVd - T9 * dEsatL_dVd) / EsatL;
+        let dfgche2_dVb = (dVdseff_dVb - T9 * dEsatL_dVb) / EsatL;
 
-        gche = beta * fgche1 / fgche2;
-        dgche_dVg = (beta * dfgche1_dVg + fgche1 * dbeta_dVg - gche * dfgche2_dVg) / fgche2;
-        dgche_dVd = (beta * dfgche1_dVd + fgche1 * dbeta_dVd - gche * dfgche2_dVd) / fgche2;
-        dgche_dVb = (beta * dfgche1_dVb + fgche1 * dbeta_dVb - gche * dfgche2_dVb) / fgche2;
+        let gche = beta * fgche1 / fgche2;
+        let dgche_dVg = (beta * dfgche1_dVg + fgche1 * dbeta_dVg - gche * dfgche2_dVg) / fgche2;
+        let dgche_dVd = (beta * dfgche1_dVd + fgche1 * dbeta_dVd - gche * dfgche2_dVd) / fgche2;
+        let dgche_dVb = (beta * dfgche1_dVb + fgche1 * dbeta_dVb - gche * dfgche2_dVb) / fgche2;
 
         T0 = 1.0 + gche * Rds;
-        Idl = gche / T0;
+        let Idl = gche / T0;
         T1 = (1.0 - Idl * Rds) / T0;
         T2 = Idl * Idl;
-        dIdl_dVg = T1 * dgche_dVg - T2 * dRds_dVg;
-        dIdl_dVd = T1 * dgche_dVd;
-        dIdl_dVb = T1 * dgche_dVb - T2 * dRds_dVb;
+        let dIdl_dVg = T1 * dgche_dVg - T2 * dRds_dVg;
+        let dIdl_dVd = T1 * dgche_dVd;
+        let dIdl_dVb = T1 * dgche_dVb - T2 * dRds_dVb;
 
         /* Calculate degradation factor due to pocket implant */
 
@@ -2031,6 +1547,12 @@ impl Bsim4<'_> {
         /* Calculate VACLM */
         T8 = self.size_params.pvag / EsatL;
         T9 = T8 * Vgsteff;
+
+        let mut PvagTerm: f64;
+        let mut dPvagTerm_dVg: f64;
+        let mut dPvagTerm_dVd: f64;
+        let mut dPvagTerm_dVb: f64;
+
         if T9 > -0.9 {
             PvagTerm = 1.0 + T9;
             dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / EsatL);
@@ -2045,6 +1567,15 @@ impl Bsim4<'_> {
             dPvagTerm_dVb = -T9 * dEsatL_dVb;
             dPvagTerm_dVd = -T9 * dEsatL_dVd;
         }
+
+        let mut Cclm: f64;
+        let mut dCclm_dVg: f64;
+        let mut dCclm_dVd: f64;
+        let mut dCclm_dVb: f64;
+        let mut VACLM: f64;
+        let mut dVACLM_dVg: f64;
+        let mut dVACLM_dVd: f64;
+        let mut dVACLM_dVb: f64;
 
         if (self.size_params.pclm > MIN_EXP) && (diffVds > 1.0e-10) {
             T0 = 1.0 + Rds * Idl;
@@ -2126,10 +1657,10 @@ impl Bsim4<'_> {
         }
 
         /* Calculate Va */
-        Va = Vasat + VACLM;
-        dVa_dVg = dVasat_dVg + dVACLM_dVg;
-        dVa_dVb = dVasat_dVb + dVACLM_dVb;
-        dVa_dVd = dVasat_dVd + dVACLM_dVd;
+        let Va = Vasat + VACLM;
+        let dVa_dVg = dVasat_dVg + dVACLM_dVg;
+        let dVa_dVb = dVasat_dVb + dVACLM_dVb;
+        let dVa_dVd = dVasat_dVd + dVACLM_dVd;
 
         /* Calculate VADITS */
         T0 = self.size_params.pditsd * Vds;
@@ -2154,7 +1685,11 @@ impl Bsim4<'_> {
         }
 
         /* Calculate VASCBE */
-        if ((self.size_params.pscbe2 > 0.0) && (self.size_params.pscbe1 >= 0.0)) {
+        let mut VASCBE = MAX_EXP;
+        let mut dVASCBE_dVg = 0.0;
+        let mut dVASCBE_dVd = 0.0;
+        let mut dVASCBE_dVb = 0.0;
+        if self.size_params.pscbe2 > 0.0 && self.size_params.pscbe1 >= 0.0 {
             if diffVds > self.size_params.pscbe1 * self.size_params.litl / EXP_THRESHOLD {
                 T0 = self.size_params.pscbe1 * self.size_params.litl / diffVds;
                 VASCBE = Leff * exp(T0) / self.size_params.pscbe2;
@@ -2168,11 +1703,6 @@ impl Bsim4<'_> {
                 dVASCBE_dVd = 0.0;
                 dVASCBE_dVb = 0.0;
             }
-        } else {
-            VASCBE = MAX_EXP;
-            dVASCBE_dVg = 0.0;
-            dVASCBE_dVd = 0.0;
-            dVASCBE_dVb = 0.0;
         }
 
         /* Add DIBL to Ids */
@@ -2263,7 +1793,8 @@ impl Bsim4<'_> {
         Gds = Ids * (dVdseff_dVd + dVdseff_dVg * dVgsteff_dVd) + Vdseff * tmp1;
         Gmb = (Ids * (dVdseff_dVb + dVdseff_dVg * dVgsteff_dVb) + Vdseff * tmp2) * dVbseff_dVb;
 
-        cdrain = Ids * Vdseff;
+        // And we have an initial drain current!
+        let mut cdrain = Ids * Vdseff;
 
         /* Source End Velocity Limit  */
         // if ((self.model.vtlGiven) && (self.model.vtl > 0.0)) {
@@ -2276,36 +1807,30 @@ impl Bsim4<'_> {
             T11 = T12 / Vgsteff;
             T10 = -T11 / Vgsteff;
             vs = cdrain * T11; /* vs */
-            dvs_dVg = Gm * T11 + cdrain * T10 * dVgsteff_dVg;
-            dvs_dVd = Gds * T11 + cdrain * T10 * dVgsteff_dVd;
-            dvs_dVb = Gmb * T11 + cdrain * T10 * dVgsteff_dVb;
+            let dvs_dVg = Gm * T11 + cdrain * T10 * dVgsteff_dVg;
+            let dvs_dVd = Gds * T11 + cdrain * T10 * dVgsteff_dVd;
+            let dvs_dVb = Gmb * T11 + cdrain * T10 * dVgsteff_dVb;
             T0 = 6.0;
             T1 = vs / (self.size_params.vtl * self.size_params.tfactor);
             if T1 > 0.0 {
                 T2 = 1.0 + exp(T0 * log(T1));
                 T3 = (T2 - 1.0) * T0 / vs;
-                Fsevl = 1.0 / exp(log(T2) / T0);
-                dT2_dVg = T3 * dvs_dVg;
-                dT2_dVd = T3 * dvs_dVd;
-                dT2_dVb = T3 * dvs_dVb;
+                let Fsevl = 1.0 / exp(log(T2) / T0);
+                let dT2_dVg = T3 * dvs_dVg;
+                let dT2_dVd = T3 * dvs_dVd;
+                let dT2_dVb = T3 * dvs_dVb;
                 T4 = -1.0 / T0 * Fsevl / T2;
-                dFsevl_dVg = T4 * dT2_dVg;
-                dFsevl_dVd = T4 * dT2_dVd;
-                dFsevl_dVb = T4 * dT2_dVb;
-            } else {
-                Fsevl = 1.0;
-                dFsevl_dVg = 0.0;
-                dFsevl_dVd = 0.0;
-                dFsevl_dVb = 0.0;
+                let dFsevl_dVg = T4 * dT2_dVg;
+                let dFsevl_dVd = T4 * dT2_dVd;
+                let dFsevl_dVb = T4 * dT2_dVb;
+                Gm *= Fsevl;
+                Gm += cdrain * dFsevl_dVg;
+                Gmb *= Fsevl;
+                Gmb += cdrain * dFsevl_dVb;
+                Gds *= Fsevl;
+                Gds += cdrain * dFsevl_dVd;
+                cdrain *= Fsevl;
             }
-            Gm *= Fsevl;
-            Gm += cdrain * dFsevl_dVg;
-            Gmb *= Fsevl;
-            Gmb += cdrain * dFsevl_dVb;
-            Gds *= Fsevl;
-            Gds += cdrain * dFsevl_dVd;
-
-            cdrain *= Fsevl;
         }
 
         newop.gds = Gds;
@@ -2357,28 +1882,28 @@ impl Bsim4<'_> {
             dvgs_eff_dvg = vgs_eff / T1;
 
             T0 = 1.0 + self.size_params.prwg * vgs_eff;
-            dT0_dvg = -self.size_params.prwg / T0 / T0 * dvgs_eff_dvg;
+            let dT0_dvg = -self.size_params.prwg / T0 / T0 * dvgs_eff_dvg;
             T1 = -self.size_params.prwb * vbs;
-            dT1_dvb = -self.size_params.prwb;
+            let dT1_dvb = -self.size_params.prwb;
 
             T2 = 1.0 / T0 + T1;
             T3 = T2 + sqrt(T2 * T2 + 0.01);
-            dT3_dvg = T3 / (T3 - T2);
-            dT3_dvb = dT3_dvg * dT1_dvb;
-            dT3_dvg *= dT0_dvg;
+            let dT3_dvg = T3 / (T3 - T2);
+            let dT3_dvb = dT3_dvg * dT1_dvb;
+            let dT3_dvg2 = dT3_dvg * dT0_dvg;
 
             T4 = self.size_params.rs0 * 0.5;
-            Rs = self.size_params.rswmin + T3 * T4;
-            dRs_dvg = T4 * dT3_dvg;
-            dRs_dvb = T4 * dT3_dvb;
+            let Rs = self.size_params.rswmin + T3 * T4;
+            let dRs_dvg = T4 * dT3_dvg2;
+            let dRs_dvb = T4 * dT3_dvb;
 
             T0 = 1.0 + self.intp.sourceConductance * Rs;
             newop.gstot = self.intp.sourceConductance / T0;
             T0 = -newop.gstot * newop.gstot;
-            dgstot_dvd = 0.0;
-            dgstot_dvg = T0 * dRs_dvg;
-            dgstot_dvb = T0 * dRs_dvb;
-            dgstot_dvs = -(dgstot_dvg + dgstot_dvb + dgstot_dvd);
+            let dgstot_dvd = 0.0;
+            let dgstot_dvg = T0 * dRs_dvg;
+            let dgstot_dvb = T0 * dRs_dvb;
+            let dgstot_dvs = -(dgstot_dvg + dgstot_dvb + dgstot_dvd);
 
             /* Rd(V) */
             T0 = vgd - self.size_params.vfbsd;
@@ -2387,28 +1912,28 @@ impl Bsim4<'_> {
             dvgd_eff_dvg = vgd_eff / T1;
 
             T0 = 1.0 + self.size_params.prwg * vgd_eff;
-            dT0_dvg = -self.size_params.prwg / T0 / T0 * dvgd_eff_dvg;
+            let dT0_dvg = -self.size_params.prwg / T0 / T0 * dvgd_eff_dvg;
             T1 = -self.size_params.prwb * vbd;
-            dT1_dvb = -self.size_params.prwb;
+            let dT1_dvb = -self.size_params.prwb;
 
             T2 = 1.0 / T0 + T1;
             T3 = T2 + sqrt(T2 * T2 + 0.01);
-            dT3_dvg = T3 / (T3 - T2);
-            dT3_dvb = dT3_dvg * dT1_dvb;
-            dT3_dvg *= dT0_dvg;
+            let dT3_dvg = T3 / (T3 - T2);
+            let dT3_dvb = dT3_dvg * dT1_dvb;
+            let dT3_dvg2 = dT3_dvg * dT0_dvg;
 
             T4 = self.size_params.rd0 * 0.5;
-            Rd = self.size_params.rdwmin + T3 * T4;
-            dRd_dvg = T4 * dT3_dvg;
-            dRd_dvb = T4 * dT3_dvb;
+            let Rd = self.size_params.rdwmin + T3 * T4;
+            let dRd_dvg = T4 * dT3_dvg2;
+            let dRd_dvb = T4 * dT3_dvb;
 
             T0 = 1.0 + self.intp.drainConductance * Rd;
             newop.gdtot = self.intp.drainConductance / T0;
             T0 = -newop.gdtot * newop.gdtot;
-            dgdtot_dvs = 0.0;
-            dgdtot_dvg = T0 * dRd_dvg;
-            dgdtot_dvb = T0 * dRd_dvb;
-            dgdtot_dvd = -(dgdtot_dvg + dgdtot_dvb + dgdtot_dvs);
+            let dgdtot_dvs = 0.0;
+            let dgdtot_dvg = T0 * dRd_dvg;
+            let dgdtot_dvb = T0 * dRd_dvb;
+            let dgdtot_dvd = -(dgdtot_dvg + dgdtot_dvb + dgdtot_dvs);
 
             newop.gstotd = vses * dgstot_dvd;
             newop.gstotg = vses * dgstot_dvg;
@@ -2434,7 +1959,6 @@ impl Bsim4<'_> {
         }
 
         /* GIDL/GISL Models */
-
         if self.model.mtrlmod == 0 {
             T0 = 3.0 * toxe;
         } else {
@@ -2442,7 +1966,6 @@ impl Bsim4<'_> {
         }
 
         /* Calculate GIDL current */
-
         vgs_eff = newop.vgs_eff;
         dvgs_eff_dvg = newop.dvgs_eff_dvg;
         vgd_eff = newop.vgd_eff;
@@ -2541,7 +2064,7 @@ impl Bsim4<'_> {
                 T1 = (-vds - self.size_params.rgisl * vgd_eff - self.size_params.egisl + self.size_params.vfbsd) / T0;
             }
 
-            if ((self.size_params.agisl <= 0.0) || (self.size_params.bgisl <= 0.0) || (T1 <= 0.0) || (self.size_params.cgisl < 0.0)) {
+            if (self.size_params.agisl <= 0.0) || (self.size_params.bgisl <= 0.0) || (T1 <= 0.0) || (self.size_params.cgisl < 0.0) {
                 Igisl = 0.0;
                 Ggisls = 0.0;
                 Ggislg = 0.0;
@@ -2640,23 +2163,21 @@ impl Bsim4<'_> {
         /* Calculate gate tunneling current */
         if (self.model.igcmod != 0) || (self.model.igbmod != 0) {
             Vfb = self.intp.vfbzb;
-            V3 = Vfb - Vgs_eff + Vbseff - DELTA_3;
+            let V3 = Vfb - Vgs_eff + Vbseff - DELTA_3;
             if Vfb <= 0.0 {
                 T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * Vfb);
             } else {
                 T0 = sqrt(V3 * V3 + 4.0 * DELTA_3 * Vfb);
             }
             T1 = 0.5 * (1.0 + V3 / T0);
-            Vfbeff = Vfb - 0.5 * (V3 + T0);
-            dVfbeff_dVg = T1 * dVgs_eff_dVg;
-            dVfbeff_dVb = -T1;
+            let Vfbeff = Vfb - 0.5 * (V3 + T0);
+            let dVfbeff_dVg = T1 * dVgs_eff_dVg;
+            let dVfbeff_dVb = -T1;
 
             Voxacc = Vfb - Vfbeff;
             dVoxacc_dVg = -dVfbeff_dVg;
             dVoxacc_dVb = -dVfbeff_dVb;
-            if (Voxacc < 0.0)
-            /* WDLiu: Avoiding numerical instability. */
-            {
+            if Voxacc < 0.0 {
                 Voxacc = 0.0;
                 dVoxacc_dVg = 0.0;
                 dVoxacc_dVb = 0.0;
@@ -2691,9 +2212,8 @@ impl Bsim4<'_> {
 
         if self.model.tempmod < 2 {
             tmp = Vtm;
-        } else
-        /* self.model.tempmod = 2, 3*/
-        {
+        } else {
+            /* self.model.tempmod = 2, 3*/
             tmp = Vtm0;
         }
         if self.model.igcmod != 0 {
@@ -2767,11 +2287,15 @@ impl Bsim4<'_> {
                 dT6_dVg *= dVoxdepinv_dVg;
             }
 
-            Igc = T11 * T2 * T6;
-            dIgc_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
-            dIgc_dVd = T11 * (T2 * dT6_dVd + T6 * dT2_dVd);
-            dIgc_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
+            let Igc = T11 * T2 * T6;
+            let dIgc_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+            let dIgc_dVd = T11 * (T2 * dT6_dVd + T6 * dT2_dVd);
+            let dIgc_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
 
+            let mut Pigcd: f64;
+            let mut dPigcd_dVg: f64;
+            let mut dPigcd_dVd: f64;
+            let mut dPigcd_dVb: f64;
             if self.model.pigcd == 0.0 {
                 // FIXME: reference implementation condition is "if pigcd given",
                 // maybe make this an Option.
@@ -2826,20 +2350,20 @@ impl Bsim4<'_> {
             dT10_dVd = (dT9_dVd - dT7_dVd - T10 * dT8_dVd) / T8;
             dT10_dVb = (dT9_dVb - dT7_dVb - T10 * dT8_dVb) / T8;
 
-            Igcs = Igc * T10;
-            dIgcs_dVg = dIgc_dVg * T10 + Igc * dT10_dVg;
-            dIgcs_dVd = dIgc_dVd * T10 + Igc * dT10_dVd;
-            dIgcs_dVb = dIgc_dVb * T10 + Igc * dT10_dVb;
+            let Igcs = Igc * T10;
+            let dIgcs_dVg = dIgc_dVg * T10 + Igc * dT10_dVg;
+            let dIgcs_dVd = dIgc_dVd * T10 + Igc * dT10_dVd;
+            let dIgcs_dVb = dIgc_dVb * T10 + Igc * dT10_dVb;
 
             T1 = T9 - 1.0 - 1.0e-4;
             T10 = (T7 * T9 - T1) / T8;
             dT10_dVg = (dT7_dVg * T9 + (T7 - 1.0) * dT9_dVg - T10 * dT8_dVg) / T8;
             dT10_dVd = (dT7_dVd * T9 + (T7 - 1.0) * dT9_dVd - T10 * dT8_dVd) / T8;
             dT10_dVb = (dT7_dVb * T9 + (T7 - 1.0) * dT9_dVb - T10 * dT8_dVb) / T8;
-            Igcd = Igc * T10;
-            dIgcd_dVg = dIgc_dVg * T10 + Igc * dT10_dVg;
-            dIgcd_dVd = dIgc_dVd * T10 + Igc * dT10_dVd;
-            dIgcd_dVb = dIgc_dVb * T10 + Igc * dT10_dVb;
+            let Igcd = Igc * T10;
+            let dIgcd_dVg = dIgc_dVg * T10 + Igc * dT10_dVg;
+            let dIgcd_dVd = dIgc_dVd * T10 + Igc * dT10_dVd;
+            let dIgcd_dVb = dIgc_dVb * T10 + Igc * dT10_dVb;
 
             newop.Igcs = Igcs;
             newop.gIgcsg = dIgcs_dVg;
@@ -2871,9 +2395,9 @@ impl Bsim4<'_> {
                 T6 = exp(T5);
                 dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * vgs_eff) * dvgs_eff_dvg;
             }
-            Igs = T11 * T2 * T6;
-            dIgs_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
-            dIgs_dVs = -dIgs_dVg;
+            let Igs = T11 * T2 * T6;
+            let dIgs_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+            let dIgs_dVs = -dIgs_dVg;
 
             T0 = vgd - (self.size_params.vfbsd + self.size_params.vfbsdoff);
             vgd_eff = sqrt(T0 * T0 + 1.0e-4);
@@ -2895,9 +2419,9 @@ impl Bsim4<'_> {
                 T6 = exp(T5);
                 dT6_dVg = T6 * T12 * (T3 - 2.0 * T4 * vgd_eff) * dvgd_eff_dvg;
             }
-            Igd = T11 * T2 * T6;
-            dIgd_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
-            dIgd_dVd = -dIgd_dVg;
+            let Igd = T11 * T2 * T6;
+            let dIgd_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+            let dIgd_dVd = -dIgd_dVg;
 
             newop.Igs = Igs;
             newop.gIgsg = dIgs_dVg;
@@ -2966,9 +2490,9 @@ impl Bsim4<'_> {
                 dT6_dVg *= dVoxacc_dVg;
             }
 
-            Igbacc = T11 * T2 * T6;
-            dIgbacc_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
-            dIgbacc_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
+            let Igbacc = T11 * T2 * T6;
+            let dIgbacc_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+            let dIgbacc_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
 
             T0 = tmp * self.size_params.nigbinv;
             T1 = Voxdepinv - self.size_params.eigbinv;
@@ -3021,10 +2545,10 @@ impl Bsim4<'_> {
                 dT6_dVg *= dVoxdepinv_dVg;
             }
 
-            Igbinv = T11 * T2 * T6;
-            dIgbinv_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
-            dIgbinv_dVd = T11 * (T2 * dT6_dVd + T6 * dT2_dVd);
-            dIgbinv_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
+            let Igbinv = T11 * T2 * T6;
+            let dIgbinv_dVg = T11 * (T2 * dT6_dVg + T6 * dT2_dVg);
+            let dIgbinv_dVd = T11 * (T2 * dT6_dVd + T6 * dT2_dVd);
+            let dIgbinv_dVb = T11 * (T2 * dT6_dVb + T6 * dT2_dVb);
 
             newop.Igb = Igbinv + Igbacc;
             newop.gIgbg = dIgbinv_dVg + dIgbacc_dVg;
@@ -3090,7 +2614,6 @@ impl Bsim4<'_> {
         newop.cd = cdrain;
 
         /* Calculations for noise analysis */
-
         if self.model.tnoimod == 0 {
             Abulk = Abulk0 * self.size_params.abulkCVfactor;
             Vdsat = Vgsteff / Abulk;
@@ -3120,7 +2643,6 @@ impl Bsim4<'_> {
         /*
          *  BSIM4 C-V begins
          */
-
         if (self.model.xpart < 0.0) || (!ChargeComputationNeeded) {
             qgate = 0.0;
             qdrn = 0.0;
@@ -3205,11 +2727,10 @@ impl Bsim4<'_> {
                     newop.cbgb = -newop.cggb;
                     newop.cbdb = 0.0;
                     newop.cbsb = -newop.cgsb;
-                }
-                /* Vgst <= 0.0, end of depletion */
-                else {
-                    One_Third_CoxWL = CoxWL / 3.0;
-                    Two_Third_CoxWL = 2.0 * One_Third_CoxWL;
+                } else {
+                    /* Vgst <= 0.0, end of depletion */
+                    let One_Third_CoxWL = CoxWL / 3.0;
+                    let Two_Third_CoxWL = 2.0 * One_Third_CoxWL;
 
                     AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
                     dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb * dVbseff_dVb;
@@ -3262,8 +2783,8 @@ impl Bsim4<'_> {
                             newop.cgdb = CoxWL * (T2 - 0.5 + 0.5 * T5);
                             newop.cgsb = -(newop.cggb + T11 + newop.cgdb);
                             T6 = 1.0 / Vdsat;
-                            dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
-                            dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
+                            let dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
+                            let dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
                             T7 = T9 * T7;
                             T8 = T9 * T8;
                             T9 = 2.0 * T4 * (1.0 - 3.0 * T5);
@@ -3324,8 +2845,8 @@ impl Bsim4<'_> {
                             newop.cgsb = -(newop.cggb + newop.cgdb + tmp);
 
                             T6 = 1.0 / Vdsat;
-                            dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
-                            dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
+                            let dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
+                            let dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
 
                             T6 = 8.0 * Vdsat * Vdsat - 6.0 * Vdsat * Vds + 1.2 * Vds * Vds;
                             T8 = T2 / T1;
@@ -3394,8 +2915,8 @@ impl Bsim4<'_> {
                             newop.cgsb = -(newop.cggb + newop.cgdb + tmp);
 
                             T6 = 1.0 / Vdsat;
-                            dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
-                            dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
+                            let dAlphaz_dVg = T6 * (1.0 - Alphaz * dVdsat_dVg);
+                            let dAlphaz_dVb = -T6 * (dVth_dVb + Alphaz * dVdsat_dVb);
 
                             T7 = T1 + T3;
                             qdrn = -T4 * T7;
@@ -3428,12 +2949,12 @@ impl Bsim4<'_> {
 
                 if self.model.cvchargemod == 0 {
                     /* Seperate VgsteffCV with noff and voffcv */
-                    noff = n * self.size_params.noff;
-                    dnoff_dVd = self.size_params.noff * dn_dVd;
-                    dnoff_dVb = self.size_params.noff * dn_dVb;
+                    let noff = n * self.size_params.noff;
+                    let dnoff_dVd = self.size_params.noff * dn_dVd;
+                    let dnoff_dVb = self.size_params.noff * dn_dVb;
                     T0 = Vtm * noff;
-                    voffcv = self.size_params.voffcv;
-                    VgstNVt = (Vgst - voffcv) / T0;
+                    let voffcv = self.size_params.voffcv;
+                    let VgstNVt = (Vgst - voffcv) / T0;
 
                     if VgstNVt > EXP_THRESHOLD {
                         Vgsteff = Vgst - voffcv;
@@ -3447,7 +2968,7 @@ impl Bsim4<'_> {
                         dVgsteff_dVb = dVgsteff_dVd * dnoff_dVb;
                         dVgsteff_dVd *= dnoff_dVd;
                     } else {
-                        ExpVgst = exp(VgstNVt);
+                        let ExpVgst = exp(VgstNVt);
                         Vgsteff = T0 * log(1.0 + ExpVgst);
                         dVgsteff_dVg = ExpVgst / (1.0 + ExpVgst);
                         dVgsteff_dVd = -dVgsteff_dVg * (dVth_dVd + (Vgst - voffcv) / noff * dnoff_dVd) + Vgsteff / noff * dnoff_dVd;
@@ -3471,7 +2992,7 @@ impl Bsim4<'_> {
                         dT10_dVb = T10 * dn_dVb;
                         T10 *= n;
                     } else {
-                        ExpVgst = exp(T2);
+                        let ExpVgst = exp(T2);
                         T3 = Vtm * log(1.0 + ExpVgst);
                         T10 = n * T3;
                         dT10_dVg = self.size_params.mstarcv * ExpVgst / (1.0 + ExpVgst);
@@ -3495,7 +3016,7 @@ impl Bsim4<'_> {
                         dT9_dVd = dn_dVd * T3;
                         dT9_dVb = dn_dVb * T3;
                     } else {
-                        ExpVgst = exp(T2);
+                        let ExpVgst = exp(T2);
                         T3 = self.model_derived.coxe / self.size_params.cdep0;
                         T4 = T3 * ExpVgst;
                         T5 = T1 * T4 / T0;
@@ -3516,7 +3037,7 @@ impl Bsim4<'_> {
 
                 if self.model.capmod == 1 {
                     Vfb = self.intp.vfbzb;
-                    V3 = Vfb - Vgs_eff + VbseffCV - DELTA_3;
+                    let V3 = Vfb - Vgs_eff + VbseffCV - DELTA_3;
                     if Vfb <= 0.0 {
                         T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * Vfb);
                     } else {
@@ -3524,12 +3045,12 @@ impl Bsim4<'_> {
                     }
 
                     T1 = 0.5 * (1.0 + V3 / T0);
-                    Vfbeff = Vfb - 0.5 * (V3 + T0);
-                    dVfbeff_dVg = T1 * dVgs_eff_dVg;
-                    dVfbeff_dVb = -T1 * dVbseffCV_dVb;
+                    let Vfbeff = Vfb - 0.5 * (V3 + T0);
+                    let dVfbeff_dVg = T1 * dVgs_eff_dVg;
+                    let dVfbeff_dVb = -T1 * dVbseffCV_dVb;
                     Qac0 = CoxWL * (Vfbeff - Vfb);
-                    dQac0_dVg = CoxWL * dVfbeff_dVg;
-                    dQac0_dVb = CoxWL * dVfbeff_dVb;
+                    let dQac0_dVg = CoxWL * dVfbeff_dVg;
+                    let dQac0_dVb = CoxWL * dVfbeff_dVb;
 
                     T0 = 0.5 * self.size_params.k1ox;
                     T3 = Vgs_eff - Vfbeff - VbseffCV - Vgsteff;
@@ -3552,7 +3073,7 @@ impl Bsim4<'_> {
 
                     AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
                     dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb;
-                    VdsatCV = Vgsteff / AbulkCV;
+                    let VdsatCV = Vgsteff / AbulkCV;
 
                     T0 = VdsatCV - Vds - DELTA_4;
                     dT0_dVg = 1.0 / AbulkCV;
@@ -3667,10 +3188,9 @@ impl Bsim4<'_> {
                     newop.cbgb = Cbg;
                     newop.cbsb = -(Cbg + Cbd + Cbb);
                     newop.cbdb = Cbd;
-                }
-                /* Charge-Thickness capmod (CTM) begins */
-                else if self.model.capmod == 2 {
-                    V3 = self.intp.vfbzb - Vgs_eff + VbseffCV - DELTA_3;
+                } else if self.model.capmod == 2 {
+                    /* Charge-Thickness capmod (CTM) begins */
+                    let V3 = self.intp.vfbzb - Vgs_eff + VbseffCV - DELTA_3;
                     if self.intp.vfbzb <= 0.0 {
                         T0 = sqrt(V3 * V3 - 4.0 * DELTA_3 * self.intp.vfbzb);
                     } else {
@@ -3678,9 +3198,9 @@ impl Bsim4<'_> {
                     }
 
                     T1 = 0.5 * (1.0 + V3 / T0);
-                    Vfbeff = self.intp.vfbzb - 0.5 * (V3 + T0);
-                    dVfbeff_dVg = T1 * dVgs_eff_dVg;
-                    dVfbeff_dVb = -T1 * dVbseffCV_dVb;
+                    let Vfbeff = self.intp.vfbzb - 0.5 * (V3 + T0);
+                    let dVfbeff_dVg = T1 * dVgs_eff_dVg;
+                    let dVfbeff_dVb = -T1 * dVbseffCV_dVb;
 
                     Cox = self.intp.coxp;
                     Tox = 1.0e8 * self.intp.toxp;
@@ -3689,6 +3209,8 @@ impl Bsim4<'_> {
                     dT0_dVb = -dVbseffCV_dVb / Tox;
 
                     tmp = T0 * self.size_params.acde;
+                    let mut dTcen_dVb: f64;
+                    let mut dTcen_dVg: f64;
                     if (-EXP_THRESHOLD < tmp) && (tmp < EXP_THRESHOLD) {
                         Tcen = self.size_params.ldeb * exp(tmp);
                         dTcen_dVg = self.size_params.acde * Tcen;
@@ -3704,27 +3226,27 @@ impl Bsim4<'_> {
                         dTcen_dVb = 0.0;
                     }
 
-                    LINK = 1.0e-3 * self.intp.toxp;
-                    V3 = self.size_params.ldeb - Tcen - LINK;
-                    V4 = sqrt(V3 * V3 + 4.0 * LINK * self.size_params.ldeb);
-                    Tcen = self.size_params.ldeb - 0.5 * (V3 + V4);
+                    let LINK = 1.0e-3 * self.intp.toxp;
+                    let V3 = self.size_params.ldeb - Tcen - LINK;
+                    let V4 = sqrt(V3 * V3 + 4.0 * LINK * self.size_params.ldeb);
+                    let Tcen = self.size_params.ldeb - 0.5 * (V3 + V4);
                     T1 = 0.5 * (1.0 + V3 / V4);
                     dTcen_dVg *= T1;
                     dTcen_dVb *= T1;
 
-                    Ccen = epssub / Tcen;
+                    let Ccen = epssub / Tcen;
                     T2 = Cox / (Cox + Ccen);
                     Coxeff = T2 * Ccen;
                     T3 = -Ccen / Tcen;
-                    dCoxeff_dVg = T2 * T2 * T3;
-                    dCoxeff_dVb = dCoxeff_dVg * dTcen_dVb;
-                    dCoxeff_dVg *= dTcen_dVg;
-                    CoxWLcen = CoxWL * Coxeff / self.model_derived.coxe;
+                    let dCoxeff_dVg_ = T2 * T2 * T3;
+                    let dCoxeff_dVb = dCoxeff_dVg_ * dTcen_dVb;
+                    let dCoxeff_dVg = dCoxeff_dVg_ * dTcen_dVg;
+                    let CoxWLcen = CoxWL * Coxeff / self.model_derived.coxe;
 
                     Qac0 = CoxWLcen * (Vfbeff - self.intp.vfbzb);
                     QovCox = Qac0 / Coxeff;
-                    dQac0_dVg = CoxWLcen * dVfbeff_dVg + QovCox * dCoxeff_dVg;
-                    dQac0_dVb = CoxWLcen * dVfbeff_dVb + QovCox * dCoxeff_dVb;
+                    let dQac0_dVg = CoxWLcen * dVfbeff_dVg + QovCox * dCoxeff_dVg;
+                    let dQac0_dVb = CoxWLcen * dVfbeff_dVb + QovCox * dCoxeff_dVb;
 
                     T0 = 0.5 * self.size_params.k1ox;
                     T3 = Vgs_eff - Vfbeff - VbseffCV - Vgsteff;
@@ -3771,25 +3293,25 @@ impl Bsim4<'_> {
                     tmp = exp(self.model.bdos * 0.7 * log(T0));
                     T1 = 1.0 + tmp;
                     T2 = self.model.bdos * 0.7 * tmp / (T0 * Tox);
-                    Tcen = self.model.ados * 1.9e-9 / T1;
-                    dTcen_dVg = -Tcen * T2 / T1;
-                    dTcen_dVd = dTcen_dVg * dVgsteff_dVd;
-                    dTcen_dVb = dTcen_dVg * dVgsteff_dVb;
+                    let Tcen = self.model.ados * 1.9e-9 / T1;
+                    let mut dTcen_dVg = -Tcen * T2 / T1;
+                    let dTcen_dVd = dTcen_dVg * dVgsteff_dVd;
+                    let dTcen_dVb = dTcen_dVg * dVgsteff_dVb;
                     dTcen_dVg *= dVgsteff_dVg;
 
-                    Ccen = epssub / Tcen;
+                    let Ccen = epssub / Tcen;
                     T0 = Cox / (Cox + Ccen);
                     Coxeff = T0 * Ccen;
                     T1 = -Ccen / Tcen;
-                    dCoxeff_dVg = T0 * T0 * T1;
-                    dCoxeff_dVd = dCoxeff_dVg * dTcen_dVd;
-                    dCoxeff_dVb = dCoxeff_dVg * dTcen_dVb;
-                    dCoxeff_dVg *= dTcen_dVg;
-                    CoxWLcen = CoxWL * Coxeff / self.model_derived.coxe;
+                    let dCoxeff_dVg_ = T0 * T0 * T1;
+                    let dCoxeff_dVd = dCoxeff_dVg_ * dTcen_dVd;
+                    let dCoxeff_dVb = dCoxeff_dVg_ * dTcen_dVb;
+                    let dCoxeff_dVg = dCoxeff_dVg_ * dTcen_dVg;
+                    let CoxWLcen = CoxWL * Coxeff / self.model_derived.coxe;
 
                     AbulkCV = Abulk0 * self.size_params.abulkCVfactor;
                     dAbulkCV_dVb = self.size_params.abulkCVfactor * dAbulk0_dVb;
-                    VdsatCV = VgDP / AbulkCV;
+                    let VdsatCV = VgDP / AbulkCV;
 
                     T0 = VdsatCV - Vds - DELTA_4;
                     dT0_dVg = dVgDP_dVg / AbulkCV;
@@ -3958,26 +3480,28 @@ impl Bsim4<'_> {
 
         // Charge computations
         if let AnalysisInfo::TRAN(_, state) = an {
-            czbd = self.model_derived.DunitAreaTempJctCap * self.intp.Adeff;
-            czbs = self.model_derived.SunitAreaTempJctCap * self.intp.Aseff;
-            czbdsw = self.model_derived.DunitLengthSidewallTempJctCap * self.intp.Pdeff;
-            czbdswg = self.model_derived.DunitLengthGateSidewallTempJctCap * self.size_params.weffCJ * self.intp.nf;
-            czbssw = self.model_derived.SunitLengthSidewallTempJctCap * self.intp.Pseff;
-            czbsswg = self.model_derived.SunitLengthGateSidewallTempJctCap * self.size_params.weffCJ * self.intp.nf;
+            // FIXME: offline
+            let czbd = self.model_derived.DunitAreaTempJctCap * self.intp.Adeff;
+            let czbs = self.model_derived.SunitAreaTempJctCap * self.intp.Aseff;
+            let czbdsw = self.model_derived.DunitLengthSidewallTempJctCap * self.intp.Pdeff;
+            let czbdswg = self.model_derived.DunitLengthGateSidewallTempJctCap * self.size_params.weffCJ * self.intp.nf;
+            let czbssw = self.model_derived.SunitLengthSidewallTempJctCap * self.intp.Pseff;
+            let czbsswg = self.model_derived.SunitLengthGateSidewallTempJctCap * self.size_params.weffCJ * self.intp.nf;
 
-            MJS = self.model.mjs;
-            MJSWS = self.model.mjsws;
-            MJSWGS = self.model.mjswgs;
-
-            MJD = self.model.mjd;
-            MJSWD = self.model.mjswd;
-            MJSWGD = self.model.mjswgd;
+            let MJS = self.model.mjs;
+            let MJSWS = self.model.mjsws;
+            let MJSWGS = self.model.mjswgs;
+            let MJD = self.model.mjd;
+            let MJSWD = self.model.mjswd;
+            let MJSWGD = self.model.mjswgd;
 
             /* Source Bulk Junction */
             if vbs_jct == 0.0 {
                 newop.qbs = 0.0;
                 newop.capbs = czbs + czbssw + czbsswg;
             } else if vbs_jct < 0.0 {
+                let mut arg: f64;
+                let mut sarg: f64;
                 if czbs > 0.0 {
                     arg = 1.0 - vbs_jct / self.model_derived.PhiBS;
                     if MJS == 0.5 {
@@ -4026,6 +3550,8 @@ impl Bsim4<'_> {
                 newop.qbd = 0.0;
                 newop.capbd = czbd + czbdsw + czbdswg;
             } else if vbd_jct < 0.0 {
+                let mut arg: f64;
+                let mut sarg: f64;
                 if czbd > 0.0 {
                     arg = 1.0 - vbd_jct / self.model_derived.PhiBD;
                     if MJD == 0.5 {
@@ -4151,13 +3677,7 @@ impl Bsim4<'_> {
 
         // Charge computations
         if let AnalysisInfo::TRAN(_, state) = an {
-            if self.model.rgatemod == 3 {
-                vgdx = vgmd;
-                vgsx = vgms;
-            } else {
-                vgdx = vgd;
-                vgsx = vgs;
-            }
+            let (vgdx, vgsx) = if self.model.rgatemod == 3 { (vgmd, vgms) } else { (vgd, vgs) };
             if self.model.capmod == 0 {
                 cgdo = self.size_params.cgdo;
                 qgdo = self.size_params.cgdo * vgdx;
@@ -4197,7 +3717,7 @@ impl Bsim4<'_> {
             // ignoring the circuit/ analysis integration method.
             // All of these impedances are calculated as g = C/dt, e.g. using Backward Euler.
             // Should figure out whether this is the implementation intent, or just for reference.
-            ag0 = 1.0 / state.dt;
+            let ag0 = 1.0 / state.dt;
             if self.guess.mode > 0 {
                 if self.model.trnqsmod == 0 {
                     qdrn -= qgdo;
@@ -4220,7 +3740,7 @@ impl Bsim4<'_> {
                         gcsgb = -(newop.cggb + newop.cbgb + newop.cdgb) * ag0;
                         gcbgb = newop.cbgb * ag0;
 
-                        qgmb = self.size_params.cgbo * vgmb;
+                        let qgmb = self.size_params.cgbo * vgmb;
                         qgmid = qgdo + qgso + qgmb;
                         qbulk -= qgmb;
                         qsrc = -(qgate + qgmid + qbulk + qdrn);
@@ -4238,7 +3758,7 @@ impl Bsim4<'_> {
                         gcsgmb = 0.0;
                         gcbgmb = 0.0;
 
-                        qgb = self.size_params.cgbo * vgb;
+                        let qgb = self.size_params.cgbo * vgb;
                         qgate += qgdo + qgso + qgb;
                         qbulk -= qgb;
                         qsrc = -(qgate + qbulk + qdrn);
@@ -4352,7 +3872,7 @@ impl Bsim4<'_> {
                         gcgsb = 0.0;
                         gcgbb = 0.0;
 
-                        qgmb = self.size_params.cgbo * vgmb;
+                        let qgmb = self.size_params.cgbo * vgmb;
                         qgmid = qgdo + qgso + qgmb;
                         qgate = 0.0;
                         qbulk = -qgmb;
@@ -4371,7 +3891,7 @@ impl Bsim4<'_> {
                         gcsgmb = 0.0;
                         gcbgmb = 0.0;
 
-                        qgb = self.size_params.cgbo * vgb;
+                        let qgb = self.size_params.cgbo * vgb;
                         qgate = qgdo + qgso + qgb;
                         qbulk = -qgb;
                         qdrn = -qgdo;
@@ -4422,7 +3942,7 @@ impl Bsim4<'_> {
                         gcsgb = newop.cdgb * ag0;
                         gcbgb = newop.cbgb * ag0;
 
-                        qgmb = self.size_params.cgbo * vgmb;
+                        let qgmb = self.size_params.cgbo * vgmb;
                         qgmid = qgdo + qgso + qgmb;
                         qbulk -= qgmb;
                         qdrn = -(qgate + qgmid + qbulk + qsrc);
@@ -4440,7 +3960,7 @@ impl Bsim4<'_> {
                         gcsgmb = 0.0;
                         gcbgmb = 0.0;
 
-                        qgb = self.size_params.cgbo * vgb;
+                        let qgb = self.size_params.cgbo * vgb;
                         qgate += qgdo + qgso + qgb;
                         qbulk -= qgb;
                         qdrn = -(qgate + qbulk + qsrc);
@@ -4552,7 +4072,7 @@ impl Bsim4<'_> {
                         gcgsb = 0.0;
                         gcgbb = 0.0;
 
-                        qgmb = self.size_params.cgbo * vgmb;
+                        let qgmb = self.size_params.cgbo * vgmb;
                         qgmid = qgdo + qgso + qgmb;
                         qgate = 0.0;
                         qbulk = -qgmb;
@@ -4571,7 +4091,7 @@ impl Bsim4<'_> {
                         gcsgmb = 0.0;
                         gcbgmb = 0.0;
 
-                        qgb = self.size_params.cgbo * vgb;
+                        let qgb = self.size_params.cgbo * vgb;
                         qgate = qgdo + qgso + qgb;
                         qbulk = -qgb;
                         qdrn = -qgdo;
@@ -4642,9 +4162,9 @@ impl Bsim4<'_> {
 
             /* Calculate equivalent charge current */
 
-            cqgate = newop.cqg;
-            cqbody = newop.cqb;
-            cqdrn = newop.cqd;
+            let cqgate = newop.cqg;
+            let cqbody = newop.cqb;
+            let cqdrn = newop.cqd;
 
             ceqqg = cqgate - gcggb * vgb + gcgdb * vbd + gcgsb * vbs;
             ceqqd = cqdrn - gcdgb * vgb - gcdgmb * vgmb + (gcddb + gcdbdb) * vbd - gcdbdb * vbd_jct + gcdsb * vbs;
@@ -4674,6 +4194,43 @@ impl Bsim4<'_> {
         /*
          *  Load current vector
          */
+        let mut ceqdrn: f64;
+        let mut ceqbd: f64;
+        let mut ceqbs: f64;
+        let mut Gmbs: f64;
+        let mut FwdSum: f64;
+        let mut RevSum: f64;
+        let mut gbspsp: f64;
+        let mut gbbdp: f64;
+        let mut gbbsp: f64;
+        let mut gbspg: f64;
+        let mut gbspb: f64;
+        let mut gbspdp: f64;
+        let mut gbdpdp: f64;
+        let mut gbdpg: f64;
+        let mut gbdpb: f64;
+        let mut gbdpsp: f64;
+
+        let mut Istoteq: f64;
+        let mut gIstotg: f64;
+        let mut gIstotd: f64;
+        let mut gIstots: f64;
+        let mut gIstotb: f64;
+        let mut Idtoteq: f64;
+        let mut gIdtotg: f64;
+        let mut gIdtotd: f64;
+        let mut gIdtots: f64;
+        let mut gIdtotb: f64;
+        let mut Ibtoteq: f64;
+        let mut gIbtotg: f64;
+        let mut gIbtotd: f64;
+        let mut gIbtots: f64;
+        let mut gIbtotb: f64;
+        let mut Igtoteq: f64;
+        let mut gIgtotg: f64;
+        let mut gIgtotd: f64;
+        let mut gIgtots: f64;
+        let mut gIgtotb: f64;
 
         if self.guess.mode >= 0 {
             Gm = newop.gm;
@@ -4881,6 +4438,19 @@ impl Bsim4<'_> {
             }
         }
 
+        let mut gstot = 0.0;
+        let mut gstotd = 0.0;
+        let mut gstotg = 0.0;
+        let mut gstots = 0.0;
+        let mut gstotb = 0.0;
+        let mut ceqgstot = 0.0;
+        let mut gdtot = 0.0;
+        let mut gdtotd = 0.0;
+        let mut gdtotg = 0.0;
+        let mut gdtots = 0.0;
+        let mut gdtotb = 0.0;
+        let mut ceqgdtot = 0.0;
+
         if self.model.rdsmod == 1 {
             ceqgstot = self.model.p() * (newop.gstotd * vds + newop.gstotg * vgs + newop.gstotb * vbs);
             gstot = newop.gstot;
@@ -4895,27 +4465,14 @@ impl Bsim4<'_> {
             gdtotg = newop.gdtotg;
             gdtots = newop.gdtots;
             gdtotb = newop.gdtotb;
-        } else {
-            gstot = 0.0;
-            gstotd = 0.0;
-            gstotg = 0.0;
-            gstots = 0.0;
-            gstotb = 0.0;
-            ceqgstot = 0.0;
-            gdtot = 0.0;
-            gdtotd = 0.0;
-            gdtotg = 0.0;
-            gdtots = 0.0;
-            gdtotb = 0.0;
-            ceqgdtot = 0.0;
         }
 
+        let (ceqjs, ceqjd) = match self.model.mos_type {
+            MosType::NMOS => (newop.cbs - newop.gbs * vbs_jct, newop.cbd - newop.gbd * vbd_jct),
+            MosType::PMOS => (-(newop.cbs - newop.gbs * vbs_jct), -(newop.cbd - newop.gbd * vbd_jct)),
+        };
+
         if self.model.p() > 0.0 {
-            ceqjs = (newop.cbs - newop.gbs * vbs_jct);
-            ceqjd = (newop.cbd - newop.gbd * vbd_jct);
-        } else {
-            ceqjs = -(newop.cbs - newop.gbs * vbs_jct);
-            ceqjd = -(newop.cbd - newop.gbd * vbd_jct);
             ceqqg = -ceqqg;
             ceqqd = -ceqqd;
             ceqqb = -ceqqb;
@@ -4976,23 +4533,14 @@ impl Bsim4<'_> {
         // Gather up matrix Jacobian terms
         let mut j: Vec<(Option<Eindex>, f64)> = vec![];
 
-        if self.model.rbodymod != 0 {
-            gjbd = newop.gbd;
-            gjbs = newop.gbs;
+        let (gjbd, gjbs) = if self.model.rbodymod != 0 { (newop.gbd, newop.gbs) } else { (0.0, 0.0) };
+        let (gdpr, gspr) = if self.model.rdsmod != 0 {
+            (self.intp.drainConductance, self.intp.sourceConductance)
         } else {
-            gjbd = 0.0;
-            gjbs = 0.0;
-        }
+            (0.0, 0.0)
+        };
 
-        if self.model.rdsmod != 0 {
-            gdpr = self.intp.drainConductance;
-            gspr = self.intp.sourceConductance;
-        } else {
-            gdpr = 0.0;
-            gspr = 0.0;
-        }
-
-        geltd = self.intp.grgeltd;
+        let geltd = self.intp.grgeltd;
         T1 = qdef * newop.gtau;
 
         if self.model.rgatemod == 1 {
@@ -5098,12 +4646,12 @@ impl Bsim4<'_> {
         j.push((self.matps.BPspPtr, gcbsb - gjbs + gbbsp - gIbtots));
         j.push((self.matps.BPbpPtr, gjbd + gjbs + gcbbb - newop.gbbs - gIbtotb));
 
-        ggidld = newop.ggidld;
-        ggidlg = newop.ggidlg;
-        ggidlb = newop.ggidlb;
-        ggislg = newop.ggislg;
-        ggisls = newop.ggisls;
-        ggislb = newop.ggislb;
+        let ggidld = newop.ggidld;
+        let ggidlg = newop.ggidlg;
+        let ggidlb = newop.ggidlb;
+        let ggislg = newop.ggislg;
+        let ggisls = newop.ggisls;
+        let ggislb = newop.ggislb;
 
         /* stamp gidl */
         j.push((self.matps.DPdpPtr, ggidld));
@@ -5167,7 +4715,7 @@ impl Bsim4<'_> {
     }
 }
 
-impl Component for Bsim4<'_> {
+impl Component for Bsim4 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.create_matps(mat)
     }
@@ -5281,35 +4829,100 @@ fn DEVpnjlim(vnew: f64, vold: f64, vt: f64, vcrit: f64) -> f64 {
     return vnew;
 }
 
-// impl Bsim4 {
-//     pub(crate) fn new() -> Self {
-//         use super::bsim4derive::derive;
-//         use super::bsim4inst::from;
-//         use super::bsim4modelvals::resolve;
-//         use crate::comps::mos::MosTerminals;
+use crate::analysis::Solver;
+use crate::circuit;
 
-//         let model_specs = Bsim4ModelSpecs::default();
-//         let model = resolve(&model_specs);
-//         let model_derived = derive(&model);
-//         let inst = Bsim4InstSpecs::default();
-//         let (intp, size_params) = from(&model, &model_derived, &inst);
+impl Bsim4 {
+    // pub(crate) fn from<T: SpNum>(b4i: circuit::Bsim4i, models: mut ModelCache, solver: mut Solver<T>) -> Option<Self> {
+    //     // Debuggin via JSON dump!
+    //     // use serde::{Deserialize, Serialize};
+    //     // use std::fs::File;
+    //     // use std::io::prelude::*;
 
-//         // fake solver
-//         use crate::analysis::{Options, Solver};
-//         use crate::circuit::Ckt;
-//         let mut solver = Solver::<f64>::new(Ckt::new(), Options::default());
+    //     // let s = serde_json::to_string(&model.vals).unwrap();
+    //     // let mut rfj = File::create("model.json").unwrap();
+    //     // rfj.write_all(s.as_bytes()).unwrap();
+    //     // println!("model = {}", s);
 
-//         let ports = Bsim4Ports::from(String::from("inst0"), &MosTerminals::default(), &model, &intp, &mut solver);
-//         let solver = Bsim4 {
-//             ports: Bsim4Ports::default(),
-//             model,
-//             model_derived,
-//             size_params,
-//             intp,
-//             guess: Bsim4OpPoint::default(),
-//             op: Bsim4OpPoint::default(),
-//             matps: Bsim4MatrixPointers::default(),
-//         };
-//         solver
-//     }
-// }
+    //     // let s = serde_json::to_string(&model.derived).unwrap();
+    //     // let mut rfj = File::create("model_derived.json").unwrap();
+    //     // rfj.write_all(s.as_bytes()).unwrap();
+    //     // println!("derived = {}", s);
+
+    //     // let s = serde_json::to_string(&inst.intp).unwrap();
+    //     // let mut rfj = File::create("intp.json").unwrap();
+    //     // rfj.write_all(s.as_bytes()).unwrap();
+    //     // println!("intp = {}", s);
+
+    //     // let s = serde_json::to_string(&inst.size_params).unwrap();
+    //     // let mut rfj = File::create("size_params.json").unwrap();
+    //     // rfj.write_all(s.as_bytes()).unwrap();
+    //     // println!("size_params = {}", s);
+
+    //     // let s = serde_json::to_string(&ports).unwrap();
+    //     // let mut rfj = File::create("ports.json").unwrap();
+    //     // rfj.write_all(s.as_bytes()).unwrap();
+    //     // println!("ports = {}", s);
+
+    //     // FIXME: reference-ize these
+    //     Some(Self {
+    //         ports,
+    //         model: &model.vals,
+    //         model_derived: &model.derived,
+    //         size_params: &inst.size_params,
+    //         intp: &inst.intp,
+    //         op: Bsim4OpPoint::default(),
+    //         guess: Bsim4OpPoint::default(),
+    //         matps: Bsim4MatrixPointers::default(),
+    //     })
+    // }
+
+    pub(crate) fn new(ports: Bsim4Ports, model: Bsim4ModelEntry, inst: Bsim4InstEntry) -> Self {
+        Self {
+            ports,
+            model: model.vals,
+            model_derived: model.derived,
+            size_params: inst.size_params,
+            intp: inst.intp,
+            op: Bsim4OpPoint::default(),
+            guess: Bsim4OpPoint::default(),
+            matps: Bsim4MatrixPointers::default(),
+        }
+    }
+}
+
+mod tests {
+    use super::*;
+    use crate::{assert, TestResult};
+
+    #[test]
+    fn test_bsim4_1() -> TestResult {
+        use crate::analysis::dcop;
+        use crate::circuit::*;
+        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
+        use crate::comps::mos::MosTerminals;
+        let inst = Bsim4InstSpecs::default();
+        let ports = MosTerminals {
+            g: n("vss"),
+            d: n("vss"),
+            s: NodeRef::Gnd,
+            b: NodeRef::Gnd,
+        };
+        let mut ckt = Ckt::new();
+        ckt.models.bsim4.add("default".to_string(), Bsim4ModelSpecs::default());
+
+        ckt.add(Bsim4i {
+            name: "bsim4".to_string(),
+            ports,
+            model: "default".to_string(),
+            params: inst,
+        });
+        ckt.add(Comp::vdc(1.0, n("vss"), NodeRef::Gnd));
+        ckt.add(Comp::R(1e-3, n("vss"), NodeRef::Gnd));
+        let soln = dcop(ckt)?;
+        println!("{}", soln[0]);
+        println!("{}", soln[1]);
+
+        Ok(())
+    }
+}
