@@ -5,24 +5,23 @@ use crate::comps::mos::{MosTerm, MosTerminals};
 use crate::SpNum;
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Default, Debug, Deserialize, Serialize)]
-pub(crate) struct Bsim4Ports {
-    pub(crate) dNode: Option<VarIndex>,
-    pub(crate) dNodePrime: Option<VarIndex>,
-    pub(crate) sNode: Option<VarIndex>,
-    pub(crate) sNodePrime: Option<VarIndex>,
-    pub(crate) gNodeExt: Option<VarIndex>,
-    pub(crate) gNodePrime: Option<VarIndex>,
-    pub(crate) gNodeMid: Option<VarIndex>,
-    pub(crate) bNode: Option<VarIndex>,
-    pub(crate) bNodePrime: Option<VarIndex>,
-    pub(crate) dbNode: Option<VarIndex>,
-    pub(crate) sbNode: Option<VarIndex>,
-    pub(crate) qNode: Option<VarIndex>,
+pub(crate) struct Bsim4Ports<T> {
+    pub(crate) dNode: T,
+    pub(crate) dNodePrime: T,
+    pub(crate) sNode: T,
+    pub(crate) sNodePrime: T,
+    pub(crate) gNodeExt: T,
+    pub(crate) gNodePrime: T,
+    pub(crate) gNodeMid: T,
+    pub(crate) bNode: T,
+    pub(crate) bNodePrime: T,
+    pub(crate) dbNode: T,
+    pub(crate) sbNode: T,
+    pub(crate) qNode: T,
 }
 
-impl Bsim4Ports {
+impl Bsim4Ports<Option<VarIndex>> {
     pub(crate) fn from<T: SpNum>(
         iname: String,
         terms: &MosTerminals<Option<VarIndex>>,

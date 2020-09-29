@@ -12,7 +12,7 @@ use crate::SpNum;
 /// BSIM4 MOSFET Solver
 // #[derive(Default)]
 pub struct Bsim4 {
-    ports: Bsim4Ports,
+    ports: Bsim4Ports<Option<VarIndex>>,
     // inst: Bsim4InstSpecs, // Think we need these? nope
     model: Bsim4ModelVals,                  // FIXME: reference
     model_derived: Bsim4ModelDerivedParams, // FIXME: reference
@@ -113,7 +113,33 @@ impl Bsim4 {
         }
     }
 
+    /// Gather the voltages on each of our node-variables from `Variables` `guess`.
+    fn vs(&self, guess: &Variables<f64>) -> Bsim4Ports<f64> {
+        Bsim4Ports {
+            dNode: guess.get(self.ports.dNode),
+            dNodePrime: guess.get(self.ports.dNodePrime),
+            sNode: guess.get(self.ports.sNode),
+            sNodePrime: guess.get(self.ports.sNodePrime),
+            gNodeExt: guess.get(self.ports.gNodeExt),
+            gNodePrime: guess.get(self.ports.gNodePrime),
+            gNodeMid: guess.get(self.ports.gNodeMid),
+            bNode: guess.get(self.ports.bNode),
+            bNodePrime: guess.get(self.ports.bNodePrime),
+            dbNode: guess.get(self.ports.dbNode),
+            sbNode: guess.get(self.ports.sbNode),
+            qNode: guess.get(self.ports.qNode),
+        }
+    }
     fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        let portvs = self.vs(guess);
+        return self._load_dc_tr(portvs, an);
+        // TODO: eventually this will look something like so:
+        // let newop = self.op(portvs, an);
+        // self.guess = newop;
+        // return self.stamp();
+    }
+
+    fn _load_dc_tr(&mut self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         // Start by declaring about 700 local float variables!
 
         // Used a lot
@@ -383,16 +409,16 @@ impl Bsim4 {
         // Create a new operating point, which we'll fill in along the way
         let mut newop = Bsim4OpPoint::default();
 
-        let mut vds = self.model.p() * (guess.get(self.ports.dNodePrime) - guess.get(self.ports.sNodePrime));
-        let mut vgs = self.model.p() * (guess.get(self.ports.gNodePrime) - guess.get(self.ports.sNodePrime));
-        let mut vbs = self.model.p() * (guess.get(self.ports.bNodePrime) - guess.get(self.ports.sNodePrime));
-        let mut vges = self.model.p() * (guess.get(self.ports.gNodeExt) - guess.get(self.ports.sNodePrime));
-        let mut vgms = self.model.p() * (guess.get(self.ports.gNodeMid) - guess.get(self.ports.sNodePrime));
-        let mut vdbs = self.model.p() * (guess.get(self.ports.dbNode) - guess.get(self.ports.sNodePrime));
-        let mut vsbs = self.model.p() * (guess.get(self.ports.sbNode) - guess.get(self.ports.sNodePrime));
-        let mut vses = self.model.p() * (guess.get(self.ports.sNode) - guess.get(self.ports.sNodePrime));
-        let mut vdes = self.model.p() * (guess.get(self.ports.dNode) - guess.get(self.ports.sNodePrime));
-        let mut qdef = self.model.p() * (guess.get(self.ports.qNode));
+        let mut vds = self.model.p() * (portvs.dNodePrime - portvs.sNodePrime);
+        let mut vgs = self.model.p() * (portvs.gNodePrime - portvs.sNodePrime);
+        let mut vbs = self.model.p() * (portvs.bNodePrime - portvs.sNodePrime);
+        let mut vges = self.model.p() * (portvs.gNodeExt - portvs.sNodePrime);
+        let mut vgms = self.model.p() * (portvs.gNodeMid - portvs.sNodePrime);
+        let mut vdbs = self.model.p() * (portvs.dbNode - portvs.sNodePrime);
+        let mut vsbs = self.model.p() * (portvs.sbNode - portvs.sNodePrime);
+        let mut vses = self.model.p() * (portvs.sNode - portvs.sNodePrime);
+        let mut vdes = self.model.p() * (portvs.dNode - portvs.sNodePrime);
+        let mut qdef = self.model.p() * (portvs.qNode);
 
         let mut vgdo = self.guess.vgs - self.guess.vds;
         let mut vgedo = self.guess.vges - self.guess.vds;
@@ -1281,20 +1307,16 @@ impl Bsim4 {
         let dueff_dVd = T9 * dDenomi_dVd;
         let dueff_dVb = T9 * dDenomi_dVb;
 
-        /* Saturation Drain Voltage  Vdsat */
+        /* Saturation Drain Voltage Vdsat */
         WVCox = Weff * self.intp.vsattemp * self.model_derived.coxe;
         WVCoxRds = WVCox * Rds;
 
-        let Esat = 2.0 * self.intp.vsattemp / ueff;
+        let mut Esat = 2.0 * self.intp.vsattemp / ueff;
         newop.EsatL = Esat * Leff;
-        let EsatL = newop.EsatL;
-        T0 = -EsatL / ueff;
-        let dEsatL_dVg = T0 * dueff_dVg;
-        let dEsatL_dVd = T0 * dueff_dVd;
-        let dEsatL_dVb = T0 * dueff_dVb;
-
-        // FIXME: BAIL OUT!
-        return Stamps::new();
+        T0 = -newop.EsatL / ueff;
+        let mut dEsatL_dVg = T0 * dueff_dVg;
+        let mut dEsatL_dVd = T0 * dueff_dVd;
+        let mut dEsatL_dVb = T0 * dueff_dVb;
 
         /* Sqrt() */
         if self.size_params.a1 == 0.0 {
@@ -1322,18 +1344,18 @@ impl Bsim4 {
             tmp3 = dWeff_dVb / Weff;
         }
         if (Rds == 0.0) && (Lambda == 1.0) {
-            T0 = 1.0 / (Abulk * EsatL + Vgst2Vtm);
+            T0 = 1.0 / (Abulk * newop.EsatL + Vgst2Vtm);
             tmp1 = 0.0;
             T1 = T0 * T0;
             T2 = Vgst2Vtm * T0;
-            T3 = EsatL * Vgst2Vtm;
+            T3 = newop.EsatL * Vgst2Vtm;
             Vdsat = T3 * T0;
 
-            dT0_dVg = -(Abulk * dEsatL_dVg + EsatL * dAbulk_dVg + 1.0) * T1;
+            dT0_dVg = -(Abulk * dEsatL_dVg + newop.EsatL * dAbulk_dVg + 1.0) * T1;
             dT0_dVd = -(Abulk * dEsatL_dVd) * T1;
-            dT0_dVb = -(Abulk * dEsatL_dVb + dAbulk_dVb * EsatL) * T1;
+            dT0_dVb = -(Abulk * dEsatL_dVb + dAbulk_dVb * newop.EsatL) * T1;
 
-            dVdsat_dVg = T3 * dT0_dVg + T2 * dEsatL_dVg + EsatL * T0;
+            dVdsat_dVg = T3 * dT0_dVg + T2 * dEsatL_dVg + newop.EsatL * T0;
             dVdsat_dVd = T3 * dT0_dVd + T2 * dEsatL_dVd;
             dVdsat_dVb = T3 * dT0_dVb + T2 * dEsatL_dVb;
         } else {
@@ -1347,15 +1369,17 @@ impl Bsim4 {
 
             dT0_dVb = 2.0 * (T8 * (2.0 / Abulk * dAbulk_dVb + tmp3) + (1.0 / Lambda - 1.0) * dAbulk_dVb);
             dT0_dVd = 0.0;
-            T1 = Vgst2Vtm * (2.0 / Lambda - 1.0) + Abulk * EsatL + 3.0 * T7;
+            T1 = Vgst2Vtm * (2.0 / Lambda - 1.0) + Abulk * newop.EsatL + 3.0 * T7;
 
-            dT1_dVg =
-                (2.0 / Lambda - 1.0) - 2.0 * Vgst2Vtm * tmp1 + Abulk * dEsatL_dVg + EsatL * dAbulk_dVg + 3.0 * (T9 + T7 * tmp2 + T6 * dAbulk_dVg);
-            dT1_dVb = Abulk * dEsatL_dVb + EsatL * dAbulk_dVb + 3.0 * (T6 * dAbulk_dVb + T7 * tmp3);
+            dT1_dVg = (2.0 / Lambda - 1.0) - 2.0 * Vgst2Vtm * tmp1
+                + Abulk * dEsatL_dVg
+                + newop.EsatL * dAbulk_dVg
+                + 3.0 * (T9 + T7 * tmp2 + T6 * dAbulk_dVg);
+            dT1_dVb = Abulk * dEsatL_dVb + newop.EsatL * dAbulk_dVb + 3.0 * (T6 * dAbulk_dVb + T7 * tmp3);
             dT1_dVd = Abulk * dEsatL_dVd;
 
-            T2 = Vgst2Vtm * (EsatL + 2.0 * T6);
-            dT2_dVg = EsatL + Vgst2Vtm * dEsatL_dVg + T6 * (4.0 + 2.0 * Vgst2Vtm * tmp2);
+            T2 = Vgst2Vtm * (newop.EsatL + 2.0 * T6);
+            dT2_dVg = newop.EsatL + Vgst2Vtm * dEsatL_dVg + T6 * (4.0 + 2.0 * Vgst2Vtm * tmp2);
             dT2_dVb = Vgst2Vtm * (dEsatL_dVb + 2.0 * T6 * tmp3);
             dT2_dVd = Vgst2Vtm * dEsatL_dVd;
 
@@ -1422,7 +1446,7 @@ impl Bsim4 {
             dT2_dVg = T3 * dueff_dVg;
             dT2_dVb = T3 * dueff_dVb;
             T5 = 1.0 / (Esat * self.size_params.litl);
-            T4 = -T5 / EsatL;
+            T4 = -T5 / newop.EsatL;
             dT5_dVg = dEsatL_dVg * T4;
             dT5_dVd = dEsatL_dVd * T4;
             dT5_dVb = dEsatL_dVb * T4;
@@ -1447,21 +1471,20 @@ impl Bsim4 {
             }
 
             dEsatL_dVg *= T10;
-            dEsatL_dVg += EsatL * dT10_dVg;
+            dEsatL_dVg += newop.EsatL * dT10_dVg;
             dEsatL_dVd *= T10;
-            dEsatL_dVd += EsatL * dT10_dVd;
+            dEsatL_dVd += newop.EsatL * dT10_dVd;
             dEsatL_dVb *= T10;
-            dEsatL_dVb += EsatL * dT10_dVb;
-            EsatL *= T10;
-            Esat = EsatL / Leff; /* bugfix by Wenwei Yang (4.6.4) */
-            newop.EsatL = EsatL;
+            dEsatL_dVb += newop.EsatL * dT10_dVb;
+            newop.EsatL *= T10;
+            Esat = newop.EsatL / Leff; 
         }
 
         /* Calculate Vasat */
         tmp4 = 1.0 - 0.5 * Abulk * Vdsat / Vgst2Vtm;
         T9 = WVCoxRds * Vgsteff;
         T8 = T9 / Vgst2Vtm;
-        T0 = EsatL + Vdsat + 2.0 * T9 * tmp4;
+        T0 = newop.EsatL + Vdsat + 2.0 * T9 * tmp4;
 
         T7 = 2.0 * WVCoxRds * tmp4;
         dT0_dVg = dEsatL_dVg + dVdsat_dVg + T7 * (1.0 + tmp2 * Vgsteff) - T8 * (Abulk * dVdsat_dVg - Abulk * Vdsat / Vgst2Vtm + Vdsat * dAbulk_dVg);
@@ -1489,11 +1512,10 @@ impl Bsim4 {
         tmp3 = exp(self.model.bdos * 0.7 * log(T0));
         T1 = 1.0 + tmp3;
         T2 = self.model.bdos * 0.7 * tmp3 / T0;
-        let Tcen = self.model.ados * 1.9e-9 / T1;
+        let mut Tcen = self.model.ados * 1.9e-9 / T1;
         let dTcen_dVg = -Tcen * T2 * dT0_dVg / T1;
 
-        let Coxeff = epssub * self.intp.coxp / (epssub + self.intp.coxp * Tcen);
-        newop.Coxeff = Coxeff;
+        let mut Coxeff = epssub * self.intp.coxp / (epssub + self.intp.coxp * Tcen);
         let dCoxeff_dVg = -Coxeff * Coxeff * dTcen_dVg / epssub;
 
         let CoxeffWovL = Coxeff * Weff / Leff;
@@ -1514,11 +1536,11 @@ impl Bsim4 {
         dfgche1_dVd = Vgsteff * dT0_dVd;
         dfgche1_dVb = Vgsteff * dT0_dVb;
 
-        T9 = Vdseff / EsatL;
+        T9 = Vdseff / newop.EsatL;
         fgche2 = 1.0 + T9;
-        let dfgche2_dVg = (dVdseff_dVg - T9 * dEsatL_dVg) / EsatL;
-        let dfgche2_dVd = (dVdseff_dVd - T9 * dEsatL_dVd) / EsatL;
-        let dfgche2_dVb = (dVdseff_dVb - T9 * dEsatL_dVb) / EsatL;
+        let dfgche2_dVg = (dVdseff_dVg - T9 * dEsatL_dVg) / newop.EsatL;
+        let dfgche2_dVd = (dVdseff_dVd - T9 * dEsatL_dVd) / newop.EsatL;
+        let dfgche2_dVb = (dVdseff_dVb - T9 * dEsatL_dVb) / newop.EsatL;
 
         let gche = beta * fgche1 / fgche2;
         let dgche_dVg = (beta * dfgche1_dVg + fgche1 * dbeta_dVg - gche * dfgche2_dVg) / fgche2;
@@ -1545,7 +1567,7 @@ impl Bsim4 {
         }
 
         /* Calculate VACLM */
-        T8 = self.size_params.pvag / EsatL;
+        T8 = self.size_params.pvag / newop.EsatL;
         T9 = T8 * Vgsteff;
 
         let mut PvagTerm: f64;
@@ -1555,15 +1577,15 @@ impl Bsim4 {
 
         if T9 > -0.9 {
             PvagTerm = 1.0 + T9;
-            dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / EsatL);
-            dPvagTerm_dVb = -T9 * dEsatL_dVb / EsatL;
-            dPvagTerm_dVd = -T9 * dEsatL_dVd / EsatL;
+            dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / newop.EsatL);
+            dPvagTerm_dVb = -T9 * dEsatL_dVb / newop.EsatL;
+            dPvagTerm_dVd = -T9 * dEsatL_dVd / newop.EsatL;
         } else {
             T4 = 1.0 / (17.0 + 20.0 * T9);
             PvagTerm = (0.8 + T9) * T4;
             T4 *= T4;
-            dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / EsatL) * T4;
-            T9 *= T4 / EsatL;
+            dPvagTerm_dVg = T8 * (1.0 - Vgsteff * dEsatL_dVg / newop.EsatL) * T4;
+            T9 *= T4 / newop.EsatL;
             dPvagTerm_dVb = -T9 * dEsatL_dVb;
             dPvagTerm_dVd = -T9 * dEsatL_dVd;
         }
@@ -1672,7 +1694,7 @@ impl Bsim4 {
             dT1_dVd = T1 * self.size_params.pditsd;
         }
 
-        if self.size_params.pdits > MIN_EXP {
+        if self.size_params.pdits > MIN_EXP { // FIXME: we've misinterpreted these MIN/MAX EXP checks. Rust sets them to the exponent, SPICE sets them to the final value. Sad! 
             T2 = 1.0 + self.model.pditsl * Leff;
             VADITS = (1.0 + T2 * T1) / self.size_params.pdits;
             dVADITS_dVg = VADITS * dFP_dVg;
@@ -1797,8 +1819,8 @@ impl Bsim4 {
         let mut cdrain = Ids * Vdseff;
 
         /* Source End Velocity Limit  */
-        // if ((self.model.vtlGiven) && (self.model.vtl > 0.0)) {
-        if self.model.vtl > 0.0 {
+        if ((self.model.vtlGiven) && (self.model.vtl > 0.0)) {
+        // if self.model.vtl > 0.0 {
             // FIXME: the reference implementation's default condition here is "not given",
             // (although with a default value of 2e5)
             // So far we default to zero, in which case this block is not executed.
@@ -3596,6 +3618,8 @@ impl Bsim4 {
             }
         }
 
+        // return Stamps::new();
+
         newop.vds = vds;
         newop.vgs = vgs;
         newop.vbs = vbs;
@@ -4711,6 +4735,7 @@ impl Bsim4 {
         // Update our best-guess operating point
         self.guess = newop;
         // And return our matrix stamps
+        println!("b={:?}",b);
         return Stamps { g: j, b };
     }
 }
@@ -4744,7 +4769,7 @@ fn polyDepletion(phi: f64, ngate: f64, epsgate: f64, coxe: f64, Vgs: f64) -> (f6
 }
 
 /// Vds limiting
-fn DEVlimvds(vold: f64, vnew: f64) -> f64 {
+fn DEVlimvds(vnew: f64, vold: f64) -> f64 {
     if vold >= 3.5 {
         if vnew > vold {
             return vnew.min((3.0 * vold) + 2.0);
@@ -4829,9 +4854,6 @@ fn DEVpnjlim(vnew: f64, vold: f64, vt: f64, vcrit: f64) -> f64 {
     return vnew;
 }
 
-use crate::analysis::Solver;
-use crate::circuit;
-
 impl Bsim4 {
     // pub(crate) fn from<T: SpNum>(b4i: circuit::Bsim4i, models: mut ModelCache, solver: mut Solver<T>) -> Option<Self> {
     //     // Debuggin via JSON dump!
@@ -4877,7 +4899,7 @@ impl Bsim4 {
     //     })
     // }
 
-    pub(crate) fn new(ports: Bsim4Ports, model: Bsim4ModelEntry, inst: Bsim4InstEntry) -> Self {
+    pub(crate) fn new(ports: Bsim4Ports<Option<VarIndex>>, model: Bsim4ModelEntry, inst: Bsim4InstEntry) -> Self {
         Self {
             ports,
             model: model.vals,
@@ -4894,6 +4916,39 @@ impl Bsim4 {
 mod tests {
     use super::*;
     use crate::{assert, TestResult};
+
+    #[test]
+    fn test_bsim4_load() -> TestResult {
+        use super::Bsim4ModelCache;
+        let mut models = Bsim4ModelCache::new();
+        models.add("default".to_string(), Bsim4ModelSpecs::default());
+        let inst = Bsim4InstSpecs::default();
+        let (model, inst) = models.inst(&"default".to_string(), inst).unwrap();
+
+        let ports = Bsim4Ports::<Option<VarIndex>>::default(); 
+        let mut solver = Bsim4::new(ports, model, inst);
+        
+        let portvs: Bsim4Ports<f64> = Bsim4Ports {
+            dNode: 1.0,
+            dNodePrime: 1.0,
+            sNode: 0.0,
+            sNodePrime: 0.0,
+            gNodeExt: 1.0,
+            gNodePrime: 1.0,
+            gNodeMid: 1.0,
+            bNode: 0.0,
+            bNodePrime: 0.0,
+            dbNode: 0.0,
+            sbNode: 0.0,
+            qNode: 0.0,
+        };
+
+        use crate::analysis::AnalysisInfo;
+        let an = AnalysisInfo::OP;
+        let stamps = solver._load_dc_tr(portvs, &an);
+
+        Ok(())
+    }
 
     #[test]
     fn test_bsim4_1() -> TestResult {

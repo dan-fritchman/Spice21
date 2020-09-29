@@ -23,7 +23,6 @@ pub use bsim4::Bsim4;
 /// Constants
 pub mod consts {
     pub(crate) use std::f64::consts::PI;
-    use std::f64::{MAX_EXP as MAX_EXPI, MIN_EXP as MIN_EXPI};
 
     pub(crate) const KB: f64 = 1.3806226e-23;
     pub(crate) const Q: f64 = 1.6021918e-19;
@@ -33,12 +32,6 @@ pub mod consts {
     pub(crate) const VT_REF: f64 = KB * TEMP_REF / Q;
     pub(crate) const SIO2_PERMITTIVITY: f64 = 3.9 * 8.854214871e-12;
     pub(crate) const SQRT2: f64 = 1.4142135624;
-    pub(crate) const MAX_EXP: f64 = MAX_EXPI as f64;
-    pub(crate) const MIN_EXP: f64 = MIN_EXPI as f64;
-    pub(crate) const MAX_EXPL: f64 = 2.688117142e+43;
-    pub(crate) const MIN_EXPL: f64 = 3.720075976e-44;
-    pub(crate) const EXPL_THRESHOLD: f64 = 100.0;
-    pub(crate) const EXP_THRESHOLD: f64 = 34.0;
     pub(crate) const EPS0: f64 = 8.85418e-12;
     pub(crate) const EPSSI: f64 = 1.03594e-10;
 }

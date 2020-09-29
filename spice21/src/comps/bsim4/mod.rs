@@ -19,6 +19,12 @@ use crate::sparse21::{Eindex, Matrix};
 // FIXME: get from circuit/ analysis
 pub(crate) const gmin: f64 = 1e-9;
 
+pub(crate) const EXPL_THRESHOLD: f64 = 100.0;
+pub(crate) const EXP_THRESHOLD: f64 = 34.0;
+pub(crate) const MAX_EXP: f64 = 5.834617425e14;
+pub(crate) const MIN_EXP: f64 = 1.713908431e-15;
+pub(crate) const MAX_EXPL: f64 = 2.688117142e+43;
+pub(crate) const MIN_EXPL: f64 = 3.720075976e-44;
 pub(crate) const DELTA_1: f64 = 0.02;
 pub(crate) const DELTA_2: f64 = 0.02;
 pub(crate) const DELTA_3: f64 = 0.02;
