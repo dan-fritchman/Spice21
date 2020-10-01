@@ -132,14 +132,14 @@ impl Bsim4 {
     }
     fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         let portvs = self.vs(guess);
-        return self._load_dc_tr(portvs, an);
+        return self.op(portvs, an);
         // TODO: eventually this will look something like so:
         // let newop = self.op(portvs, an);
         // self.guess = newop;
         // return self.stamp();
     }
 
-    fn _load_dc_tr(&mut self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    fn op(&mut self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Stamps<f64> { //-> Bsim4OpPoint {
         // Start by declaring about 700 local float variables!
 
         // Used a lot
@@ -774,7 +774,7 @@ impl Bsim4 {
         /* End of diode DC model */
 
         if vds >= 0.0 {
-            newop.mode = 1;
+            newop.mode = 1; // FIXME: enum-ize this field
             Vds = vds;
             Vgs = vgs;
             Vbs = vbs;
@@ -987,7 +987,7 @@ impl Bsim4 {
         vgd_eff = _v;
         dvgd_eff_dvg = _dv;
 
-        if self.guess.mode > 0 {
+        if newop.mode > 0 {
             Vgs_eff = vgs_eff;
             dVgs_eff_dVg = dvgs_eff_dvg;
         } else {
@@ -3680,7 +3680,7 @@ impl Bsim4 {
         let mut ggtd = 0.0;
         let mut ggtb = 0.0;
         let mut ggts = 0.0;
-        let mut dxpart = if self.guess.mode > 0 { 0.4 } else { 0.6 };
+        let mut dxpart = if newop.mode > 0 { 0.4 } else { 0.6 };
         let mut sxpart = 1.0 - dxpart;
         let mut ddxpart_dVd = 0.0;
         let mut ddxpart_dVg = 0.0;
@@ -3742,7 +3742,7 @@ impl Bsim4 {
             // All of these impedances are calculated as g = C/dt, e.g. using Backward Euler.
             // Should figure out whether this is the implementation intent, or just for reference.
             let ag0 = 1.0 / state.dt;
-            if self.guess.mode > 0 {
+            if newop.mode > 0 {
                 if self.model.trnqsmod == 0 {
                     qdrn -= qgdo;
                     if self.model.rgatemod == 3 {
@@ -4214,6 +4214,10 @@ impl Bsim4 {
                 cqcheq = newop.cqcheq - (gcqgb * vgb - gcqdb * vbd - gcqsb * vbs) + T0;
             }
         }
+    // return newop;
+    // }
+    // fn stamp(&self) -> Stamps<f64>{
+    //     let newop = self.guess;
 
         /*
          *  Load current vector
@@ -4256,7 +4260,7 @@ impl Bsim4 {
         let mut gIgtots: f64;
         let mut gIgtotb: f64;
 
-        if self.guess.mode >= 0 {
+        if newop.mode >= 0 {
             Gm = newop.gm;
             Gmbs = newop.gmbs;
             FwdSum = Gm + Gmbs;
@@ -4733,9 +4737,8 @@ impl Bsim4 {
             j.push((self.matps.GPqPtr, -(newop.gtau)));
         }
         // Update our best-guess operating point
-        self.guess = newop;
+        // self.guess = newop;
         // And return our matrix stamps
-        println!("b={:?}",b);
         return Stamps { g: j, b };
     }
 }
@@ -4927,15 +4930,16 @@ mod tests {
 
         let ports = Bsim4Ports::<Option<VarIndex>>::default(); 
         let mut solver = Bsim4::new(ports, model, inst);
-        
+
+        let p = 1.0;
         let portvs: Bsim4Ports<f64> = Bsim4Ports {
-            dNode: 1.0,
-            dNodePrime: 1.0,
+            dNode: p,
+            dNodePrime: p,
             sNode: 0.0,
             sNodePrime: 0.0,
-            gNodeExt: 1.0,
-            gNodePrime: 1.0,
-            gNodeMid: 1.0,
+            gNodeExt: p,
+            gNodePrime: p,
+            gNodeMid: p,
             bNode: 0.0,
             bNodePrime: 0.0,
             dbNode: 0.0,
@@ -4945,7 +4949,8 @@ mod tests {
 
         use crate::analysis::AnalysisInfo;
         let an = AnalysisInfo::OP;
-        let stamps = solver._load_dc_tr(portvs, &an);
+        let op = solver.op(portvs, &an);
+        // println!("guess.cd = {:?}", op.cd);
 
         Ok(())
     }
@@ -4972,11 +4977,11 @@ mod tests {
             model: "default".to_string(),
             params: inst,
         });
-        ckt.add(Comp::vdc(1.0, n("vss"), NodeRef::Gnd));
-        ckt.add(Comp::R(1e-3, n("vss"), NodeRef::Gnd));
+        let p = 1.0;
+        ckt.add(Comp::vdc(p, n("vss"), NodeRef::Gnd));
+        ckt.add(Comp::R(1e-10, n("vss"), NodeRef::Gnd));
         let soln = dcop(ckt)?;
-        println!("{}", soln[0]);
-        println!("{}", soln[1]);
+        println!("{:?}", soln);
 
         Ok(())
     }
