@@ -23,14 +23,14 @@ pub enum MosTerm {
 }
 use MosTerm::{B, D, G, S};
 
-pub struct MosTerminals<T> {
+pub struct MosPorts<T> {
     pub d: T,
     pub g: T,
     pub s: T,
     pub b: T,
 }
 
-impl<T> Index<MosTerm> for MosTerminals<T> {
+impl<T> Index<MosTerm> for MosPorts<T> {
     type Output = T;
     fn index(&self, t: MosTerm) -> &T {
         match t {
@@ -42,9 +42,9 @@ impl<T> Index<MosTerm> for MosTerminals<T> {
     }
 }
 
-impl<T: Copy> From<[T; 4]> for MosTerminals<T> {
-    fn from(n: [T; 4]) -> MosTerminals<T> {
-        return MosTerminals {
+impl<T: Copy> From<[T; 4]> for MosPorts<T> {
+    fn from(n: [T; 4]) -> MosPorts<T> {
+        return MosPorts {
             d: n[0],
             g: n[1],
             s: n[2],
@@ -300,13 +300,13 @@ pub struct Mos1 {
     intparams: Mos1InternalParams,
     op: Mos1OpPoint,
     guess: Mos1OpPoint,
-    ports: MosTerminals<Option<VarIndex>>,
+    ports: MosPorts<Option<VarIndex>>,
     matps: MosMatrixPointers,
 }
 
 /// Mosfet Level 1 Instance
 impl Mos1 {
-    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosTerminals<Option<VarIndex>>) -> Mos1 {
+    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosPorts<Option<VarIndex>>) -> Mos1 {
         let intparams = Mos1::derive(&model, &params);
         Mos1 {
             model,
@@ -674,12 +674,12 @@ impl Default for Mos0Params {
 /// Mos "Level Zero" Simplified Solver
 pub struct Mos0 {
     params: Mos0Params,
-    ports: MosTerminals<Option<VarIndex>>,
+    ports: MosPorts<Option<VarIndex>>,
     matps: MosMatrixPointers,
 }
 
 impl Mos0 {
-    pub(crate) fn new(ports: MosTerminals<Option<VarIndex>>, mos_type: MosType) -> Self {
+    pub(crate) fn new(ports: MosPorts<Option<VarIndex>>, mos_type: MosType) -> Self {
         Mos0 {
             params: Mos0Params {
                 mos_type: mos_type,

@@ -337,14 +337,14 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
             }
             Comp::Mos0(m) => {
-                use crate::comps::mos::MosTerminals;
+                use crate::comps::mos::MosPorts;
                 use crate::comps::Mos0;
 
                 let circuit::Mos0i { name, mos_type, ports } = m;
 
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
-                let ports: MosTerminals<Option<VarIndex>> = [
+                let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),
                     self.node_var(ports.g.clone()),
                     self.node_var(ports.s.clone()),
@@ -354,12 +354,12 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 Mos0::new(ports.into(), mos_type).into()
             }
             Comp::Mos1(m) => {
-                use crate::comps::mos::MosTerminals;
+                use crate::comps::mos::MosPorts;
                 use crate::comps::Mos1;
 
                 let circuit::Mos1i { name, model, params, ports } = m;
 
-                let ports: MosTerminals<Option<VarIndex>> = [
+                let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),
                     self.node_var(ports.g.clone()),
                     self.node_var(ports.s.clone()),
@@ -371,13 +371,13 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
             Comp::Bsim4(b4i) => {
                 use crate::comps::bsim4::bsim4ports::Bsim4Ports;
                 use crate::comps::bsim4::Bsim4;
-                use crate::comps::mos::MosTerminals;
+                use crate::comps::mos::MosPorts;
 
                 let circuit::Bsim4i { name, ports, model, params } = b4i;
 
                 let (model, inst) = self.models.bsim4.inst(&model, params).unwrap();
 
-                let ports: MosTerminals<Option<VarIndex>> = [
+                let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),
                     self.node_var(ports.g.clone()),
                     self.node_var(ports.s.clone()),
@@ -804,7 +804,7 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 mod tests {
     use super::*;
     use crate::circuit::*;
-    use crate::comps::mos::MosTerminals;
+    use crate::comps::mos::MosPorts;
     use crate::comps::MosType;
     use crate::spresult::TestResult;
     use NodeRef::{Gnd, Num};
@@ -845,7 +845,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(0),
                     s: Gnd,
@@ -869,7 +869,7 @@ mod tests {
                 name: s("m"),
                 model: Mos1Model::default(),
                 params: Mos1InstanceParams::default(),
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: n("g"),
                     d: n("d"),
                     s: Gnd,
@@ -909,7 +909,7 @@ mod tests {
                 name: s("m"),
                 model: Mos1Model::default(),
                 params: Mos1InstanceParams::default(),
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,

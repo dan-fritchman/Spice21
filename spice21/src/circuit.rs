@@ -15,7 +15,7 @@ use super::proto::Circuit as CircuitProto;
 use crate::SpResult;
 
 use crate::comps::bsim4::Bsim4InstSpecs;
-use crate::comps::mos::MosTerminals;
+use crate::comps::mos::MosPorts;
 
 use crate::comps::bsim4::Bsim4ModelCache;
 
@@ -87,7 +87,7 @@ impl Ds {
 
 pub struct Bsim4i {
     pub(crate) name: String,
-    pub(crate) ports: MosTerminals<NodeRef>,
+    pub(crate) ports: MosPorts<NodeRef>,
     pub(crate) model: String,
     pub(crate) params: Bsim4InstSpecs,
 }
@@ -95,13 +95,13 @@ pub struct Bsim4i {
 pub struct Mos0i {
     pub(crate) name: String,
     pub(crate) mos_type: MosType,
-    pub(crate) ports: MosTerminals<NodeRef>,
+    pub(crate) ports: MosPorts<NodeRef>,
 }
 pub struct Mos1i {
     pub(crate) name: String,
     pub(crate) model: Mos1Model,
     pub(crate) params: Mos1InstanceParams,
-    pub(crate) ports: MosTerminals<NodeRef>,
+    pub(crate) ports: MosPorts<NodeRef>,
 }
 
 /// Component Enum.
@@ -148,7 +148,7 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::M(m) => Comp::Mos1(Mos1i { name: m.name, model:Mos1Model::default(), params:Mos1InstanceParams::default(), ports: MosTerminals { g: n(m.g), d: n(m.d), s: n(m.s), b: n(m.b) } }),
+            CompProto::M(m) => Comp::Mos1(Mos1i { name: m.name, model:Mos1Model::default(), params:Mos1InstanceParams::default(), ports: MosPorts { g: n(m.g), d: n(m.d), s: n(m.s), b: n(m.b) } }),
         }
     }
 }

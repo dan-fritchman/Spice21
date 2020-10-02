@@ -112,7 +112,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
                     s: Gnd,
@@ -139,7 +139,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
                     s: Gnd,
@@ -167,7 +167,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -191,7 +191,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -220,7 +220,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
                     s: Num(0),
@@ -244,7 +244,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -268,7 +268,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -298,7 +298,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
                     s: Num(0),
@@ -322,7 +322,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -345,7 +345,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
                     s: Num(0),
@@ -368,7 +368,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -391,7 +391,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
                     s: Num(0),
@@ -414,7 +414,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: n("vdd"),
                     d: n("d"),
                     s: Gnd,
@@ -439,7 +439,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: n("g"),
                     d: n("d"),
                     s: Gnd,
@@ -467,7 +467,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p"),
                 mos_type: PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: n("vdd"),
                     d: n("d"),
                     s: n("vdd"),
@@ -477,7 +477,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n"),
                 mos_type: NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: n("vdd"),
                     d: n("d"),
                     s: Gnd,
@@ -501,7 +501,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p"),
                 mos_type: PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Gnd,
                     d: n("d"),
                     s: n("vdd"),
@@ -511,7 +511,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n"),
                 mos_type: NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Gnd,
                     d: n("d"),
                     s: Gnd,
@@ -540,7 +540,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p1"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
                     s: Num(0),
@@ -550,7 +550,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n1"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
                     s: Gnd,
@@ -560,7 +560,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p2"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Num(0),
@@ -570,7 +570,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n2"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Gnd,
@@ -580,7 +580,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p3"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Num(0),
@@ -590,7 +590,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n3"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Gnd,
@@ -600,7 +600,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p4"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(4),
                     s: Num(0),
@@ -610,7 +610,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n4"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(4),
                     s: Gnd,
@@ -716,7 +716,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p1"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
                     s: Num(0),
@@ -726,7 +726,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n1"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
                     s: Gnd,
@@ -738,7 +738,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p2"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Num(0),
@@ -748,7 +748,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n2"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Gnd,
@@ -760,7 +760,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("p3"),
                 mos_type: MosType::PMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Num(0),
@@ -770,7 +770,7 @@ mod tests {
             Comp::Mos0(Mos0i {
                 name: s("n3"),
                 mos_type: MosType::NMOS,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Gnd,
@@ -803,7 +803,7 @@ mod tests {
                 name: s("m"),
                 model: model,
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -829,7 +829,7 @@ mod tests {
                 name: s("m"),
                 model: model,
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
                     s: Gnd,
@@ -867,7 +867,7 @@ mod tests {
                 name: s("p"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Gnd,
                     d: Num(1),
                     s: Num(0),
@@ -878,7 +878,7 @@ mod tests {
                 name: s("n"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Gnd,
                     d: Num(1),
                     s: Gnd,
@@ -907,7 +907,7 @@ mod tests {
                 name: s("p1"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Num(0),
@@ -918,7 +918,7 @@ mod tests {
                 name: s("n1"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Gnd,
@@ -929,7 +929,7 @@ mod tests {
                 name: s("p2"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Num(0),
@@ -940,7 +940,7 @@ mod tests {
                 name: s("n2"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Gnd,
@@ -951,7 +951,7 @@ mod tests {
                 name: s("p3"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
                     s: Num(0),
@@ -962,7 +962,7 @@ mod tests {
                 name: s("n3"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
                     s: Gnd,
@@ -999,7 +999,7 @@ mod tests {
                 name: s("p1"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
                     s: Num(0),
@@ -1010,7 +1010,7 @@ mod tests {
                 name: s("n1"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
                     s: Gnd,
@@ -1023,7 +1023,7 @@ mod tests {
                 name: s("p2"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Num(0),
@@ -1034,7 +1034,7 @@ mod tests {
                 name: s("n2"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
                     s: Gnd,
@@ -1047,7 +1047,7 @@ mod tests {
                 name: s("p3"),
                 model: pmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Num(0),
@@ -1058,7 +1058,7 @@ mod tests {
                 name: s("n3"),
                 model: nmos.clone(),
                 params: params,
-                ports: MosTerminals {
+                ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
                     s: Gnd,

@@ -1,7 +1,7 @@
 use super::bsim4defs::*;
 use super::Bsim4InternalParams;
 use crate::analysis::{Solver, VarIndex, VarKind};
-use crate::comps::mos::{MosTerm, MosTerminals};
+use crate::comps::mos::{MosTerm, MosPorts};
 use crate::SpNum;
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ pub(crate) struct Bsim4Ports<T> {
 impl Bsim4Ports<Option<VarIndex>> {
     pub(crate) fn from<T: SpNum>(
         iname: String,
-        terms: &MosTerminals<Option<VarIndex>>,
+        terms: &MosPorts<Option<VarIndex>>,
         model: &Bsim4ModelVals,
         intp: &Bsim4InternalParams,
         solver: &mut Solver<T>,

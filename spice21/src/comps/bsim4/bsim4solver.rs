@@ -5035,9 +5035,9 @@ mod tests {
         use crate::analysis::dcop;
         use crate::circuit::*;
         use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
-        use crate::comps::mos::MosTerminals;
+        use crate::comps::mos::MosPorts;
         let inst = Bsim4InstSpecs::default();
-        let ports = MosTerminals {
+        let ports = MosPorts {
             d: n("vss"),
             g: n("vss"),
             s: NodeRef::Gnd,
