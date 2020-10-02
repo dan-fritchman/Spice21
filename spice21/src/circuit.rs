@@ -137,7 +137,7 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::Mos(m) => Comp::Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n(m.g), n(m.d), n(m.s), n(m.b)),
+            CompProto::M(m) => Comp::Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n(m.g), n(m.d), n(m.s), n(m.b)),
         }
     }
 }
