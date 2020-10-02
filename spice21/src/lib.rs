@@ -134,18 +134,18 @@ pub mod analysis;
 pub mod circuit;
 pub mod comps;
 pub mod proto;
+pub mod spresult;
 
 // Re-exports
 pub use analysis::*;
 pub use proto::*;
+pub use spresult::*;
 
 // Crate-wide public
 pub(crate) use spnum::*;
-pub(crate) use spresult::*;
 
 // Private modules
 mod assert;
 mod sparse21;
 mod spnum;
-mod spresult;
 mod tests;

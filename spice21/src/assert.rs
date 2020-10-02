@@ -1,7 +1,7 @@
 ///
 /// Assertion-Based Debugging Utilities
 ///
-use super::spresult::TestResult;
+use super::spresult::{TestResult, sperror};
 
 pub struct Assert<T> {
     val: T,
@@ -14,7 +14,7 @@ pub fn assert<T>(val: T) -> Assert<T> {
 impl<T> Assert<T> {
     fn raise(&self) -> TestResult {
         // Breakpoint here
-        return Err("Assertion Failed");
+        return Err(sperror("Assertion Failed"));
     }
 }
 

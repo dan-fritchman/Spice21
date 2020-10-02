@@ -6,7 +6,7 @@ use crate::circuit;
 use crate::circuit::{Ckt, Comp, NodeRef};
 use crate::comps::{Component, ComponentSolver};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{SpNum, SpResult};
+use crate::{SpNum, SpResult, sperror};
 use num::{Complex, Float, Zero};
 
 /// `Stamps` are the interface between Components and Solvers.
@@ -160,7 +160,7 @@ impl Solver<'_, f64> {
                 self.vars.values[r] += dx[r];
             }
         }
-        return Err("Convergence Failed");
+        return Err(sperror("Convergence Failed"));
     }
 }
 
@@ -252,7 +252,7 @@ impl<'a> Solver<'a, Complex<f64>> {
                 itol: itol,
             });
         }
-        return Err("Convergence Failed");
+        return Err(sperror("Convergence Failed"));
     }
 }
 
@@ -627,7 +627,7 @@ impl<'a> Tran<'a> {
                 }
             }
         }
-        Err("Tran Results Failure")
+        Err(sperror("Tran Results Failure"))
     }
 }
 

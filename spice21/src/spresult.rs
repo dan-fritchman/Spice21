@@ -1,18 +1,23 @@
+//! 
+//! Spice21 Result and Error Types
+//! 
 use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
 pub struct SpError {
-    desc: String,
+    pub desc: String,
+}
+
+pub(crate) fn sperror<S: Into<String>>(s: S) -> SpError {
+    SpError { desc: s.into() }
 }
 
 impl Error for SpError {}
 
 impl SpError {
     pub fn throw(s: &'static str) -> Box<SpError> {
-        return Box::new(SpError {
-            desc: String::from(s),
-        });
+        return Box::new(SpError { desc: String::from(s) });
     }
 }
 
@@ -24,19 +29,15 @@ impl fmt::Display for SpError {
 
 impl From<&'static str> for SpError {
     fn from(s: &'static str) -> Self {
-        SpError {
-            desc: String::from(s),
-        }
+        SpError { desc: String::from(s) }
     }
 }
 
 impl From<&'static str> for Box<SpError> {
     fn from(s: &'static str) -> Self {
-        Box::new(SpError {
-            desc: String::from(s),
-        })
+        Box::new(SpError { desc: String::from(s) })
     }
 }
 
-pub type SpResult<T> = Result<T, &'static str>;
+pub type SpResult<T> = Result<T, SpError>;
 pub type TestResult = SpResult<()>;

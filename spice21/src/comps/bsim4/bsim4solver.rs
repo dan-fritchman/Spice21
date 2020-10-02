@@ -4993,7 +4993,7 @@ impl Bsim4 {
 
 mod tests {
     use super::*;
-    use crate::{assert, TestResult};
+    use crate::{assert, TestResult, sperror};
 
     #[test]
     fn test_bsim4_load() -> TestResult {
@@ -5001,7 +5001,7 @@ mod tests {
         let mut models = Bsim4ModelCache::new();
         models.add("default".to_string(), Bsim4ModelSpecs::default());
         let inst = Bsim4InstSpecs::default();
-        let (model, inst) = models.inst(&"default".to_string(), inst).unwrap();
+        let (model, inst) = models.inst(&"default".to_string(), inst).ok_or(sperror("Model Not Found"))?;
 
         let ports = Bsim4Ports::<Option<VarIndex>>::default();
         let mut solver = Bsim4::new(ports, model, inst);
