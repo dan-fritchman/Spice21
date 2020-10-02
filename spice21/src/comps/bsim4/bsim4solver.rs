@@ -5038,8 +5038,8 @@ mod tests {
         use crate::comps::mos::MosTerminals;
         let inst = Bsim4InstSpecs::default();
         let ports = MosTerminals {
-            g: n("vss"),
             d: n("vss"),
+            g: n("vss"),
             s: NodeRef::Gnd,
             b: NodeRef::Gnd,
         };

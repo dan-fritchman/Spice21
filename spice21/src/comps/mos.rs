@@ -13,19 +13,19 @@ use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use crate::sparse21::{Eindex, Matrix};
 use crate::SpNum;
 
-/// Mos Terminals, in SPICE order: g, d, s, b
+/// Mos Terminals, in SPICE order: d, g, s, b
 #[derive(Clone, Copy)]
 pub enum MosTerm {
-    G = 0,
-    D = 1,
+    D = 0,
+    G = 1,
     S = 2,
     B = 3,
 }
 use MosTerm::{B, D, G, S};
 
 pub struct MosTerminals<T> {
-    pub g: T,
     pub d: T,
+    pub g: T,
     pub s: T,
     pub b: T,
 }
@@ -34,8 +34,8 @@ impl<T> Index<MosTerm> for MosTerminals<T> {
     type Output = T;
     fn index(&self, t: MosTerm) -> &T {
         match t {
-            G => &self.g,
             D => &self.d,
+            G => &self.g,
             S => &self.s,
             B => &self.b,
         }
@@ -45,8 +45,8 @@ impl<T> Index<MosTerm> for MosTerminals<T> {
 impl<T: Copy> From<[T; 4]> for MosTerminals<T> {
     fn from(n: [T; 4]) -> MosTerminals<T> {
         return MosTerminals {
-            g: n[0],
-            d: n[1],
+            d: n[0],
+            g: n[1],
             s: n[2],
             b: n[3],
         };
@@ -700,8 +700,6 @@ impl Component for Mos0 {
         }
     }
     fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
-        use MosTerm::{D, G, S};
-
         let vg = guess.get(self.ports[G]);
         let vd = guess.get(self.ports[D]);
         let vs = guess.get(self.ports[S]);

@@ -9,7 +9,6 @@ use crate::sparse21::{Eindex, Matrix};
 use crate::{SpNum, SpResult};
 use num::{Complex, Float, Zero};
 
-
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.g`
@@ -260,7 +259,7 @@ impl<'a> Solver<'a, Complex<f64>> {
 impl<'a, NumT: SpNum> Solver<'a, NumT> {
     /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
     pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
-        let Ckt {comps, models } = ckt;
+        let Ckt { comps, models } = ckt;
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
@@ -337,26 +336,36 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 let n = self.node_var(vc.n.clone());
                 Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
             }
-            Comp::Mos0(pol, g, d, s, b) => {
+            Comp::Mos0(m) => {
+                use crate::comps::mos::MosTerminals;
                 use crate::comps::Mos0;
+
+                let circuit::Mos0i { name, mos_type, ports } = m;
+
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
-                let ports = [
-                    self.node_var(g.clone()),
-                    self.node_var(d.clone()),
-                    self.node_var(s.clone()),
-                    self.node_var(b.clone()),
-                ];
-                Mos0::new(ports.into(), pol).into()
+                let ports: MosTerminals<Option<VarIndex>> = [
+                    self.node_var(ports.d.clone()),
+                    self.node_var(ports.g.clone()),
+                    self.node_var(ports.s.clone()),
+                    self.node_var(ports.b.clone()),
+                ]
+                .into();
+                Mos0::new(ports.into(), mos_type).into()
             }
-            Comp::Mos1(model, params, g, d, s, b) => {
+            Comp::Mos1(m) => {
+                use crate::comps::mos::MosTerminals;
                 use crate::comps::Mos1;
-                let ports = [
-                    self.node_var(g.clone()),
-                    self.node_var(d.clone()),
-                    self.node_var(s.clone()),
-                    self.node_var(b.clone()),
-                ];
+
+                let circuit::Mos1i { name, model, params, ports } = m;
+
+                let ports: MosTerminals<Option<VarIndex>> = [
+                    self.node_var(ports.d.clone()),
+                    self.node_var(ports.g.clone()),
+                    self.node_var(ports.s.clone()),
+                    self.node_var(ports.b.clone()),
+                ]
+                .into();
                 Mos1::new(model.clone(), params.clone(), ports.into()).into()
             }
             Comp::Bsim4(b4i) => {
@@ -369,8 +378,8 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 let (model, inst) = self.models.bsim4.inst(&model, params).unwrap();
 
                 let ports: MosTerminals<Option<VarIndex>> = [
-                    self.node_var(ports.g.clone()),
                     self.node_var(ports.d.clone()),
+                    self.node_var(ports.g.clone()),
                     self.node_var(ports.s.clone()),
                     self.node_var(ports.b.clone()),
                 ]
@@ -794,15 +803,15 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuit::{n, s, Ckt, Comp};
+    use crate::circuit::*;
+    use crate::comps::mos::MosTerminals;
     use crate::comps::MosType;
     use crate::spresult::TestResult;
-    use Comp::{Mos0, C, R};
     use NodeRef::{Gnd, Num};
 
     #[test]
     fn test_ac1() -> TestResult {
-        let ckt = Ckt::from_comps(vec![R(1.0, Num(0), Gnd)]);
+        let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -830,10 +839,19 @@ mod tests {
     #[test]
     fn test_ac3() -> TestResult {
         let ckt = Ckt::from_comps(vec![
-            R(1e-3, Num(0), Num(1)),
-            C(1e-9, Num(1), Gnd),
+            Comp::R(1e-3, Num(0), Num(1)),
+            Comp::C(1e-9, Num(1), Gnd),
             Comp::vdc(1.0, Num(0), Gnd),
-            Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
+            Comp::Mos0(Mos0i {
+                name: s("m"),
+                mos_type: MosType::NMOS,
+                ports: MosTerminals {
+                    g: Num(1),
+                    d: Num(0),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
         ]);
         let soln = ac(ckt, AcOptions::default())?;
 
@@ -843,16 +861,23 @@ mod tests {
     // NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
-        use crate::circuit::Vs;
         use crate::comps::{Mos1InstanceParams, Mos1Model};
-        use Comp::{Mos1, C, R, V};
 
         let ckt = Ckt::from_comps(vec![
-            R(1e-5, n("vdd"), n("d")),
-            C(1e-9, n("d"), Gnd),
-            Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n("g"), n("d"), Gnd, Gnd),
+            Comp::C(1e-9, n("d"), Gnd),
+            Comp::Mos1(Mos1i {
+                name: s("m"),
+                model: Mos1Model::default(),
+                params: Mos1InstanceParams::default(),
+                ports: MosTerminals {
+                    g: n("g"),
+                    d: n("d"),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
             Comp::vdc(1.0, n("vdd"), Gnd),
-            V(Vs {
+            Comp::V(Vs {
                 name: s("vg"),
                 vdc: 0.7,
                 acm: 1.0,
@@ -873,14 +898,24 @@ mod tests {
         use Comp::{Mos1, V};
 
         let ckt = Ckt::from_comps(vec![
-            V(Vs {
+            Comp::V(Vs {
                 name: s("vd"),
                 vdc: 0.5,
                 acm: 1.0,
                 p: Num(0),
                 n: Gnd,
             }),
-            Mos1(Mos1Model::default(), Mos1InstanceParams::default(), Num(0), Num(0), Gnd, Gnd),
+            Comp::Mos1(Mos1i {
+                name: s("m"),
+                model: Mos1Model::default(),
+                params: Mos1InstanceParams::default(),
+                ports: MosTerminals {
+                    g: Num(0),
+                    d: Num(0),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
         ]);
         let soln = ac(ckt, AcOptions::default())?;
 

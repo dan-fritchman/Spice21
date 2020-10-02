@@ -92,6 +92,18 @@ pub struct Bsim4i {
     pub(crate) params: Bsim4InstSpecs,
 }
 
+pub struct Mos0i {
+    pub(crate) name: String,
+    pub(crate) mos_type: MosType,
+    pub(crate) ports: MosTerminals<NodeRef>,
+}
+pub struct Mos1i {
+    pub(crate) name: String,
+    pub(crate) model: Mos1Model,
+    pub(crate) params: Mos1InstanceParams,
+    pub(crate) ports: MosTerminals<NodeRef>,
+}
+
 /// Component Enum.
 /// Circuits are mostly a list of these variants.
 pub enum Comp {
@@ -100,9 +112,8 @@ pub enum Comp {
     R(f64, NodeRef, NodeRef),
     C(f64, NodeRef, NodeRef),
     D(Ds),
-
-    Mos0(MosType, NodeRef, NodeRef, NodeRef, NodeRef),
-    Mos1(Mos1Model, Mos1InstanceParams, NodeRef, NodeRef, NodeRef, NodeRef),
+    Mos0(Mos0i),
+    Mos1(Mos1i),
     Bsim4(Bsim4i),
 }
 
@@ -137,7 +148,7 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::M(m) => Comp::Mos1(Mos1Model::default(), Mos1InstanceParams::default(), n(m.g), n(m.d), n(m.s), n(m.b)),
+            CompProto::M(m) => Comp::Mos1(Mos1i { name: m.name, model:Mos1Model::default(), params:Mos1InstanceParams::default(), ports: MosTerminals { g: n(m.g), d: n(m.d), s: n(m.s), b: n(m.b) } }),
         }
     }
 }
