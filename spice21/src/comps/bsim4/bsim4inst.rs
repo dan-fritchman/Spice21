@@ -669,7 +669,7 @@ pub(crate) fn from(
             T4 = T3 + 2.0 * T1 * MIN_EXP;
             T5 = T1 / T4;
         } else {
-            T5 = 1.0 / (MAX_EXP - 2.0); /* 3.0 * MIN_EXP omitted */
+            T5 = 1.0 / (MAX_EXP - 2.0); 
         }
         size_params.thetaRout = size_params.pdibl1 * T5 + size_params.pdibl2;
 

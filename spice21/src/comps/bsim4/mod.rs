@@ -2,6 +2,7 @@
 //! BSIM4 MOSFET Implementation
 //!
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub mod bsim4defs;
 pub mod bsim4derive;
@@ -17,7 +18,7 @@ use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
 
 // FIXME: get from circuit/ analysis
-pub(crate) const gmin: f64 = 1e-9;
+pub(crate) const gmin: f64 = 1e-12;
 
 pub(crate) const EXPL_THRESHOLD: f64 = 100.0;
 pub(crate) const EXP_THRESHOLD: f64 = 34.0;
@@ -29,9 +30,6 @@ pub(crate) const DELTA_1: f64 = 0.02;
 pub(crate) const DELTA_2: f64 = 0.02;
 pub(crate) const DELTA_3: f64 = 0.02;
 pub(crate) const DELTA_4: f64 = 0.02;
-
-
-use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(crate) struct Bsim4ModelEntry {
@@ -95,7 +93,6 @@ impl Bsim4ModelCache {
         Some((model.clone(), inst))
     }
 }
-
 
 // Some helper math
 // C-style call syntax, e.g. `min(a,b)` instead of `a.min(b)`
@@ -287,13 +284,13 @@ pub(crate) struct Bsim4ModelDerivedParams {
     pub(crate) epssub: f64,
     pub(crate) ni: f64,
     pub(crate) Nvtms: f64,
-        pub(crate) Nvtmd: f64,
-        pub(crate) Nvtmrss: f64,
-        pub(crate) Nvtmrssws: f64,
-        pub(crate) Nvtmrsswgs: f64,
-        pub(crate) Nvtmrsd: f64,
-        pub(crate) Nvtmrsswd: f64,
-        pub(crate) Nvtmrsswgd: f64,
+    pub(crate) Nvtmd: f64,
+    pub(crate) Nvtmrss: f64,
+    pub(crate) Nvtmrssws: f64,
+    pub(crate) Nvtmrsswgs: f64,
+    pub(crate) Nvtmrsd: f64,
+    pub(crate) Nvtmrsswd: f64,
+    pub(crate) Nvtmrsswgd: f64,
 }
 
 #[derive(Default, Debug, Deserialize, Serialize)]
@@ -460,6 +457,62 @@ pub(crate) struct Bsim4OpPoint {
     pub(crate) Abulk: f64,
     pub(crate) EsatL: f64,
     pub(crate) AbovVgst2Vtm: f64,
+
+    pub(crate) vgd: f64,
+    pub(crate) sxpart: f64,
+    pub(crate) dxpart: f64,
+    pub(crate) vbs_jct: f64,
+    pub(crate) vbd_jct: f64,
+    pub(crate) gqdef: f64,
+    pub(crate) ggtg: f64,
+    pub(crate) ggtd: f64,
+    pub(crate) ggts: f64,
+    pub(crate) ggtb: f64,
+    pub(crate) gcsbsb: f64,
+    pub(crate) gcdbdb: f64,
+    pub(crate) gcqsb: f64,
+    pub(crate) gcqdb: f64,
+    pub(crate) gcqgb: f64,
+
+    pub(crate) cqdef: f64,
+    pub(crate) gcqbb: f64,
+    pub(crate) gcgbb: f64,
+    pub(crate) ceqqg: f64,
+    pub(crate) ceqqd: f64,
+    pub(crate) ceqqb: f64,
+    pub(crate) ceqqjs: f64,
+    pub(crate) ceqqjd: f64,
+    pub(crate) ceqqgmid: f64,
+    pub(crate) gcsbb: f64,
+    pub(crate) gcssb: f64,
+    pub(crate) gcsgb: f64,
+    pub(crate) gcsdb: f64,
+    pub(crate) gcdbb: f64,
+    pub(crate) gcggb: f64,
+    pub(crate) gcgdb: f64,
+    pub(crate) gcgsb: f64,
+    pub(crate) gcgmgmb: f64,
+    pub(crate) gcgmsb: f64,
+    pub(crate) gcgmdb: f64,
+    pub(crate) gcgmbb: f64,
+    pub(crate) gcdgmb: f64,
+    pub(crate) gcsgmb: f64,
+    pub(crate) ddxpart_dVd: f64,
+    pub(crate) ddxpart_dVs: f64,
+    pub(crate) ddxpart_dVb: f64,
+    pub(crate) dsxpart_dVb: f64,
+    pub(crate) dsxpart_dVs: f64,
+    pub(crate) dsxpart_dVg: f64,
+    pub(crate) dsxpart_dVd: f64,
+    pub(crate) ddxpart_dVg: f64,
+    pub(crate) gcdgb: f64,
+    pub(crate) gcdsb: f64,
+    pub(crate) gcbdb: f64,
+    pub(crate) gcbgb: f64,
+    pub(crate) gcbsb: f64,
+    pub(crate) gcbbb: f64,
+    pub(crate) gcbgmb: f64,
+    pub(crate) gcddb: f64,
 }
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]

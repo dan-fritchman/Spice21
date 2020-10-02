@@ -131,15 +131,18 @@ impl Bsim4 {
         }
     }
     fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        // Grab our port voltages/ values
         let portvs = self.vs(guess);
-        return self.op(portvs, an);
-        // TODO: eventually this will look something like so:
-        // let newop = self.op(portvs, an);
-        // self.guess = newop;
-        // return self.stamp();
+        // Calculate an operating point from them 
+        let newop = self.op(portvs, an);
+        // Save it for later 
+        self.guess = newop;
+        // And return the corresponding matrix stamps 
+        return self.stamp();
     }
 
-    fn op(&mut self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Stamps<f64> { //-> Bsim4OpPoint {
+    fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Bsim4OpPoint {
+        //-> Bsim4OpPoint {
         // Start by declaring about 700 local float variables!
 
         // Used a lot
@@ -858,7 +861,7 @@ impl Bsim4 {
             dT1_dVb = -T0 * T1 * dlt1_dVb / lt1;
             dTheta0_dVb = dT1_dVb * (T4 - 2.0 * T1 * (T2 + MIN_EXP)) / T4 / T4;
         } else {
-            Theta0 = 1.0 / (MAX_EXP - 2.0); /* 3.0 * MIN_EXP omitted */
+            Theta0 = 1.0 / (MAX_EXP - 2.0);
             dTheta0_dVb = 0.0;
         }
         newop.thetavth = self.size_params.dvt0 * Theta0;
@@ -875,7 +878,7 @@ impl Bsim4 {
             dT1_dVb = -T0 * T1 * dltw_dVb / ltw;
             dT5_dVb = dT1_dVb * (T4 - 2.0 * T1 * (T2 + MIN_EXP)) / T4 / T4;
         } else {
-            T5 = 1.0 / (MAX_EXP - 2.0); /* 3.0 * MIN_EXP omitted */
+            T5 = 1.0 / (MAX_EXP - 2.0);
             dT5_dVb = 0.0;
         }
         T0 = self.size_params.dvt0w * T5;
@@ -884,7 +887,7 @@ impl Bsim4 {
 
         T0 = sqrt(1.0 + self.size_params.lpe0 / Leff);
         T1 = self.size_params.k1ox * (T0 - 1.0) * self.size_params.sqrtPhi
-            + (self.size_params.kt1 + self.size_params.kt1l / Leff + self.size_params.kt2 * Vbseff) * self.model_derived.TempRatio;
+            + (self.size_params.kt1 + self.size_params.kt1l / Leff + self.size_params.kt2 * Vbseff) * (self.model_derived.TempRatio - 1.0);
         let Vth_NarrowW = toxe * self.size_params.phi / (self.size_params.weff + self.size_params.w0);
 
         T3 = self.intp.eta0 + self.size_params.etab * Vbseff;
@@ -910,7 +913,7 @@ impl Bsim4 {
 
         dVth_dVb = Lpe_Vb * self.size_params.k1ox * dsqrtPhis_dVb - self.intp.k2ox - dDelt_vth_dVb - dT2_dVb + self.size_params.k3b * Vth_NarrowW
             - self.size_params.etab * Vds * self.size_params.theta0vb0 * T4
-            + self.size_params.kt2 * self.model_derived.TempRatio;
+            + self.size_params.kt2 * (self.model_derived.TempRatio - 1.0);
         dVth_dVd = -dDIBL_Sft_dVd;
 
         /* Calculate n */
@@ -1477,7 +1480,7 @@ impl Bsim4 {
             dEsatL_dVb *= T10;
             dEsatL_dVb += newop.EsatL * dT10_dVb;
             newop.EsatL *= T10;
-            Esat = newop.EsatL / Leff; 
+            Esat = newop.EsatL / Leff;
         }
 
         /* Calculate Vasat */
@@ -1694,7 +1697,8 @@ impl Bsim4 {
             dT1_dVd = T1 * self.size_params.pditsd;
         }
 
-        if self.size_params.pdits > MIN_EXP { // FIXME: we've misinterpreted these MIN/MAX EXP checks. Rust sets them to the exponent, SPICE sets them to the final value. Sad! 
+        if self.size_params.pdits > MIN_EXP {
+            // FIXME: we've misinterpreted these MIN/MAX EXP checks. Rust sets them to the exponent, SPICE sets them to the final value. Sad!
             T2 = 1.0 + self.model.pditsl * Leff;
             VADITS = (1.0 + T2 * T1) / self.size_params.pdits;
             dVADITS_dVg = VADITS * dFP_dVg;
@@ -1820,7 +1824,7 @@ impl Bsim4 {
 
         /* Source End Velocity Limit  */
         if ((self.model.vtlGiven) && (self.model.vtl > 0.0)) {
-        // if self.model.vtl > 0.0 {
+            // if self.model.vtl > 0.0 {
             // FIXME: the reference implementation's default condition here is "not given",
             // (although with a default value of 2e5)
             // So far we default to zero, in which case this block is not executed.
@@ -3492,8 +3496,6 @@ impl Bsim4 {
                 newop.qcheq = qcheq;
 
                 if self.model.trnqsmod != 0 {
-                    let mut _tmp1: f64;
-                    let mut _tmp2: f64;
                     let (_g, i, _r) = state.integrate(newop.qcheq - self.op.qcheq, 0.0, 0.0, self.op.cqcheq);
                     newop.cqcheq = i;
                 }
@@ -3617,8 +3619,6 @@ impl Bsim4 {
                 newop.capbd = T0 + T1;
             }
         }
-
-        // return Stamps::new();
 
         newop.vds = vds;
         newop.vgs = vgs;
@@ -4144,8 +4144,6 @@ impl Bsim4 {
                     gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
                 }
             }
-            let mut _tmp1: f64;
-            let mut _tmp2: f64;
             if self.model.trnqsmod != 0 {
                 newop.qcdump = qdef * ScalingFactor;
                 let (_g, i, _r) = state.integrate(newop.qcdump - self.op.qcdump, 0.0, 0.0, self.op.cqcdump);
@@ -4214,17 +4212,77 @@ impl Bsim4 {
                 cqcheq = newop.cqcheq - (gcqgb * vgb - gcqdb * vbd - gcqsb * vbs) + T0;
             }
         }
-    // return newop;
-    // }
-    // fn stamp(&self) -> Stamps<f64>{
-    //     let newop = self.guess;
 
-        /*
-         *  Load current vector
-         */
+        newop.gqdef = gqdef;
+        newop.ggtg = ggtg;
+        newop.ggtd = ggtd;
+        newop.ggts = ggts;
+        newop.ggtb = ggtb;
+        newop.gcsbsb = gcsbsb;
+        newop.gcsbsb = gcsbsb;
+        newop.gcqsb = gcqsb;
+        newop.gcqdb = gcqdb;
+        newop.gcqgb = gcqgb;
+        newop.cqcheq = cqcheq;
+        newop.cqdef = cqdef;
+        newop.gcqbb = gcqbb;
+        newop.ceqqg = ceqqg;
+        newop.ceqqd = ceqqd;
+        newop.ceqqb = ceqqb;
+        newop.ceqqjs = ceqqjs;
+        newop.ceqqjd = ceqqjd;
+        newop.ceqqgmid = ceqqgmid;
+        newop.gcgbb = gcgbb;
+        newop.gcsbb = gcsbb;
+        newop.gcssb = gcssb;
+        newop.gcsgb = gcsgb;
+        newop.gcsdb = gcsdb;
+        newop.gcdbb = gcdbb;
+        newop.gcggb = gcggb;
+        newop.gcgdb = gcgdb;
+        newop.gcgsb = gcgsb;
+        newop.gcgsb = gcgsb;
+        newop.gcgmgmb = gcgmgmb;
+        newop.gcgmsb = gcgmsb;
+        newop.gcgmdb = gcgmdb;
+        newop.gcgmbb = gcgmbb;
+        newop.gcdgmb = gcdgmb;
+        newop.gcsgmb = gcsgmb;
+        newop.ddxpart_dVd = ddxpart_dVd;
+        newop.ddxpart_dVs = ddxpart_dVs;
+        newop.ddxpart_dVb = ddxpart_dVb;
+        newop.dsxpart_dVb = dsxpart_dVb;
+        newop.dsxpart_dVs = dsxpart_dVs;
+        newop.dsxpart_dVg = dsxpart_dVg;
+        newop.dsxpart_dVd = dsxpart_dVd;
+        newop.ddxpart_dVg = ddxpart_dVg;
+        newop.gcgmdb = gcgmdb;
+        newop.gcbgmb = gcbgmb;
+        newop.gcddb = gcddb;
+        newop.gcdgb = gcdgb;
+        newop.gcdsb = gcdsb;
+        newop.gcbdb = gcbdb;
+        newop.gcbgb = gcbgb;
+        newop.gcbsb = gcbsb;
+        newop.gcbbb = gcbbb;
+        newop.vgd = vgd;
+        newop.dxpart = dxpart;
+        newop.sxpart = sxpart;
+        // Debatable whether to store these two or re-calculate them
+        newop.vbs_jct = vbs_jct;
+        newop.vbd_jct = vbd_jct;
+
+        return newop;
+    }
+    /// Convert out current-guess operating-point into matrix stamps
+    fn stamp(&self) -> Stamps<f64> {
+        let newop = &self.guess;
+
+        // Load current vector
         let mut ceqdrn: f64;
         let mut ceqbd: f64;
         let mut ceqbs: f64;
+        let mut Gm: f64;
         let mut Gmbs: f64;
         let mut FwdSum: f64;
         let mut RevSum: f64;
@@ -4260,19 +4318,26 @@ impl Bsim4 {
         let mut gIgtots: f64;
         let mut gIgtotb: f64;
 
+        let mut ceqgcrg = 0.0;
+        let mut gcrg = 0.0;
+        let mut gcrgd = 0.0;
+        let mut gcrgg = 0.0;
+        let mut gcrgs = 0.0;
+        let mut gcrgb = 0.0;
+
         if newop.mode >= 0 {
             Gm = newop.gm;
             Gmbs = newop.gmbs;
             FwdSum = Gm + Gmbs;
             RevSum = 0.0;
 
-            ceqdrn = self.model.p() * (cdrain - newop.gds * vds - Gm * vgs - Gmbs * vbs);
+            ceqdrn = self.model.p() * (newop.cd - newop.gds * newop.vds - Gm * newop.vgs - Gmbs * newop.vbs);
             ceqbd = self.model.p()
                 * (newop.csub + newop.Igidl
-                    - (newop.gbds + newop.ggidld) * vds
-                    - (newop.gbgs + newop.ggidlg) * vgs
-                    - (newop.gbbs + newop.ggidlb) * vbs);
-            ceqbs = self.model.p() * (newop.Igisl + newop.ggisls * vds - newop.ggislg * vgd - newop.ggislb * vbd);
+                    - (newop.gbds + newop.ggidld) * newop.vds
+                    - (newop.gbgs + newop.ggidlg) * newop.vgs
+                    - (newop.gbbs + newop.ggidlb) * newop.vbs);
+            ceqbs = self.model.p() * (newop.Igisl + newop.ggisls * newop.vds - newop.ggislg * newop.vgd - newop.ggislb * newop.vbd);
 
             gbbdp = -(newop.gbds);
             gbbsp = newop.gbds + newop.gbgs + newop.gbbs;
@@ -4292,14 +4357,18 @@ impl Bsim4 {
                 gIstotd = newop.gIgcsd;
                 gIstots = newop.gIgss + newop.gIgcss;
                 gIstotb = newop.gIgcsb;
-                Istoteq = self.model.p() * (newop.Igs + newop.Igcs - gIstotg * vgs - newop.gIgcsd * vds - newop.gIgcsb * vbs);
+                Istoteq = self.model.p() * (newop.Igs + newop.Igcs - gIstotg * newop.vgs - newop.gIgcsd * newop.vds - newop.gIgcsb * newop.vbs);
 
                 gIdtotg = newop.gIgdg + newop.gIgcdg;
                 gIdtotd = newop.gIgdd + newop.gIgcdd;
                 gIdtots = newop.gIgcds;
                 gIdtotb = newop.gIgcdb;
-                Idtoteq =
-                    self.model.p() * (newop.Igd + newop.Igcd - newop.gIgdg * vgd - newop.gIgcdg * vgs - newop.gIgcdd * vds - newop.gIgcdb * vbs);
+                Idtoteq = self.model.p()
+                    * (newop.Igd + newop.Igcd
+                        - newop.gIgdg * newop.vgd
+                        - newop.gIgcdg * newop.vgs
+                        - newop.gIgcdd * newop.vds
+                        - newop.gIgcdb * newop.vbs);
             } else {
                 gIstotg = 0.0;
                 gIstotd = 0.0;
@@ -4318,7 +4387,7 @@ impl Bsim4 {
                 gIbtotd = newop.gIgbd;
                 gIbtots = newop.gIgbs;
                 gIbtotb = newop.gIgbb;
-                Ibtoteq = self.model.p() * (newop.Igb - newop.gIgbg * vgs - newop.gIgbd * vds - newop.gIgbb * vbs);
+                Ibtoteq = self.model.p() * (newop.Igb - newop.gIgbg * newop.vgs - newop.gIgbd * newop.vds - newop.gIgbb * newop.vbs);
             } else {
                 gIbtotg = 0.0;
                 gIbtotd = 0.0;
@@ -4341,26 +4410,20 @@ impl Bsim4 {
                 Igtoteq = 0.0;
             }
 
-            if self.model.rgatemod == 2 {
-                T0 = vges - vgs;
-            } else if self.model.rgatemod == 3 {
-                T0 = vgms - vgs;
-            }
             if self.model.rgatemod > 1 {
-                gcrgd = newop.gcrgd * T0;
-                gcrgg = newop.gcrgg * T0;
-                gcrgs = newop.gcrgs * T0;
-                gcrgb = newop.gcrgb * T0;
-                ceqgcrg = -(gcrgd * vds + gcrgg * vgs + gcrgb * vbs);
+                let tmp = if self.model.rgatemod == 2 {
+                    newop.vges - newop.vgs
+                } else {
+                    // rgatemod == 3
+                    newop.vgms - newop.vgs
+                };
+                gcrgd = newop.gcrgd * tmp;
+                gcrgg = newop.gcrgg * tmp;
+                gcrgs = newop.gcrgs * tmp;
+                gcrgb = newop.gcrgb * tmp;
+                ceqgcrg = -(gcrgd * newop.vds + gcrgg * newop.vgs + gcrgb * newop.vbs);
                 gcrgg -= newop.gcrg;
                 gcrg = newop.gcrg;
-            } else {
-                ceqgcrg = 0.0;
-                gcrg = 0.0;
-                gcrgd = 0.0;
-                gcrgg = 0.0;
-                gcrgs = 0.0;
-                gcrgb = 0.0;
             }
         } else {
             Gm = -newop.gm;
@@ -4368,13 +4431,13 @@ impl Bsim4 {
             FwdSum = 0.0;
             RevSum = -(Gm + Gmbs);
 
-            ceqdrn = -self.model.p() * (cdrain + newop.gds * vds + Gm * vgd + Gmbs * vbd);
+            ceqdrn = -self.model.p() * (newop.cd + newop.gds * newop.vds + Gm * newop.vgd + Gmbs * newop.vbd);
 
             ceqbs = self.model.p()
-                * (newop.csub + newop.Igisl + (newop.gbds + newop.ggisls) * vds
-                    - (newop.gbgs + newop.ggislg) * vgd
-                    - (newop.gbbs + newop.ggislb) * vbd);
-            ceqbd = self.model.p() * (newop.Igidl - newop.ggidld * vds - newop.ggidlg * vgs - newop.ggidlb * vbs);
+                * (newop.csub + newop.Igisl + (newop.gbds + newop.ggisls) * newop.vds
+                    - (newop.gbgs + newop.ggislg) * newop.vgd
+                    - (newop.gbbs + newop.ggislb) * newop.vbd);
+            ceqbd = self.model.p() * (newop.Igidl - newop.ggidld * newop.vds - newop.ggidlg * newop.vgs - newop.ggidlb * newop.vbs);
 
             gbbsp = -(newop.gbds);
             gbbdp = newop.gbds + newop.gbgs + newop.gbbs;
@@ -4394,14 +4457,16 @@ impl Bsim4 {
                 gIstotd = newop.gIgcds;
                 gIstots = newop.gIgss + newop.gIgcdd;
                 gIstotb = newop.gIgcdb;
-                Istoteq =
-                    self.model.p() * (newop.Igs + newop.Igcd - newop.gIgsg * vgs - newop.gIgcdg * vgd + newop.gIgcdd * vds - newop.gIgcdb * vbd);
+                Istoteq = self.model.p()
+                    * (newop.Igs + newop.Igcd - newop.gIgsg * newop.vgs - newop.gIgcdg * newop.vgd + newop.gIgcdd * newop.vds
+                        - newop.gIgcdb * newop.vbd);
 
                 gIdtotg = newop.gIgdg + newop.gIgcsg;
                 gIdtotd = newop.gIgdd + newop.gIgcss;
                 gIdtots = newop.gIgcsd;
                 gIdtotb = newop.gIgcsb;
-                Idtoteq = self.model.p() * (newop.Igd + newop.Igcs - (newop.gIgdg + newop.gIgcsg) * vgd + newop.gIgcsd * vds - newop.gIgcsb * vbd);
+                Idtoteq = self.model.p()
+                    * (newop.Igd + newop.Igcs - (newop.gIgdg + newop.gIgcsg) * newop.vgd + newop.gIgcsd * newop.vds - newop.gIgcsb * newop.vbd);
             } else {
                 gIstotg = 0.0;
                 gIstotd = 0.0;
@@ -4420,7 +4485,7 @@ impl Bsim4 {
                 gIbtotd = newop.gIgbs;
                 gIbtots = newop.gIgbd;
                 gIbtotb = newop.gIgbb;
-                Ibtoteq = self.model.p() * (newop.Igb - newop.gIgbg * vgd + newop.gIgbd * vds - newop.gIgbb * vbd);
+                Ibtoteq = self.model.p() * (newop.Igb - newop.gIgbg * newop.vgd + newop.gIgbd * newop.vds - newop.gIgbb * newop.vbd);
             } else {
                 gIbtotg = 0.0;
                 gIbtotd = 0.0;
@@ -4443,17 +4508,18 @@ impl Bsim4 {
                 Igtoteq = 0.0;
             }
 
-            if self.model.rgatemod == 2 {
-                T0 = vges - vgs;
-            } else if self.model.rgatemod == 3 {
-                T0 = vgms - vgs;
-            }
             if self.model.rgatemod > 1 {
-                gcrgd = newop.gcrgs * T0;
-                gcrgg = newop.gcrgg * T0;
-                gcrgs = newop.gcrgd * T0;
-                gcrgb = newop.gcrgb * T0;
-                ceqgcrg = -(gcrgg * vgd - gcrgs * vds + gcrgb * vbd);
+                let tmp = if self.model.rgatemod == 2 {
+                    newop.vges - newop.vgs
+                } else {
+                    // rgatemod == 3
+                    newop.vgms - newop.vgs
+                };
+                gcrgd = newop.gcrgs * tmp;
+                gcrgg = newop.gcrgg * tmp;
+                gcrgs = newop.gcrgd * tmp;
+                gcrgb = newop.gcrgb * tmp;
+                ceqgcrg = -(gcrgg * newop.vgd - gcrgs * newop.vds + gcrgb * newop.vbd);
                 gcrgg -= newop.gcrg;
                 gcrg = newop.gcrg;
             } else {
@@ -4480,14 +4546,14 @@ impl Bsim4 {
         let mut ceqgdtot = 0.0;
 
         if self.model.rdsmod == 1 {
-            ceqgstot = self.model.p() * (newop.gstotd * vds + newop.gstotg * vgs + newop.gstotb * vbs);
+            ceqgstot = self.model.p() * (newop.gstotd * newop.vds + newop.gstotg * newop.vgs + newop.gstotb * newop.vbs);
             gstot = newop.gstot;
             gstotd = newop.gstotd;
             gstotg = newop.gstotg;
             gstots = newop.gstots - gstot;
             gstotb = newop.gstotb;
 
-            ceqgdtot = -self.model.p() * (newop.gdtotd * vds + newop.gdtotg * vgs + newop.gdtotb * vbs);
+            ceqgdtot = -self.model.p() * (newop.gdtotd * newop.vds + newop.gdtotg * newop.vgs + newop.gdtotb * newop.vbs);
             gdtot = newop.gdtot;
             gdtotd = newop.gdtotd - gdtot;
             gdtotg = newop.gdtotg;
@@ -4496,9 +4562,21 @@ impl Bsim4 {
         }
 
         let (ceqjs, ceqjd) = match self.model.mos_type {
-            MosType::NMOS => (newop.cbs - newop.gbs * vbs_jct, newop.cbd - newop.gbd * vbd_jct),
-            MosType::PMOS => (-(newop.cbs - newop.gbs * vbs_jct), -(newop.cbd - newop.gbd * vbd_jct)),
+            MosType::NMOS => (newop.cbs - newop.gbs * newop.vbs_jct, newop.cbd - newop.gbd * newop.vbd_jct),
+            MosType::PMOS => (-(newop.cbs - newop.gbs * newop.vbs_jct), -(newop.cbd - newop.gbd * newop.vbd_jct)),
         };
+
+        let Bsim4OpPoint {
+            mut ceqqg,
+            mut ceqqd,
+            mut ceqqb,
+            mut cqdef,
+            mut cqcheq,
+            mut ceqqjs,
+            mut ceqqjd,
+            mut ceqqgmid,
+            ..
+        } = newop;
 
         if self.model.p() > 0.0 {
             ceqqg = -ceqqg;
@@ -4522,7 +4600,6 @@ impl Bsim4 {
         }
 
         // Gather up RHS current-vector terms
-
         let mut b: Vec<(Option<VarIndex>, f64)> = vec![];
 
         b.push((self.ports.dNodePrime, (ceqjd - ceqbd + ceqgdtot - ceqdrn - ceqqd + Idtoteq)));
@@ -4569,16 +4646,16 @@ impl Bsim4 {
         };
 
         let geltd = self.intp.grgeltd;
-        T1 = qdef * newop.gtau;
+        let tmp1 = newop.qdef * newop.gtau;
 
         if self.model.rgatemod == 1 {
             j.push((self.matps.GEgePtr, geltd));
             j.push((self.matps.GPgePtr, -(geltd)));
             j.push((self.matps.GEgpPtr, -(geltd)));
-            j.push((self.matps.GPgpPtr, gcggb + geltd - ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, gcgdb - ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, gcgsb - ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, gcgbb - ggtb + gIgtotb));
+            j.push((self.matps.GPgpPtr, newop.gcggb + geltd - newop.ggtg + gIgtotg));
+            j.push((self.matps.GPdpPtr, newop.gcgdb - newop.ggtd + gIgtotd));
+            j.push((self.matps.GPspPtr, newop.gcgsb - newop.ggts + gIgtots));
+            j.push((self.matps.GPbpPtr, newop.gcgbb - newop.ggtb + gIgtotb));
         } else if self.model.rgatemod == 2 {
             j.push((self.matps.GEgePtr, gcrg));
             j.push((self.matps.GEgpPtr, gcrgg));
@@ -4587,35 +4664,35 @@ impl Bsim4 {
             j.push((self.matps.GEbpPtr, gcrgb));
 
             j.push((self.matps.GPgePtr, -(gcrg)));
-            j.push((self.matps.GPgpPtr, gcggb - gcrgg - ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, gcgdb - gcrgd - ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, gcgsb - gcrgs - ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, gcgbb - gcrgb - ggtb + gIgtotb));
+            j.push((self.matps.GPgpPtr, newop.gcggb - gcrgg - newop.ggtg + gIgtotg));
+            j.push((self.matps.GPdpPtr, newop.gcgdb - gcrgd - newop.ggtd + gIgtotd));
+            j.push((self.matps.GPspPtr, newop.gcgsb - gcrgs - newop.ggts + gIgtots));
+            j.push((self.matps.GPbpPtr, newop.gcgbb - gcrgb - newop.ggtb + gIgtotb));
         } else if self.model.rgatemod == 3 {
             j.push((self.matps.GEgePtr, geltd));
             j.push((self.matps.GEgmPtr, -(geltd)));
             j.push((self.matps.GMgePtr, -(geltd)));
-            j.push((self.matps.GMgmPtr, geltd + gcrg + gcgmgmb));
+            j.push((self.matps.GMgmPtr, geltd + gcrg + newop.gcgmgmb));
 
-            j.push((self.matps.GMdpPtr, gcrgd + gcgmdb));
+            j.push((self.matps.GMdpPtr, gcrgd + newop.gcgmdb));
             j.push((self.matps.GMgpPtr, gcrgg));
-            j.push((self.matps.GMspPtr, gcrgs + gcgmsb));
-            j.push((self.matps.GMbpPtr, gcrgb + gcgmbb));
+            j.push((self.matps.GMspPtr, gcrgs + newop.gcgmsb));
+            j.push((self.matps.GMbpPtr, gcrgb + newop.gcgmbb));
 
-            j.push((self.matps.DPgmPtr, gcdgmb));
+            j.push((self.matps.DPgmPtr, newop.gcdgmb));
             j.push((self.matps.GPgmPtr, -(gcrg)));
-            j.push((self.matps.SPgmPtr, gcsgmb));
-            j.push((self.matps.BPgmPtr, gcbgmb));
+            j.push((self.matps.SPgmPtr, newop.gcsgmb));
+            j.push((self.matps.BPgmPtr, newop.gcbgmb));
 
-            j.push((self.matps.GPgpPtr, gcggb - gcrgg - ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, gcgdb - gcrgd - ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, gcgsb - gcrgs - ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, gcgbb - gcrgb - ggtb + gIgtotb));
+            j.push((self.matps.GPgpPtr, newop.gcggb - gcrgg - newop.ggtg + gIgtotg));
+            j.push((self.matps.GPdpPtr, newop.gcgdb - gcrgd - newop.ggtd + gIgtotd));
+            j.push((self.matps.GPspPtr, newop.gcgsb - gcrgs - newop.ggts + gIgtots));
+            j.push((self.matps.GPbpPtr, newop.gcgbb - gcrgb - newop.ggtb + gIgtotb));
         } else {
-            j.push((self.matps.GPgpPtr, gcggb - ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, gcgdb - ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, gcgsb - ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, gcgbb - ggtb + gIgtotb));
+            j.push((self.matps.GPgpPtr, newop.gcggb - newop.ggtg + gIgtotg));
+            j.push((self.matps.GPdpPtr, newop.gcgdb - newop.ggtd + gIgtotd));
+            j.push((self.matps.GPspPtr, newop.gcgsb - newop.ggts + gIgtots));
+            j.push((self.matps.GPbpPtr, newop.gcgbb - newop.ggtb + gIgtotb));
         }
 
         if self.model.rdsmod != 0 {
@@ -4629,20 +4706,20 @@ impl Bsim4 {
 
         j.push((
             self.matps.DPdpPtr,
-            gdpr + newop.gds + newop.gbd + T1 * ddxpart_dVd - gdtotd + RevSum + gcddb + gbdpdp + dxpart * ggtd - gIdtotd,
+            gdpr + newop.gds + newop.gbd + tmp1 * newop.ddxpart_dVd - gdtotd + RevSum + newop.gcddb + gbdpdp + newop.dxpart * newop.ggtd - gIdtotd,
         ));
         j.push((self.matps.DPdPtr, -(gdpr + gdtot)));
         j.push((
             self.matps.DPgpPtr,
-            Gm + gcdgb - gdtotg + gbdpg - gIdtotg + dxpart * ggtg + T1 * ddxpart_dVg,
+            Gm + newop.gcdgb - gdtotg + gbdpg - gIdtotg + newop.dxpart * newop.ggtg + tmp1 * newop.ddxpart_dVg,
         ));
         j.push((
             self.matps.DPspPtr,
-            -(newop.gds + gdtots - dxpart * ggts + gIdtots - T1 * ddxpart_dVs + FwdSum - gcdsb - gbdpsp),
+            -(newop.gds + gdtots - newop.dxpart * newop.ggts + gIdtots - tmp1 * newop.ddxpart_dVs + FwdSum - newop.gcdsb - gbdpsp),
         ));
         j.push((
             self.matps.DPbpPtr,
-            -(gjbd + gdtotb - Gmbs - gcdbb - gbdpb + gIdtotb - T1 * ddxpart_dVb - dxpart * ggtb),
+            -(gjbd + gdtotb - Gmbs - newop.gcdbb - gbdpb + gIdtotb - tmp1 * newop.ddxpart_dVb - newop.dxpart * newop.ggtb),
         ));
 
         j.push((self.matps.DdpPtr, -(gdpr - gdtotd)));
@@ -4650,29 +4727,29 @@ impl Bsim4 {
 
         j.push((
             self.matps.SPdpPtr,
-            -(newop.gds + gstotd + RevSum - gcsdb - gbspdp - T1 * dsxpart_dVd - sxpart * ggtd + gIstotd),
+            -(newop.gds + gstotd + RevSum - newop.gcsdb - gbspdp - tmp1 * newop.dsxpart_dVd - newop.sxpart * newop.ggtd + gIstotd),
         ));
         j.push((
             self.matps.SPgpPtr,
-            gcsgb - Gm - gstotg + gbspg + sxpart * ggtg + T1 * dsxpart_dVg - gIstotg,
+            newop.gcsgb - Gm - gstotg + gbspg + newop.sxpart * newop.ggtg + tmp1 * newop.dsxpart_dVg - gIstotg,
         ));
         j.push((
             self.matps.SPspPtr,
-            gspr + newop.gds + newop.gbs + T1 * dsxpart_dVs - gstots + FwdSum + gcssb + gbspsp + sxpart * ggts - gIstots,
+            gspr + newop.gds + newop.gbs + tmp1 * newop.dsxpart_dVs - gstots + FwdSum + newop.gcssb + gbspsp + newop.sxpart * newop.ggts - gIstots,
         ));
         j.push((self.matps.SPsPtr, -(gspr + gstot)));
         j.push((
             self.matps.SPbpPtr,
-            -(gjbs + gstotb + Gmbs - gcsbb - gbspb - sxpart * ggtb - T1 * dsxpart_dVb + gIstotb),
+            -(gjbs + gstotb + Gmbs - newop.gcsbb - gbspb - newop.sxpart * newop.ggtb - tmp1 * newop.dsxpart_dVb + gIstotb),
         ));
 
         j.push((self.matps.SspPtr, -(gspr - gstots)));
         j.push((self.matps.SsPtr, gspr + gstot));
 
-        j.push((self.matps.BPdpPtr, gcbdb - gjbd + gbbdp - gIbtotd));
-        j.push((self.matps.BPgpPtr, gcbgb - newop.gbgs - gIbtotg));
-        j.push((self.matps.BPspPtr, gcbsb - gjbs + gbbsp - gIbtots));
-        j.push((self.matps.BPbpPtr, gjbd + gjbs + gcbbb - newop.gbbs - gIbtotb));
+        j.push((self.matps.BPdpPtr, newop.gcbdb - gjbd + gbbdp - gIbtotd));
+        j.push((self.matps.BPgpPtr, newop.gcbgb - newop.gbgs - gIbtotg));
+        j.push((self.matps.BPspPtr, newop.gcbsb - gjbs + gbbsp - gIbtots));
+        j.push((self.matps.BPbpPtr, gjbd + gjbs + newop.gcbbb - newop.gbbs - gIbtotb));
 
         let ggidld = newop.ggidld;
         let ggidlg = newop.ggidlg;
@@ -4701,11 +4778,11 @@ impl Bsim4 {
         j.push((self.matps.BPbpPtr, -(ggislb)));
 
         if self.model.rbodymod != 0 {
-            j.push((self.matps.DPdbPtr, gcdbdb - newop.gbd));
-            j.push((self.matps.SPsbPtr, -(newop.gbs - gcsbsb)));
+            j.push((self.matps.DPdbPtr, newop.gcdbdb - newop.gbd));
+            j.push((self.matps.SPsbPtr, -(newop.gbs - newop.gcsbsb)));
 
-            j.push((self.matps.DBdpPtr, gcdbdb - newop.gbd));
-            j.push((self.matps.DBdbPtr, newop.gbd - gcdbdb + self.intp.grbpd + self.intp.grbdb));
+            j.push((self.matps.DBdpPtr, newop.gcdbdb - newop.gbd));
+            j.push((self.matps.DBdbPtr, newop.gbd - newop.gcdbdb + self.intp.grbpd + self.intp.grbdb));
             j.push((self.matps.DBbpPtr, -(self.intp.grbpd)));
             j.push((self.matps.DBbPtr, -(self.intp.grbdb)));
 
@@ -4714,10 +4791,10 @@ impl Bsim4 {
             j.push((self.matps.BPsbPtr, -(self.intp.grbps)));
             j.push((self.matps.BPbpPtr, self.intp.grbpd + self.intp.grbps + self.intp.grbpb));
 
-            j.push((self.matps.SBspPtr, gcsbsb - newop.gbs));
+            j.push((self.matps.SBspPtr, newop.gcsbsb - newop.gbs));
             j.push((self.matps.SBbpPtr, -(self.intp.grbps)));
             j.push((self.matps.SBbPtr, -(self.intp.grbsb)));
-            j.push((self.matps.SBsbPtr, newop.gbs - gcsbsb + self.intp.grbps + self.intp.grbsb));
+            j.push((self.matps.SBsbPtr, newop.gbs - newop.gcsbsb + self.intp.grbps + self.intp.grbsb));
 
             j.push((self.matps.BdbPtr, -(self.intp.grbdb)));
             j.push((self.matps.BbpPtr, -(self.intp.grbpb)));
@@ -4726,18 +4803,16 @@ impl Bsim4 {
         }
 
         if self.model.trnqsmod != 0 {
-            j.push((self.matps.QqPtr, gqdef + newop.gtau));
-            j.push((self.matps.QgpPtr, ggtg - gcqgb));
-            j.push((self.matps.QdpPtr, ggtd - gcqdb));
-            j.push((self.matps.QspPtr, ggts - gcqsb));
-            j.push((self.matps.QbpPtr, ggtb - gcqbb));
+            j.push((self.matps.QqPtr, newop.gqdef + newop.gtau));
+            j.push((self.matps.QgpPtr, newop.ggtg - newop.gcqgb));
+            j.push((self.matps.QdpPtr, newop.ggtd - newop.gcqdb));
+            j.push((self.matps.QspPtr, newop.ggts - newop.gcqsb));
+            j.push((self.matps.QbpPtr, newop.ggtb - newop.gcqbb));
 
-            j.push((self.matps.DPqPtr, dxpart * newop.gtau));
-            j.push((self.matps.SPqPtr, sxpart * newop.gtau));
+            j.push((self.matps.DPqPtr, newop.dxpart * newop.gtau));
+            j.push((self.matps.SPqPtr, newop.sxpart * newop.gtau));
             j.push((self.matps.GPqPtr, -(newop.gtau)));
         }
-        // Update our best-guess operating point
-        // self.guess = newop;
         // And return our matrix stamps
         return Stamps { g: j, b };
     }
@@ -4928,7 +5003,7 @@ mod tests {
         let inst = Bsim4InstSpecs::default();
         let (model, inst) = models.inst(&"default".to_string(), inst).unwrap();
 
-        let ports = Bsim4Ports::<Option<VarIndex>>::default(); 
+        let ports = Bsim4Ports::<Option<VarIndex>>::default();
         let mut solver = Bsim4::new(ports, model, inst);
 
         let p = 1.0;
@@ -4950,7 +5025,7 @@ mod tests {
         use crate::analysis::AnalysisInfo;
         let an = AnalysisInfo::OP;
         let op = solver.op(portvs, &an);
-        // println!("guess.cd = {:?}", op.cd);
+        println!("op.cd = {:?}", op.cd);
 
         Ok(())
     }
