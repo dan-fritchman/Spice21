@@ -1,6 +1,6 @@
-///
-/// Assertion-Based Debugging Utilities
-///
+//!
+//! Assertion-Based Debugging Utilities
+//!
 use super::spresult::{TestResult, sperror};
 
 pub struct Assert<T> {

@@ -1,7 +1,7 @@
 """ 
 Spice21 Python 
 """
-from typing import List, Union, Any
+from typing import List, Union, Any, Dict 
 # Import and rename the protobuf-generated content
 from . import protos
 from .protos import Capacitor, Resistor, Diode, Mos, Isrc, Vsrc
@@ -9,18 +9,27 @@ from .protos import Capacitor, Resistor, Diode, Mos, Isrc, Vsrc
 from .spice21py import health
 
 
-def dcop(ckt: protos.Circuit) -> List[float]:
+def dcop(ckt: protos.Circuit) -> Dict[str, float]:
     """ DC Operating Point """
     from .spice21py import _dcop
     enc = ckt.SerializeToString()
     return _dcop(enc)
 
 
-def tran(ckt: protos.Circuit) -> List[List[float]]:
+def tran(ckt: protos.Circuit) -> Dict[str, List[float]]:
     """ Transient Analysis """
     from .spice21py import _tran
     enc = ckt.SerializeToString()
     return _tran(enc)
+
+
+def ac(ckt: protos.Circuit) -> Dict[str, List[complex]]:
+    """ AC Analysis """
+    from .spice21py import _ac
+    enc = ckt.SerializeToString()
+    res = _ac(enc)
+    # Here we decode into Python `complex` values
+    return {name: [complex(*v) for v in vals] for name, vals in res.items()}
 
 
 def instance(comp) -> protos.Instance:

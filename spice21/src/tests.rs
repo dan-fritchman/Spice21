@@ -205,7 +205,7 @@ mod tests {
             tstop: 100e-12,
         };
         let soln = tran(ckt, opts)?;
-        for point in soln.iter() {
+        for point in soln.data.iter() {
             assert!((point[0] - 0.697).abs() < 1e-3);
         }
         Ok(())
@@ -283,7 +283,7 @@ mod tests {
             tstop: 100e-12,
         };
         let soln = tran(ckt, opts)?;
-        for point in soln.iter() {
+        for point in soln.data.iter() {
             assert!((point[0] + 0.697).abs() < 1e-3);
         }
         Ok(())
@@ -676,7 +676,7 @@ mod tests {
             tstop: 100e-11,
         };
         let soln = tran(ckt, opts)?;
-        for point in soln.into_iter() {
+        for point in soln.data.into_iter() {
             assert(point).eq(vec![1.0, 1.0, 0.0])?;
         }
         Ok(())
@@ -689,7 +689,6 @@ mod tests {
         let ckt = Ckt::from_comps(vec![Comp::I(5e-3, Num(0), Gnd), Comp::C(1e-9, Num(0), Gnd)]);
 
         let opts = TranOptions { tstep: 1e-9, tstop: 100e-9 };
-        let mut models = ModelCache::new();
         let mut tran = Tran::new(ckt, opts);
         tran.ic(Num(0), 0.0);
         let soln = tran.solve()?;

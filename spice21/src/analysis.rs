@@ -6,7 +6,7 @@ use crate::circuit;
 use crate::circuit::{Ckt, Comp, NodeRef};
 use crate::comps::{Component, ComponentSolver};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{SpNum, SpResult, sperror};
+use crate::{sperror, SpNum, SpResult};
 use num::{Complex, Float, Zero};
 
 /// `Stamps` are the interface between Components and Solvers.
@@ -418,7 +418,6 @@ pub struct OpResult {
     pub values: Vec<f64>,
     pub map: HashMap<String, f64>,
 }
-
 impl OpResult {
     /// Create an OpResult from a (typically final) set of `Variables`.
     fn from(vars: Variables<f64>) -> Self {
@@ -539,7 +538,11 @@ impl<'a> Tran<'a> {
         self.solver.comps.push(v.into());
         self.state.vic.push(self.solver.comps.len() - 1);
     }
-    pub fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
+    pub fn solve(&mut self) -> SpResult<TranResult> {
+        // Initialize results
+        let mut results = TranResult::new();
+        results.signals(&self.solver.vars);
+
         use std::sync::mpsc;
         use std::thread;
 
@@ -587,6 +590,7 @@ impl<'a> Tran<'a> {
                 return Err(e);
             }
         };
+        results.push(self.state.t, &tdata);
         tx.send(IoWriterMessage::DATA(tdata)).unwrap();
         // Update initial-condition sources and resistances
         for c in self.state.vic.iter() {
@@ -609,30 +613,84 @@ impl<'a> Tran<'a> {
                     return Err(e);
                 }
             };
+            results.push(self.state.t, &tdata);
             tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
             self.state.ni = NumericalIntegration::TRAP;
             tpoint += 1;
             self.state.t += self.opts.tstep;
         }
+        results.end();
         tx.send(IoWriterMessage::STOP).unwrap();
         for msg in rx2 {
             match msg {
                 IoWriterResponse::OK => {
                     continue;
                 }
-                IoWriterResponse::RESULT(res) => {
+                IoWriterResponse::RESULT(_) => {
                     t.join().unwrap();
-                    return Ok(res);
+                    return Ok(results);
                 }
             }
         }
-        Err(sperror("Tran Results Failure"))
+        Err(sperror("Tran Failure"))
+    }
+}
+
+/// TranResult
+/// In-Memory Store for transient data
+#[derive(Default, Serialize, Deserialize)]
+pub struct TranResult {
+    pub signals: Vec<String>,
+    pub time: Vec<f64>,
+    pub data: Vec<Vec<f64>>,
+    pub map: HashMap<String, Vec<f64>>,
+}
+impl TranResult {
+    pub fn new() -> Self {
+        Self {
+            signals: vec![],
+            time: vec![],
+            data: vec![],
+            map: HashMap::new(),
+        }
+    }
+    fn signals(&mut self, vars: &Variables<f64>) {
+        for name in vars.names.iter() {
+            self.signals.push(name.to_string());
+        }
+    }
+    fn push(&mut self, t: f64, vals: &Vec<f64>) {
+        self.time.push(t);
+        self.data.push(vals.clone());
+        // FIXME: filter out un-saved and internal variables
+    }
+    /// Simulation complete, re-org data into hash-map of signals
+    fn end(&mut self) {
+        self.map.insert("time".to_string(), self.time.clone());
+        for i in 0..self.signals.len() {
+            let mut vals: Vec<f64> = vec![];
+            for v in 0..self.time.len() {
+                vals.push(self.data[v][i]);
+            }
+            self.map.insert(self.signals[i].clone(), vals);
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.time.len()
+    }
+}
+/// Maintain much (most?) of our original vector-result-format
+/// via enabling integer indexing
+impl Index<usize> for TranResult {
+    type Output = Vec<f64>;
+    fn index(&self, t: usize) -> &Vec<f64> {
+        &self.data[t]
     }
 }
 
 /// Transient Analysis
-pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
+pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<TranResult> {
     return Tran::new(ckt, opts).solve();
 }
 
@@ -708,12 +766,12 @@ impl Default for AcOptions {
 /// AcResult
 /// In-Memory Store for Complex-Valued AC Data
 #[derive(Default, Serialize, Deserialize)]
-struct AcResult {
-    signals: Vec<String>,
-    freq: Vec<f64>,
-    data: Vec<Vec<Complex<f64>>>,
+pub struct AcResult {
+    pub signals: Vec<String>,
+    pub freq: Vec<f64>,
+    pub data: Vec<Vec<Complex<f64>>>,
+    pub map: HashMap<String, Vec<Complex<f64>>>
 }
-
 impl AcResult {
     fn new() -> Self {
         Self::default()
@@ -728,10 +786,24 @@ impl AcResult {
         self.data.push(vals.clone());
         // FIXME: filter out un-saved and internal variables
     }
+    /// Simulation complete, re-org data into hash-map of signals
+    fn end(&mut self) {
+        // self.map.insert("freq".to_string(), self.freq.clone()); // FIXME: will require multi datatypes per result 
+        for i in 0..self.signals.len() {
+            let mut vals: Vec<Complex<f64>> = vec![];
+            for v in 0..self.freq.len() {
+                vals.push(self.data[v][i]);
+            }
+            self.map.insert(self.signals[i].clone(), vals);
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.freq.len()
+    }
 }
 
 /// AC Analysis
-pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     /// FIXME: result saving is in flux, and essentially on three tracks:
     /// * The in-memory format used by unit-tests returns vectors of complex numbers
     /// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
@@ -796,8 +868,9 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
     let s = serde_json::to_string(&results).unwrap();
     rfj.write_all(s.as_bytes()).unwrap();
 
-    // And return the flattened results
-    return Ok(soln);
+    // And return our results
+    results.end();
+    return Ok(results);
 }
 
 #[cfg(test)]
