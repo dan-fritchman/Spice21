@@ -6,6 +6,8 @@ Our home-grown `cargo fix`, that does what we want.
 import glob 
 import re 
 
+skip = ["Length", "Width", "Type", "Vth", "MAX", "MIN"]
+
 fh = open('test.log', 'r')
 replacements = {}
 line = fh.readline()
@@ -32,9 +34,9 @@ while line:
                     line = fh.readline()
                     continue 
                 suggestion = splits[1]
-                if target not in replacements:
-                    print(f"{target} -> {suggestion}")
-                    if len(target) > 4:
+                if target not in replacements and target not in skip:
+                    if len(target) > 2:
+                        print(f"{target} -> {suggestion}")
                         replacements[target] = suggestion 
                     else:
                         print(f"Target short enough for concern: {target}")
