@@ -1,6 +1,9 @@
 //!
 //! BSIM4 MOSFET Implementation
 //!
+
+#![allow(nonstandard_style,	warnings, unused)] // FIXME: work through these 
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -16,6 +19,8 @@ pub use bsim4solver::*;
 
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
+
+
 
 // FIXME: get from circuit/ analysis
 pub(crate) const gmin: f64 = 1e-12;

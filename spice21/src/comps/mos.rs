@@ -440,9 +440,9 @@ impl Component for Mos1 {
 
         // Capacitance Calculations
         let cox = self.intparams.cox;
-        let mut cgs1: f64;
-        let mut cgd1: f64;
-        let mut cgb1: f64;
+        let cgs1: f64;
+        let cgd1: f64;
+        let cgb1: f64;
         if vov <= -self.intparams.phi_t {
             cgb1 = cox / 2.0;
             cgs1 = 0.0;

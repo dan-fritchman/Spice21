@@ -51,10 +51,10 @@ impl<'a> Component for FakeComp<'a> {
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         Stamps::new()
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         Stamps::new()
     }
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {}
+    fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
 }
 
 ///

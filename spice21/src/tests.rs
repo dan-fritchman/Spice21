@@ -12,8 +12,8 @@ mod tests {
     #[test]
     fn test_ckt_parse() -> TestResult {
         let ckt = Ckt::from_comps(vec![
-            Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::I(1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
+            Comp::R(1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
         ]);
         Ok(())
     }
@@ -859,7 +859,6 @@ mod tests {
         };
         let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
-        let c = 1e-10;
         let ckt = Ckt::from_comps(vec![
             Comp::vdc(1.0, Num(0), Gnd),
             Comp::Mos1(Mos1i {
@@ -1069,7 +1068,6 @@ mod tests {
         ]);
 
         let opts = TranOptions { tstep: 5e-9, tstop: 1000e-9 };
-        let mut models = ModelCache::new();
         let mut tran = Tran::new(ckt, opts);
         tran.ic(Num(1), 0.0);
         let soln = tran.solve()?;

@@ -47,7 +47,7 @@ while line:
 # print(replacements)
 print(len(replacements))
 
-files = glob.glob('src/**/*.rs', recursive=True)
+files = glob.glob('src/**/analysis.rs', recursive=True)
 print(files)
 
 for f in files:

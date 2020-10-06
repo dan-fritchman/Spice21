@@ -697,46 +697,46 @@ pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<TranResult> {
 /// Simulation Options
 pub struct Options {
     pub temp: f64,
-    pub nomTemp: f64,
+    pub nom_temp: f64,
     pub gmin: f64,
     pub abstol: f64,
     pub reltol: f64,
     pub chgtol: f64,
-    pub voltTol: f64,
+    pub volt_tol: f64,
     pub trtol: usize,
-    pub tranMaxIter: usize,
-    pub dcMaxIter: usize,
-    pub dcTrcvMaxIter: usize,
-    pub integrateMethod: usize,
+    pub tran_max_iter: usize,
+    pub dc_max_iter: usize,
+    pub dc_trcv_max_iter: usize,
+    pub integrate_method: usize,
     pub order: usize,
-    pub maxOrder: usize,
-    pub pivotAbsTol: f64,
-    pub pivotRelTol: f64,
-    pub srcFactor: f64,
-    pub diagGmin: f64,
+    pub max_order: usize,
+    pub pivot_abs_tol: f64,
+    pub pivot_rel_tol: f64,
+    pub src_factor: f64,
+    pub diag_gmin: f64,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             temp: 300.15,
-            nomTemp: 300.15,
+            nom_temp: 300.15,
             gmin: 1e-12,
             abstol: 1e-12,
             reltol: 1e-3,
             chgtol: 1e-14,
-            voltTol: 1e-6,
+            volt_tol: 1e-6,
             trtol: 7,
-            tranMaxIter: 10,
-            dcMaxIter: 100,
-            dcTrcvMaxIter: 50,
-            integrateMethod: 0,
+            tran_max_iter: 10,
+            dc_max_iter: 100,
+            dc_trcv_max_iter: 50,
+            integrate_method: 0,
             order: 1,
-            maxOrder: 2,
-            pivotAbsTol: 1e-13,
-            pivotRelTol: 1e-3,
-            srcFactor: 1.0,
-            diagGmin: 0.0,
+            max_order: 2,
+            pivot_abs_tol: 1e-13,
+            pivot_rel_tol: 1e-3,
+            src_factor: 1.0,
+            diag_gmin: 0.0,
         }
     }
 }
@@ -968,7 +968,6 @@ mod tests {
     fn test_ac5() -> TestResult {
         use crate::circuit::Vs;
         use crate::comps::{Mos1InstanceParams, Mos1Model};
-        use Comp::{Mos1, V};
 
         let ckt = Ckt::from_comps(vec![
             Comp::V(Vs {
