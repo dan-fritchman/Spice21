@@ -59,7 +59,7 @@ mod tests {
     fn test_dcop4() -> TestResult {
         use Comp::R;
         use NodeRef::Gnd;
-        let ckt = Ckt::from_comps(vec![Comp::vdc(1.0, n("vdd"), Gnd), R(2e-3, n("vdd"), n("div")), R(2e-3, n("div"), Gnd)]);
+        let ckt = Ckt::from_comps(vec![Comp::vdc("v1", 1.0, n("vdd"), Gnd), R(2e-3, n("vdd"), n("div")), R(2e-3, n("div"), Gnd)]);
         let soln = dcop(ckt)?;
         assert(soln.values).eq(vec![-1e-3, 1.0, 0.5])?;
         Ok(())
@@ -119,8 +119,8 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, NodeRef::Num(0), NodeRef::Gnd),
-            Comp::vdc(1.0, NodeRef::Num(1), NodeRef::Gnd),
+            Comp::vdc("v1", 1.0, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::vdc("v1", 1.0, NodeRef::Num(1), NodeRef::Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -146,8 +146,8 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(-1.0, NodeRef::Num(0), NodeRef::Gnd),
-            Comp::vdc(-1.0, NodeRef::Num(1), NodeRef::Gnd),
+            Comp::vdc("v1", -1.0, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::vdc("v1", -1.0, NodeRef::Num(1), NodeRef::Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -203,6 +203,7 @@ mod tests {
         let opts = TranOptions {
             tstep: 1e-12,
             tstop: 100e-12,
+            ..Default::default()
         };
         let soln = tran(ckt, opts)?;
         for point in soln.data.iter() {
@@ -281,6 +282,7 @@ mod tests {
         let opts = TranOptions {
             tstep: 1e-12,
             tstop: 100e-12,
+            ..Default::default()
         };
         let soln = tran(ckt, opts)?;
         for point in soln.data.iter() {
@@ -410,7 +412,7 @@ mod tests {
     fn test_dcop10() -> TestResult {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, n("vdd"), n("d")),
-            Comp::vdc(1.0, n("vdd"), Gnd),
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
@@ -435,7 +437,7 @@ mod tests {
     fn test_dcop10b() -> TestResult {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, n("g"), n("d")),
-            Comp::vdc(-1.0, n("g"), Gnd),
+            Comp::vdc("v1", -1.0, n("g"), Gnd),
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::PMOS,
@@ -462,7 +464,7 @@ mod tests {
         use NodeRef::Gnd;
 
         let ckt = Ckt::from_comps(vec![
-            Comp::vdc(1.0, n("vdd"), Gnd),
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
             Comp::R(1e-9, n("d"), Gnd), // "gmin"
             Comp::Mos0(Mos0i {
                 name: s("p"),
@@ -518,7 +520,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, n("vdd"), Gnd),
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
             Comp::R(1e-9, n("d"), n("vdd")), // "gmin"
         ]);
 
@@ -617,7 +619,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -638,7 +640,7 @@ mod tests {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, Num(1), Num(0)),
             Comp::C(1e-9, Num(1), Gnd),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -653,7 +655,7 @@ mod tests {
         let ckt = Ckt::from_comps(vec![
             Comp::C(1e-9, n("i"), n("o")),
             Comp::R(1e-3, n("o"), Gnd),
-            Comp::vdc(1.0, n("i"), Gnd),
+            Comp::vdc("v1", 1.0, n("i"), Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -668,12 +670,13 @@ mod tests {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, Num(0), Num(1)),
             Comp::C(1e-9, Num(1), Gnd),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
 
         let opts = TranOptions {
             tstep: 1e-11,
             tstop: 100e-11,
+            ..Default::default()
         };
         let soln = tran(ckt, opts)?;
         for point in soln.data.into_iter() {
@@ -688,7 +691,11 @@ mod tests {
         use NodeRef::{Gnd, Num};
         let ckt = Ckt::from_comps(vec![Comp::I(5e-3, Num(0), Gnd), Comp::C(1e-9, Num(0), Gnd)]);
 
-        let opts = TranOptions { tstep: 1e-9, tstop: 100e-9 };
+        let opts = TranOptions {
+            tstep: 1e-9,
+            tstop: 100e-9,
+            ..Default::default()
+        };
         let mut tran = Tran::new(ckt, opts);
         tran.ic(Num(0), 0.0);
         let soln = tran.solve()?;
@@ -710,7 +717,7 @@ mod tests {
         use NodeRef::{Gnd, Num};
         let c = 1e-10;
         let ckt = Ckt::from_comps(vec![
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::R(1e-3, Num(0), Gnd),
             Comp::Mos0(Mos0i {
                 name: s("p1"),
@@ -783,6 +790,7 @@ mod tests {
         let opts = TranOptions {
             tstep: 1e-12,
             tstop: 100e-12,
+            ..Default::default()
         };
         let mut models = ModelCache::new();
         let mut tran = Tran::new(ckt, opts);
@@ -809,7 +817,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
         let soln = dcop(ckt)?;
         assert(soln[0]).eq(1.0)?;
@@ -835,10 +843,14 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
 
-        let opts = TranOptions { tstep: 1e-9, tstop: 100e-9 };
+        let opts = TranOptions {
+            tstep: 1e-9,
+            tstop: 100e-9,
+            ..Default::default()
+        };
         let soln = tran(ckt, opts)?;
         for k in 1..soln.len() {
             assert(soln[k][0]).eq(1.0)?;
@@ -860,7 +872,7 @@ mod tests {
         let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
         let ckt = Ckt::from_comps(vec![
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("p"),
                 model: pmos.clone(),
@@ -967,7 +979,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -992,7 +1004,7 @@ mod tests {
         use NodeRef::{Gnd, Num};
         let c = 1e-12;
         let ckt = Ckt::from_comps(vec![
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("p1"),
                 model: pmos.clone(),
@@ -1067,7 +1079,11 @@ mod tests {
             Comp::R(1e-9, Num(3), Gnd),
         ]);
 
-        let opts = TranOptions { tstep: 5e-9, tstop: 1000e-9 };
+        let opts = TranOptions {
+            tstep: 5e-9,
+            tstop: 1000e-9,
+            ..Default::default()
+        };
         let mut tran = Tran::new(ckt, opts);
         tran.ic(Num(1), 0.0);
         let soln = tran.solve()?;

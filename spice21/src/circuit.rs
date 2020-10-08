@@ -119,9 +119,9 @@ pub enum Comp {
 
 impl Comp {
     /// Replacement for deprecated original `V` enum variant
-    pub fn vdc(vdc: f64, p: NodeRef, n: NodeRef) -> Comp {
+    pub fn vdc<S: Into<String>>(name: S, vdc: f64, p: NodeRef, n: NodeRef) -> Comp {
         Comp::V(Vs {
-            name: s("tbd"),
+            name: name.into(),
             vdc,
             acm: 0.0,
             p,

@@ -42,13 +42,13 @@ impl<T> Index<MosTerm> for MosPorts<T> {
     }
 }
 
-impl<T: Copy> From<[T; 4]> for MosPorts<T> {
+impl<T: Clone> From<[T; 4]> for MosPorts<T> {
     fn from(n: [T; 4]) -> MosPorts<T> {
         return MosPorts {
-            d: n[0],
-            g: n[1],
-            s: n[2],
-            b: n[3],
+            d: n[0].clone(),
+            g: n[1].clone(),
+            s: n[2].clone(),
+            b: n[3].clone(),
         };
     }
 }

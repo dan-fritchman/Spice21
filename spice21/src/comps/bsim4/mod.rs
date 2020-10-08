@@ -81,9 +81,9 @@ impl Bsim4ModelCache {
     pub(crate) fn new() -> Self {
         Self(HashMap::new())
     }
-    pub(crate) fn add(&mut self, name: String, specs: Bsim4ModelSpecs) {
+    pub(crate) fn add<S: Into<String>>(&mut self, name: S, specs: Bsim4ModelSpecs) {
         let entry = Bsim4ModelEntry::new(specs);
-        self.0.insert(name, entry);
+        self.0.insert(name.into(), entry);
     }
     pub(crate) fn model(&mut self, model_name: &String) -> Option<&mut Bsim4ModelEntry> {
         self.0.get_mut(model_name)
@@ -93,7 +93,7 @@ impl Bsim4ModelCache {
         let model: &mut Bsim4ModelEntry = self.0.get_mut(model_name)?;
         let inst = Bsim4InstEntry::new(specs, &model);
         model.insts.push(inst.clone());
-        // FIXME: stop cloning, return references
+        // FIXME: stop cloning, return references or pointers 
         // Some((&*model, &model.insts[model.insts.len() - 1]))
         Some((model.clone(), inst))
     }
@@ -298,7 +298,7 @@ pub(crate) struct Bsim4ModelDerivedParams {
     pub(crate) Nvtmrsswgd: f64,
 }
 
-#[derive(Default, Debug, Deserialize, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
 pub(crate) struct Bsim4OpPoint {
     pub(crate) mode: isize,
 

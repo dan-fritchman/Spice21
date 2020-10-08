@@ -500,11 +500,16 @@ impl TranState {
 pub struct TranOptions {
     pub tstep: f64,
     pub tstop: f64,
+    pub ic: Vec<(NodeRef, f64)>,
 }
 
 impl Default for TranOptions {
     fn default() -> TranOptions {
-        TranOptions { tstep: 1e-6, tstop: 1e-3 }
+        TranOptions {
+            tstep: 1e-6,
+            tstop: 1e-3,
+            ic: vec![],
+        }
     }
 }
 
@@ -516,11 +521,16 @@ pub(crate) struct Tran<'a> {
 
 impl<'a> Tran<'a> {
     pub fn new(ckt: Ckt, opts: TranOptions) -> Tran<'a> {
-        return Tran {
+        let ics = opts.ic.clone();
+        let mut t = Tran {
             solver: Solver::new(ckt, Options::default()),
             opts,
             state: TranState::default(),
         };
+        for (node, val) in &ics {
+            t.ic(node.clone(), *val);
+        }
+        t
     }
     /// Create and set an initial condition on Node `n`, value `val`.
     pub fn ic(&mut self, n: NodeRef, val: f64) {
@@ -770,7 +780,7 @@ pub struct AcResult {
     pub signals: Vec<String>,
     pub freq: Vec<f64>,
     pub data: Vec<Vec<Complex<f64>>>,
-    pub map: HashMap<String, Vec<Complex<f64>>>
+    pub map: HashMap<String, Vec<Complex<f64>>>,
 }
 impl AcResult {
     fn new() -> Self {
@@ -788,7 +798,7 @@ impl AcResult {
     }
     /// Simulation complete, re-org data into hash-map of signals
     fn end(&mut self) {
-        // self.map.insert("freq".to_string(), self.freq.clone()); // FIXME: will require multi datatypes per result 
+        // self.map.insert("freq".to_string(), self.freq.clone()); // FIXME: will require multi datatypes per result
         for i in 0..self.signals.len() {
             let mut vals: Vec<Complex<f64>> = vec![];
             for v in 0..self.freq.len() {
@@ -914,7 +924,7 @@ mod tests {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, Num(0), Num(1)),
             Comp::C(1e-9, Num(1), Gnd),
-            Comp::vdc(1.0, Num(0), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::Mos0(Mos0i {
                 name: s("m"),
                 mos_type: MosType::NMOS,
@@ -949,7 +959,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::vdc(1.0, n("vdd"), Gnd),
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
             Comp::V(Vs {
                 name: s("vg"),
                 vdc: 0.7,

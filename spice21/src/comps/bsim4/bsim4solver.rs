@@ -133,11 +133,11 @@ impl Bsim4 {
     fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         // Grab our port voltages/ values
         let portvs = self.vs(guess);
-        // Calculate an operating point from them 
+        // Calculate an operating point from them
         let newop = self.op(portvs, an);
-        // Save it for later 
+        // Save it for later
         self.guess = newop;
-        // And return the corresponding matrix stamps 
+        // And return the corresponding matrix stamps
         return self.stamp();
     }
 
@@ -4816,6 +4816,10 @@ impl Bsim4 {
         // And return our matrix stamps
         return Stamps { g: j, b };
     }
+    /// Commit operating-point guesses to internal state
+    fn commit(&mut self) {
+        self.op = self.guess.clone();
+    }
 }
 
 impl Component for Bsim4 {
@@ -4993,7 +4997,8 @@ impl Bsim4 {
 
 mod tests {
     use super::*;
-    use crate::{assert, TestResult, sperror};
+    use crate::assert::assert;
+    use crate::{assert, sperror, TestResult};
 
     #[test]
     fn test_bsim4_load() -> TestResult {
@@ -5031,15 +5036,15 @@ mod tests {
     }
 
     #[test]
-    fn test_bsim4_1() -> TestResult {
+    fn test_bsim4_nmos_dcop1() -> TestResult {
         use crate::analysis::dcop;
         use crate::circuit::*;
         use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
         use crate::comps::mos::MosPorts;
         let inst = Bsim4InstSpecs::default();
         let ports = MosPorts {
-            d: n("vss"),
-            g: n("vss"),
+            d: n("gd"),
+            g: n("gd"),
             s: NodeRef::Gnd,
             b: NodeRef::Gnd,
         };
@@ -5053,10 +5058,129 @@ mod tests {
             params: inst,
         });
         let p = 1.0;
-        ckt.add(Comp::vdc(p, n("vss"), NodeRef::Gnd));
-        ckt.add(Comp::R(1e-10, n("vss"), NodeRef::Gnd));
+        ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
+        ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
+        let soln = dcop(ckt)?;
+        let vgd = soln.map.get("gd").ok_or(sperror(""))?.clone();
+        assert(vgd).eq(1.0)?;
+        let id = soln.map.get("v1").ok_or(sperror(""))?.clone();
+        assert(id).abs().isclose(150e-6, 1e-6)?;
+
+        Ok(())
+    }
+    #[test]
+    fn test_bsim4_pmos_dcop1() -> TestResult {
+        use crate::analysis::dcop;
+        use crate::circuit::*;
+        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
+        use crate::comps::mos::MosPorts;
+        let inst = Bsim4InstSpecs::default();
+        let ports = MosPorts {
+            d: n("gd"),
+            g: n("gd"),
+            s: NodeRef::Gnd,
+            b: NodeRef::Gnd,
+        };
+        let mut ckt = Ckt::new();
+        ckt.models.bsim4.add(
+            "pmos",
+            Bsim4ModelSpecs {
+                mos_type: Some(MosType::PMOS),
+                ..Default::default()
+            },
+        );
+
+        ckt.add(Bsim4i {
+            name: "bsim4".to_string(),
+            ports,
+            model: "pmos".to_string(),
+            params: inst,
+        });
+        let p = -1.5;
+        ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
+        ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
         let soln = dcop(ckt)?;
         println!("{:?}", soln);
+
+        Ok(())
+    }
+    #[test]
+    fn test_bsim4_inv_dcop() -> TestResult {
+        use crate::analysis::dcop;
+        use crate::circuit::*;
+        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
+        use crate::comps::mos::{MosPorts, MosType};
+        use NodeRef::Gnd;
+        let mut ckt = Ckt::new();
+        ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
+        ckt.models.bsim4.add(
+            "pmos",
+            Bsim4ModelSpecs {
+                mos_type: Some(MosType::PMOS),
+                ..Default::default()
+            },
+        );
+        let inst = Bsim4InstSpecs::default();
+        ckt.add(Bsim4i {
+            name: "p".to_string(),
+            ports: [n("d"), n("inp"), n("vdd"), n("vdd")].into(),
+            model: "pmos".to_string(),
+            params: inst,
+        });
+        ckt.add(Bsim4i {
+            name: "n".to_string(),
+            ports: [n("d"), n("inp"), Gnd, Gnd].into(),
+            model: "nmos".to_string(),
+            params: inst,
+        });
+        let p = 1.0;
+        ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
+        ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
+
+        let soln = dcop(ckt)?;
+        println!("{:?}", soln.map);
+
+        Ok(())
+    }
+    #[test]
+    fn test_bsim4_tran1() -> TestResult {
+        use crate::analysis::{tran, TranOptions};
+        use crate::circuit::*;
+        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
+        use crate::comps::mos::{MosPorts, MosType};
+        use NodeRef::Gnd;
+        let mut ckt = Ckt::new();
+        ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
+        ckt.models.bsim4.add(
+            "pmos",
+            Bsim4ModelSpecs {
+                mos_type: Some(MosType::PMOS),
+                ..Default::default()
+            },
+        );
+        let inst = Bsim4InstSpecs::default();
+        ckt.add(Bsim4i {
+            name: "p".to_string(),
+            ports: [n("d"), n("inp"), n("vdd"), n("vdd")].into(),
+            model: "pmos".to_string(),
+            params: inst,
+        });
+        ckt.add(Bsim4i {
+            name: "n".to_string(),
+            ports: [n("d"), n("inp"), Gnd, Gnd].into(),
+            model: "nmos".to_string(),
+            params: inst,
+        });
+        let p = 1.0;
+        ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
+        ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
+
+        let opts = TranOptions {
+            ic: vec![(n("inp"), 1.0)],
+            ..Default::default()
+        };
+        let soln = tran(ckt, opts)?;
+        println!("{:?}", soln.map);
 
         Ok(())
     }
