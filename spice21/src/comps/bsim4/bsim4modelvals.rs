@@ -1,7 +1,7 @@
 use super::bsim4defs::*;
 use super::log;
 use crate::comps::consts::*;
-use crate::comps::MosType;
+use crate::comps::mos::MosType::{NMOS, PMOS};
 
 impl Bsim4ModelVals {
     /// Polarity function
@@ -14,12 +14,13 @@ impl Bsim4ModelVals {
 /// incorporating defaults and limiting constraints.
 pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     let mut vals = Bsim4ModelVals::default();
-    use MosType::{NMOS, PMOS};
 
-    // vals.type = if let Some(val) = specs.type { if val > 0 { NMOS } else { PMOS} } else { NMOS };
-    vals.mos_type = NMOS; // FIXME!
     let tnom = 300.15; // FIXME: from ckt->CKTnomTemp
 
+    // MosType NMOS vs PMOS
+    vals.mos_type = if let Some(val) = specs.mos_type { val } else { NMOS };
+
+    // Model Modes
     vals.mobmod = if let Some(val) = specs.mobmod { val } else { 0 };
     if vals.mobmod > 6 {
         vals.mobmod = 0;
