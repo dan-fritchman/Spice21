@@ -5074,13 +5074,8 @@ mod tests {
         use crate::circuit::*;
         use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
         use crate::comps::mos::MosPorts;
-        let inst = Bsim4InstSpecs::default();
-        let ports = MosPorts {
-            d: n("gd"),
-            g: n("gd"),
-            s: NodeRef::Gnd,
-            b: NodeRef::Gnd,
-        };
+        use NodeRef::Gnd;
+
         let mut ckt = Ckt::new();
         ckt.models.bsim4.add(
             "pmos",
@@ -5092,11 +5087,11 @@ mod tests {
 
         ckt.add(Bsim4i {
             name: "bsim4".to_string(),
-            ports,
+            ports: [n("gd"), n("gd"), Gnd, Gnd].into(),
             model: "pmos".to_string(),
-            params: inst,
+            params: Bsim4InstSpecs::default(),
         });
-        let p = -1.5;
+        let p = -1.0;
         ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
         ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
         let soln = dcop(ckt)?;
@@ -5111,6 +5106,7 @@ mod tests {
         use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
         use crate::comps::mos::{MosPorts, MosType};
         use NodeRef::Gnd;
+
         let mut ckt = Ckt::new();
         ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
         ckt.models.bsim4.add(
