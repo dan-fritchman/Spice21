@@ -37,7 +37,7 @@ jobs:
         working-directory: ./spice21py 
         run: |
           pip debug --verbose
-          pip install target/wheels/*.whl
+          pip install target/wheels/*cp37*.whl 
       - name: test
         working-directory: ./spice21py 
         run: pytest 
