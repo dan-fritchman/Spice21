@@ -3,6 +3,12 @@
 
 SPICE for the 21st century 
 
+---
+
+![test](https://github.com/HW21/Spice21/workflows/test/badge.svg)
+
+--- 
+
 ## Circuit Simulation Circa 2020 
 
 Spice21 is a circuit simulation library akin to the original Berkeley 
