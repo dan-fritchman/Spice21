@@ -32,7 +32,7 @@ jobs:
           pip install cffi maturin pytest 
       - name: py-install
         working-directory: ./spice21py 
-        run: maturin build 
+        run: maturin develop 
       - name: test
         working-directory: ./spice21py 
         run: pytest 
