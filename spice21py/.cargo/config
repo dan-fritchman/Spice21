@@ -1,0 +1,2 @@
+# Over-ride crates.io with our local copy 
+paths = ["../spice21"]

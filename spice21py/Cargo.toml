@@ -14,10 +14,11 @@ name = "spice21py"
 crate-type = ["cdylib"]
 
 [dependencies]
-spice21 = "0.1.4"
+spice21rs = { package="spice21", version="0.1.4" }
 pyo3 = {version = "0.11.1", features = ["extension-module"]}
 
 # Local dev path 
+# Now managed through .cargo/config 
 # [patch.crates-io]
 # spice21 = { path = "../spice21" }
 

@@ -7,8 +7,8 @@ use pyo3::exceptions::RuntimeError;
 use pyo3::prelude::*;
 use pyo3::{PyErr, PyResult};
 
-use spice21::circuit::Ckt;
-use spice21::SpError;
+use spice21rs::circuit::Ckt;
+use spice21rs::SpError;
 
 // Note "spice21py" must be the name of the `.so` or `.pyd` file,
 // i.e. it must be the `package` and/or `lib` name in Cargo.toml
@@ -50,7 +50,7 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
     /// DC Operating Point
     #[pyfn(m, "_dcop")]
     fn dcop_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, f64>> {
-        use spice21::analysis::dcop;
+        use spice21rs::analysis::dcop;
         // Decode the proto-encoded circuit
         let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
         // Run DCOP
@@ -62,7 +62,7 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
     /// Transient
     #[pyfn(m, "_tran")]
     fn tran_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, Vec<f64>>> {
-        use spice21::analysis::{tran, TranOptions};
+        use spice21rs::analysis::{tran, TranOptions};
         // Decode the proto-encoded circuit
         let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
         let res = tran(ckt, TranOptions::default()).map_err(TempError::from)?;
@@ -72,7 +72,7 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
     /// AC Analysis 
     #[pyfn(m, "_ac")]
     fn ac_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, Vec<(f64, f64)>>> {
-        use spice21::analysis::{ac, AcOptions};
+        use spice21rs::analysis::{ac, AcOptions};
         // Decode the proto-encoded circuit
         let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
         let res = ac(ckt, AcOptions::default()).map_err(TempError::from)?;

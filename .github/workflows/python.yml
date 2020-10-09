@@ -1,0 +1,49 @@
+
+name: spice21py
+on: [push]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macOS-latest]
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v1
+      - name: Setup Rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+            profile: minimal
+            toolchain: stable
+            override: true
+      - name: Setup Python environment
+        uses: actions/setup-python@v1.1.1
+        with:
+          python-version: 3.7
+      - name: rust-cargo
+        uses: actions-rs/cargo@v1.0.1
+        with:
+          command: test
+      - name: py-deps
+        run: |
+          pip install --upgrade pip
+          pip install cffi maturin .
+      - name: py-install
+        working-directory: ./spice21py 
+        run: maturin build --release      
+      - name: test
+        working-directory: ./spice21py 
+        run: pytest 
+      # - uses: actions/upload-artifact@v1
+      #   name: upload-wheel
+      #   with:
+      #     name: wheel-${{ matrix.platform }}
+      #     path: target/wheels/
+      # - name: pip-install-wheel
+      #   run: |
+      #     pip debug --verbose
+      #     pip install target/wheels/example_rust_py*.whl
+
+        
