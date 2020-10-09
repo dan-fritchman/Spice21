@@ -29,10 +29,15 @@ jobs:
         working-directory: ./spice21py 
         run: |
           pip install --upgrade pip
-          pip install cffi maturin pytest 
+          pip install cffi maturin pytest
       - name: py-install
         working-directory: ./spice21py 
-        run: maturin develop 
+        run: maturin build 
+      - name: pip-install-wheel
+        working-directory: ./spice21py 
+        run: |
+          pip debug --verbose
+          pip install target/wheels/*.whl
       - name: test
         working-directory: ./spice21py 
         run: pytest 
