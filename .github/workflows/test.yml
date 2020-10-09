@@ -21,7 +21,7 @@ jobs:
 
       - name: Run cargo check
         working-directory: ./spice21
-        continue-on-error: true  # WARNING: only for this example, remove it!
+        continue-on-error: true  # FIXME: remove
         run: cargo check
 
   test:
@@ -59,10 +59,10 @@ jobs:
 
       - name: Run cargo fmt
         working-directory: ./spice21
-        continue-on-error: true  # WARNING: only for this example, remove it!
+        continue-on-error: true  # FIXME: remove
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
         working-directory: ./spice21
-        continue-on-error: true  # WARNING: only for this example, remove it!
+        continue-on-error: true  # FIXME: remove
         run: cargo clippy -- -D warnings

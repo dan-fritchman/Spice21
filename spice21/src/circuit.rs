@@ -14,6 +14,11 @@ use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 use crate::SpResult;
 
+use crate::comps::bsim4::Bsim4InstSpecs;
+use crate::comps::mos::MosPorts;
+
+use crate::comps::bsim4::Bsim4ModelCache;
+
 /// Node Reference
 #[derive(Debug, Clone)]
 pub enum NodeRef {
@@ -21,7 +26,10 @@ pub enum NodeRef {
     Num(usize),
     Name(String),
 }
-
+/// Conversion to create Nodes from string-refs
+impl From<&str> for NodeRef {
+    fn from(f: &str) -> Self { n(f) }
+}
 /// Create a Node from anything convertible into String
 /// Empty string is a cardinal value for creating Gnd
 pub(crate) fn n<S: Into<String>>(name: S) -> NodeRef {
@@ -45,6 +53,12 @@ pub struct Vs {
     pub acm: f64,
     pub p: NodeRef,
     pub n: NodeRef,
+}
+
+impl From<Bsim4i> for Comp {
+    fn from(x: Bsim4i) -> Self {
+        Comp::Bsim4(x)
+    }
 }
 
 impl From<Vs> for Comp {
@@ -74,6 +88,25 @@ impl Ds {
     }
 }
 
+pub struct Bsim4i {
+    pub(crate) name: String,
+    pub(crate) ports: MosPorts<NodeRef>,
+    pub(crate) model: String,
+    pub(crate) params: Bsim4InstSpecs,
+}
+
+pub struct Mos0i {
+    pub(crate) name: String,
+    pub(crate) mos_type: MosType,
+    pub(crate) ports: MosPorts<NodeRef>,
+}
+pub struct Mos1i {
+    pub(crate) name: String,
+    pub(crate) model: Mos1Model,
+    pub(crate) params: Mos1InstanceParams,
+    pub(crate) ports: MosPorts<NodeRef>,
+}
+
 /// Component Enum.
 /// Circuits are mostly a list of these variants.
 pub enum Comp {
@@ -82,22 +115,16 @@ pub enum Comp {
     R(f64, NodeRef, NodeRef),
     C(f64, NodeRef, NodeRef),
     D(Ds),
-    Mos0(MosType, NodeRef, NodeRef, NodeRef, NodeRef),
-    Mos1(
-        Mos1Model,
-        Mos1InstanceParams,
-        NodeRef,
-        NodeRef,
-        NodeRef,
-        NodeRef,
-    ),
+    Mos0(Mos0i),
+    Mos1(Mos1i),
+    Bsim4(Bsim4i),
 }
 
 impl Comp {
     /// Replacement for deprecated original `V` enum variant
-    pub fn vdc(vdc: f64, p: NodeRef, n: NodeRef) -> Comp {
+    pub fn vdc<S: Into<String>>(name: S, vdc: f64, p: NodeRef, n: NodeRef) -> Comp {
         Comp::V(Vs {
-            name: s("tbd"),
+            name: name.into(),
             vdc,
             acm: 0.0,
             p,
@@ -124,14 +151,7 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::Mos(m) => Comp::Mos1(
-                Mos1Model::default(),
-                Mos1InstanceParams::default(),
-                n(m.g),
-                n(m.d),
-                n(m.s),
-                n(m.b),
-            ),
+            CompProto::M(m) => Comp::Mos1(Mos1i { name: m.name, model:Mos1Model::default(), params:Mos1InstanceParams::default(), ports: MosPorts { g: n(m.g), d: n(m.d), s: n(m.s), b: n(m.b) } }),
         }
     }
 }
@@ -142,15 +162,36 @@ impl From<Ds> for Comp {
     }
 }
 
+pub struct ModelCache {
+    pub(crate) bsim4: Bsim4ModelCache,
+}
+impl ModelCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            bsim4: Bsim4ModelCache::new(),
+        }
+    }
+}
+
 /// Primary Circuit Structure
 pub struct Ckt {
     pub comps: Vec<Comp>,
+    pub models: ModelCache,
 }
 
 impl Ckt {
     /// Create a new, empty Circuit
     pub fn new() -> Self {
-        Self { comps: vec![] }
+        Self {
+            comps: vec![],
+            models: ModelCache::new(),
+        }
+    }
+    pub(crate) fn from_comps(comps: Vec<Comp>) -> Self {
+        Self {
+            comps: comps,
+            models: ModelCache::new(),
+        }
     }
     /// Create from a protobuf-generated circuit
     pub fn from(c: CircuitProto) -> Self {
@@ -162,7 +203,10 @@ impl Ckt {
                 cs.push(Comp::from(c));
             }
         }
-        Self { comps: cs }
+        Self {
+            comps: cs,
+            models: ModelCache::new(),
+        }
     }
     /// Decode from bytes
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
@@ -195,10 +239,8 @@ mod tests {
     #[test]
     fn test_ckt_parse() -> TestResult {
         Ckt {
-            comps: vec![
-                Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            ],
+            comps: vec![Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd), Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)],
+            models: ModelCache::new(),
         };
         Ok(())
     }

@@ -1,10 +1,12 @@
 //! # Spice21 Analyses
 //!
+use serde::{Deserialize, Serialize};
 
+use crate::circuit;
 use crate::circuit::{Ckt, Comp, NodeRef};
 use crate::comps::{Component, ComponentSolver};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{SpNum, SpResult};
+use crate::{sperror, SpNum, SpResult};
 use num::{Complex, Float, Zero};
 
 /// `Stamps` are the interface between Components and Solvers.
@@ -18,22 +20,21 @@ pub(crate) struct Stamps<NumT> {
 }
 impl<NumT: SpNum> Stamps<NumT> {
     pub fn new() -> Stamps<NumT> {
-        Stamps {
-            g: vec![],
-            b: vec![],
-        }
+        Stamps { g: vec![], b: vec![] }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub(crate) enum VarKind {
     V = 0,
     I,
+    Q,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct VarIndex(pub usize);
 
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Variables<NumT> {
     kinds: Vec<VarKind>,
     values: Vec<NumT>,
@@ -90,18 +91,19 @@ struct Iteration<NumT: SpNum> {
 /// Newton-Style Iterative Solver
 /// Owns each of its circuit's ComponentSolvers,
 /// its SparseMatrix, and Variables.
-pub(crate) struct Solver<NumT: SpNum> {
-    pub(crate) comps: Vec<ComponentSolver>,
+pub(crate) struct Solver<'a, NumT: SpNum> {
+    pub(crate) comps: Vec<ComponentSolver<'a>>,
     pub(crate) vars: Variables<NumT>,
     pub(crate) mat: Matrix<NumT>,
     pub(crate) rhs: Vec<NumT>,
     pub(crate) history: Vec<Vec<NumT>>,
+    pub(crate) models: circuit::ModelCache,
     pub(crate) opts: Options,
 }
 
 /// Real-valued Solver specifics
 /// FIXME: nearly all of this *should* eventually be share-able with the Complex Solver
-impl Solver<f64> {
+impl Solver<'_, f64> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
@@ -142,14 +144,12 @@ impl Solver<f64> {
                 for c in self.comps.iter_mut() {
                     c.commit();
                 }
-                return Ok(self.vars.values.clone());
+                return Ok(self.vars.values.clone()); // FIXME: stop cloning
             }
             // Haven't Converged. Solve for our update.
             dx = self.mat.solve(res)?;
             let max_step = 1000e-3;
-            let max_abs = dx
-                .iter()
-                .fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
+            let max_abs = dx.iter().fold(0.0, |s, v| if v.abs() > s { v.abs() } else { s });
             if max_abs > max_step {
                 for r in 0..dx.len() {
                     dx[r] = dx[r] * max_step / max_abs;
@@ -160,22 +160,23 @@ impl Solver<f64> {
                 self.vars.values[r] += dx[r];
             }
         }
-        return Err("Convergence Failed");
+        return Err(sperror("Convergence Failed"));
     }
 }
 
 /// Complex-Valued Solver Specifics
 /// FIXME: nearly all of this *should* eventually be share-able with the Real Solver
-impl Solver<Complex<f64>> {
+impl<'a> Solver<'a, Complex<f64>> {
     /// Create a Complex solver from a real-valued one.
     /// Commonly deployed when moving from DCOP to AC analysis.
-    fn from(re: Solver<f64>) -> Self {
-        let mut op = Solver::<Complex<f64>> {
+    fn from(re: Solver<'a, f64>) -> Self {
+        let mut op = Solver::<'a, Complex<f64>> {
             comps: re.comps,
             vars: Variables::<Complex<f64>>::from(re.vars),
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
+            models: re.models,
             opts: re.opts,
         };
 
@@ -233,9 +234,7 @@ impl Solver<Complex<f64>> {
             // Solve for our update
             dx = self.mat.solve(res)?;
             let max_step = 1.0;
-            let max_abs = dx
-                .iter()
-                .fold(0.0, |s, v| if v.norm() > s { v.norm() } else { s });
+            let max_abs = dx.iter().fold(0.0, |s, v| if v.norm() > s { v.norm() } else { s });
             if max_abs > max_step {
                 for r in 0..dx.len() {
                     dx[r] = dx[r] * max_step / max_abs;
@@ -253,24 +252,26 @@ impl Solver<Complex<f64>> {
                 itol: itol,
             });
         }
-        return Err("Convergence Failed");
+        return Err(sperror("Convergence Failed"));
     }
 }
 
-impl<NumT: SpNum> Solver<NumT> {
+impl<'a, NumT: SpNum> Solver<'a, NumT> {
     /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
-    fn new(ckt: Ckt, opts: Options) -> Solver<NumT> {
+    pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
+        let Ckt { comps, models } = ckt;
         let mut op = Solver {
             comps: vec![],
             vars: Variables::new(),
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
+            models,
             opts,
         };
 
         // Convert each circuit-parser component into a corresponding component-solver
-        for comp in ckt.comps.into_iter() {
+        for comp in comps.into_iter() {
             op.add_comp(comp);
         }
         // Create the corresponding matrix-elements
@@ -335,27 +336,56 @@ impl<NumT: SpNum> Solver<NumT> {
                 let n = self.node_var(vc.n.clone());
                 Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
             }
-            Comp::Mos0(pol, g, d, s, b) => {
+            Comp::Mos0(m) => {
+                use crate::comps::mos::MosPorts;
                 use crate::comps::Mos0;
+
+                let circuit::Mos0i { name, mos_type, ports } = m;
+
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
-                let ports = [
-                    self.node_var(g.clone()),
-                    self.node_var(d.clone()),
-                    self.node_var(s.clone()),
-                    self.node_var(b.clone()),
-                ];
-                Mos0::new(ports.into(), pol).into()
+                let ports: MosPorts<Option<VarIndex>> = [
+                    self.node_var(ports.d.clone()),
+                    self.node_var(ports.g.clone()),
+                    self.node_var(ports.s.clone()),
+                    self.node_var(ports.b.clone()),
+                ]
+                .into();
+                Mos0::new(ports.into(), mos_type).into()
             }
-            Comp::Mos1(model, params, g, d, s, b) => {
+            Comp::Mos1(m) => {
+                use crate::comps::mos::MosPorts;
                 use crate::comps::Mos1;
-                let ports = [
-                    self.node_var(g.clone()),
-                    self.node_var(d.clone()),
-                    self.node_var(s.clone()),
-                    self.node_var(b.clone()),
-                ];
+
+                let circuit::Mos1i { name, model, params, ports } = m;
+
+                let ports: MosPorts<Option<VarIndex>> = [
+                    self.node_var(ports.d.clone()),
+                    self.node_var(ports.g.clone()),
+                    self.node_var(ports.s.clone()),
+                    self.node_var(ports.b.clone()),
+                ]
+                .into();
                 Mos1::new(model.clone(), params.clone(), ports.into()).into()
+            }
+            Comp::Bsim4(b4i) => {
+                use crate::comps::bsim4::bsim4ports::Bsim4Ports;
+                use crate::comps::bsim4::Bsim4;
+                use crate::comps::mos::MosPorts;
+
+                let circuit::Bsim4i { name, ports, model, params } = b4i;
+
+                let (model, inst) = self.models.bsim4.inst(&model, params).unwrap();
+
+                let ports: MosPorts<Option<VarIndex>> = [
+                    self.node_var(ports.d.clone()),
+                    self.node_var(ports.g.clone()),
+                    self.node_var(ports.s.clone()),
+                    self.node_var(ports.b.clone()),
+                ]
+                .into();
+                let ports = Bsim4Ports::from(name, &ports, &model.vals, &inst.intp, self);
+                Bsim4::new(ports, model, inst).into()
             }
         };
 
@@ -388,7 +418,6 @@ pub struct OpResult {
     pub values: Vec<f64>,
     pub map: HashMap<String, f64>,
 }
-
 impl OpResult {
     /// Create an OpResult from a (typically final) set of `Variables`.
     fn from(vars: Variables<f64>) -> Self {
@@ -398,6 +427,13 @@ impl OpResult {
         }
         let Variables { names, values, .. } = vars;
         OpResult { names, values, map }
+    }
+    /// Get the value of signal `signame`, or an `SpError` if not present 
+    pub(crate) fn get<S:Into<String>>(&self, signame: S) -> SpResult<f64> {
+        match self.map.get(&signame.into()) {
+            Some(v) => Ok(v.clone()), 
+            None => Err(sperror("Signal Not Found")),
+        }
     }
 }
 /// Maintain much (most?) of our original vector-result-format
@@ -433,13 +469,17 @@ impl Default for NumericalIntegration {
     }
 }
 
+/// # TranState
+///
+/// Internal state of transient analysis
+/// Often passed to Components for timesteps etc
 #[derive(Default)]
 pub(crate) struct TranState {
-    t: f64,
-    dt: f64,
-    vic: Vec<usize>,
-    ric: Vec<usize>,
-    ni: NumericalIntegration,
+    pub(crate) t: f64,
+    pub(crate) dt: f64,
+    pub(crate) vic: Vec<usize>,
+    pub(crate) ric: Vec<usize>,
+    pub(crate) ni: NumericalIntegration,
 }
 
 impl TranState {
@@ -467,6 +507,7 @@ impl TranState {
 pub struct TranOptions {
     pub tstep: f64,
     pub tstop: f64,
+    pub ic: Vec<(NodeRef, f64)>,
 }
 
 impl Default for TranOptions {
@@ -474,23 +515,29 @@ impl Default for TranOptions {
         TranOptions {
             tstep: 1e-6,
             tstop: 1e-3,
+            ic: vec![],
         }
     }
 }
 
-pub(crate) struct Tran {
-    solver: Solver<f64>,
+pub(crate) struct Tran<'a> {
+    solver: Solver<'a, f64>,
     state: TranState,
     pub(crate) opts: TranOptions,
 }
 
-impl Tran {
-    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran {
-        return Tran {
+impl<'a> Tran<'a> {
+    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran<'a> {
+        let ics = opts.ic.clone();
+        let mut t = Tran {
             solver: Solver::new(ckt, Options::default()),
             opts,
             state: TranState::default(),
         };
+        for (node, val) in &ics {
+            t.ic(node.clone(), *val);
+        }
+        t
     }
     /// Create and set an initial condition on Node `n`, value `val`.
     pub fn ic(&mut self, n: NodeRef, val: f64) {
@@ -508,7 +555,11 @@ impl Tran {
         self.solver.comps.push(v.into());
         self.state.vic.push(self.solver.comps.len() - 1);
     }
-    pub fn solve(&mut self) -> SpResult<Vec<Vec<f64>>> {
+    pub fn solve(&mut self) -> SpResult<TranResult> {
+        // Initialize results
+        let mut results = TranResult::new();
+        results.signals(&self.solver.vars);
+
         use std::sync::mpsc;
         use std::thread;
 
@@ -556,6 +607,7 @@ impl Tran {
                 return Err(e);
             }
         };
+        results.push(self.state.t, &tdata);
         tx.send(IoWriterMessage::DATA(tdata)).unwrap();
         // Update initial-condition sources and resistances
         for c in self.state.vic.iter() {
@@ -578,76 +630,130 @@ impl Tran {
                     return Err(e);
                 }
             };
+            results.push(self.state.t, &tdata);
             tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
             self.state.ni = NumericalIntegration::TRAP;
             tpoint += 1;
             self.state.t += self.opts.tstep;
         }
+        results.end();
         tx.send(IoWriterMessage::STOP).unwrap();
         for msg in rx2 {
             match msg {
                 IoWriterResponse::OK => {
                     continue;
                 }
-                IoWriterResponse::RESULT(res) => {
+                IoWriterResponse::RESULT(_) => {
                     t.join().unwrap();
-                    return Ok(res);
+                    return Ok(results);
                 }
             }
         }
-        Err("Tran Results Failure")
+        Err(sperror("Tran Failure"))
+    }
+}
+
+/// TranResult
+/// In-Memory Store for transient data
+#[derive(Default, Serialize, Deserialize)]
+pub struct TranResult {
+    pub signals: Vec<String>,
+    pub time: Vec<f64>,
+    pub data: Vec<Vec<f64>>,
+    pub map: HashMap<String, Vec<f64>>,
+}
+impl TranResult {
+    pub fn new() -> Self {
+        Self {
+            signals: vec![],
+            time: vec![],
+            data: vec![],
+            map: HashMap::new(),
+        }
+    }
+    fn signals(&mut self, vars: &Variables<f64>) {
+        for name in vars.names.iter() {
+            self.signals.push(name.to_string());
+        }
+    }
+    fn push(&mut self, t: f64, vals: &Vec<f64>) {
+        self.time.push(t);
+        self.data.push(vals.clone());
+        // FIXME: filter out un-saved and internal variables
+    }
+    /// Simulation complete, re-org data into hash-map of signals
+    fn end(&mut self) {
+        self.map.insert("time".to_string(), self.time.clone());
+        for i in 0..self.signals.len() {
+            let mut vals: Vec<f64> = vec![];
+            for v in 0..self.time.len() {
+                vals.push(self.data[v][i]);
+            }
+            self.map.insert(self.signals[i].clone(), vals);
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.time.len()
+    }
+}
+/// Maintain much (most?) of our original vector-result-format
+/// via enabling integer indexing
+impl Index<usize> for TranResult {
+    type Output = Vec<f64>;
+    fn index(&self, t: usize) -> &Vec<f64> {
+        &self.data[t]
     }
 }
 
 /// Transient Analysis
-pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<Vec<Vec<f64>>> {
+pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<TranResult> {
     return Tran::new(ckt, opts).solve();
 }
 
 /// Simulation Options
 pub struct Options {
     pub temp: f64,
-    pub nomTemp: f64,
+    pub nom_temp: f64,
     pub gmin: f64,
     pub abstol: f64,
     pub reltol: f64,
     pub chgtol: f64,
-    pub voltTol: f64,
+    pub volt_tol: f64,
     pub trtol: usize,
-    pub tranMaxIter: usize,
-    pub dcMaxIter: usize,
-    pub dcTrcvMaxIter: usize,
-    pub integrateMethod: usize,
+    pub tran_max_iter: usize,
+    pub dc_max_iter: usize,
+    pub dc_trcv_max_iter: usize,
+    pub integrate_method: usize,
     pub order: usize,
-    pub maxOrder: usize,
-    pub pivotAbsTol: f64,
-    pub pivotRelTol: f64,
-    pub srcFactor: f64,
-    pub diagGmin: f64,
+    pub max_order: usize,
+    pub pivot_abs_tol: f64,
+    pub pivot_rel_tol: f64,
+    pub src_factor: f64,
+    pub diag_gmin: f64,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             temp: 300.15,
-            nomTemp: 300.15,
+            nom_temp: 300.15,
             gmin: 1e-12,
             abstol: 1e-12,
             reltol: 1e-3,
             chgtol: 1e-14,
-            voltTol: 1e-6,
+            volt_tol: 1e-6,
             trtol: 7,
-            tranMaxIter: 10,
-            dcMaxIter: 100,
-            dcTrcvMaxIter: 50,
-            integrateMethod: 0,
+            tran_max_iter: 10,
+            dc_max_iter: 100,
+            dc_trcv_max_iter: 50,
+            integrate_method: 0,
             order: 1,
-            maxOrder: 2,
-            pivotAbsTol: 1e-13,
-            pivotRelTol: 1e-3,
-            srcFactor: 1.0,
-            diagGmin: 0.0,
+            max_order: 2,
+            pivot_abs_tol: 1e-13,
+            pivot_rel_tol: 1e-3,
+            src_factor: 1.0,
+            diag_gmin: 0.0,
         }
     }
 }
@@ -674,17 +780,15 @@ impl Default for AcOptions {
     }
 }
 
-use serde::{Deserialize, Serialize};
-
 /// AcResult
 /// In-Memory Store for Complex-Valued AC Data
 #[derive(Default, Serialize, Deserialize)]
-struct AcResult {
-    signals: Vec<String>,
-    freq: Vec<f64>,
-    data: Vec<Vec<Complex<f64>>>,
+pub struct AcResult {
+    pub signals: Vec<String>,
+    pub freq: Vec<f64>,
+    pub data: Vec<Vec<Complex<f64>>>,
+    pub map: HashMap<String, Vec<Complex<f64>>>,
 }
-
 impl AcResult {
     fn new() -> Self {
         Self::default()
@@ -699,10 +803,24 @@ impl AcResult {
         self.data.push(vals.clone());
         // FIXME: filter out un-saved and internal variables
     }
+    /// Simulation complete, re-org data into hash-map of signals
+    fn end(&mut self) {
+        // self.map.insert("freq".to_string(), self.freq.clone()); // FIXME: will require multi datatypes per result
+        for i in 0..self.signals.len() {
+            let mut vals: Vec<Complex<f64>> = vec![];
+            for v in 0..self.freq.len() {
+                vals.push(self.data[v][i]);
+            }
+            self.map.insert(self.signals[i].clone(), vals);
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.freq.len()
+    }
 }
 
 /// AC Analysis
-pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
+pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     /// FIXME: result saving is in flux, and essentially on three tracks:
     /// * The in-memory format used by unit-tests returns vectors of complex numbers
     /// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
@@ -767,24 +885,23 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<Vec<Vec<Complex<f64>>>> {
     let s = serde_json::to_string(&results).unwrap();
     rfj.write_all(s.as_bytes()).unwrap();
 
-    // And return the flattened results
-    return Ok(soln);
+    // And return our results
+    results.end();
+    return Ok(results);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuit::{n, s, Ckt, Comp};
+    use crate::circuit::*;
+    use crate::comps::mos::MosPorts;
     use crate::comps::MosType;
     use crate::spresult::TestResult;
-    use Comp::{Mos0, C, R};
     use NodeRef::{Gnd, Num};
 
     #[test]
     fn test_ac1() -> TestResult {
-        let ckt = Ckt {
-            comps: vec![R(1.0, Num(0), Gnd)],
-        };
+        let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -794,33 +911,39 @@ mod tests {
     fn test_ac2() -> TestResult {
         use crate::circuit::Vs;
         use Comp::{C, R, V};
-        let ckt = Ckt {
-            comps: vec![
-                R(1e-3, Num(0), Num(1)),
-                C(1e-9, Num(1), Gnd),
-                V(Vs {
-                    name: s("vi"),
-                    vdc: 1.0,
-                    acm: 1.0,
-                    p: Num(0),
-                    n: Gnd,
-                }),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            R(1e-3, Num(0), Num(1)),
+            C(1e-9, Num(1), Gnd),
+            V(Vs {
+                name: s("vi"),
+                vdc: 1.0,
+                acm: 1.0,
+                p: Num(0),
+                n: Gnd,
+            }),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
         Ok(())
     }
 
     #[test]
+    #[ignore] // FIXME: aint no Mos0 AC! 
     fn test_ac3() -> TestResult {
-        let ckt = Ckt {
-            comps: vec![
-                R(1e-3, Num(0), Num(1)),
-                C(1e-9, Num(1), Gnd),
-                Comp::vdc(1.0, Num(0), Gnd),
-                Mos0(MosType::NMOS, Num(1), Num(0), Gnd, Gnd),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            Comp::R(1e-3, Num(0), Num(1)),
+            Comp::C(1e-9, Num(1), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
+            Comp::Mos0(Mos0i {
+                name: s("m"),
+                mos_type: MosType::NMOS,
+                ports: MosPorts {
+                    g: Num(1),
+                    d: Num(0),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -829,32 +952,30 @@ mod tests {
     // NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
-        use crate::circuit::Vs;
         use crate::comps::{Mos1InstanceParams, Mos1Model};
-        use Comp::{Mos1, C, R, V};
 
-        let ckt = Ckt {
-            comps: vec![
-                R(1e-5, n("vdd"), n("d")),
-                C(1e-9, n("d"), Gnd),
-                Mos1(
-                    Mos1Model::default(),
-                    Mos1InstanceParams::default(),
-                    n("g"),
-                    n("d"),
-                    Gnd,
-                    Gnd,
-                ),
-                Comp::vdc(1.0, n("vdd"), Gnd),
-                V(Vs {
-                    name: s("vg"),
-                    vdc: 0.7,
-                    acm: 1.0,
-                    p: n("g"),
-                    n: Gnd,
-                }),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            Comp::C(1e-9, n("d"), Gnd),
+            Comp::Mos1(Mos1i {
+                name: s("m"),
+                model: Mos1Model::default(),
+                params: Mos1InstanceParams::default(),
+                ports: MosPorts {
+                    g: n("g"),
+                    d: n("d"),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
+            Comp::V(Vs {
+                name: s("vg"),
+                vdc: 0.7,
+                acm: 1.0,
+                p: n("g"),
+                n: Gnd,
+            }),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())
@@ -865,27 +986,27 @@ mod tests {
     fn test_ac5() -> TestResult {
         use crate::circuit::Vs;
         use crate::comps::{Mos1InstanceParams, Mos1Model};
-        use Comp::{Mos1, V};
 
-        let ckt = Ckt {
-            comps: vec![
-                V(Vs {
-                    name: s("vd"),
-                    vdc: 0.5,
-                    acm: 1.0,
-                    p: Num(0),
-                    n: Gnd,
-                }),
-                Mos1(
-                    Mos1Model::default(),
-                    Mos1InstanceParams::default(),
-                    Num(0),
-                    Num(0),
-                    Gnd,
-                    Gnd,
-                ),
-            ],
-        };
+        let ckt = Ckt::from_comps(vec![
+            Comp::V(Vs {
+                name: s("vd"),
+                vdc: 0.5,
+                acm: 1.0,
+                p: Num(0),
+                n: Gnd,
+            }),
+            Comp::Mos1(Mos1i {
+                name: s("m"),
+                model: Mos1Model::default(),
+                params: Mos1InstanceParams::default(),
+                ports: MosPorts {
+                    g: Num(0),
+                    d: Num(0),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+        ]);
         let soln = ac(ckt, AcOptions::default())?;
 
         Ok(())

@@ -86,7 +86,7 @@ message Instance {
     oneof comp {
         Resistor r = 1;
         Capacitor c = 2;
-        Mos mos = 3;
+        Mos m = 3;
         Isrc i = 4;
         Vsrc v = 5;
         Diode d = 6;

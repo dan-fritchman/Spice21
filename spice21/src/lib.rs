@@ -14,6 +14,10 @@
 /// to the rest of Spice21.
 /// Note: this must be defined *before* any uses of it.
 ///
+
+
+use serde::{Serialize, Deserialize};
+
 #[macro_use]
 pub(crate) mod macros {
     /// GetAttr-enabled struct builder.
@@ -30,7 +34,6 @@ pub(crate) mod macros {
             $( #[doc=$desc]
                 pub $attr_name : $attr_type ),*
         }
-
         impl $src_name {
             fn getattr<S: Into<String>>(&self, key: S) -> Option<f64> {
                 let k: String = key.into();
@@ -40,7 +43,6 @@ pub(crate) mod macros {
                 }
             }
         }
-
         impl Default for $src_name {
             fn default() -> Self {
                 Self {
@@ -49,7 +51,43 @@ pub(crate) mod macros {
             }
         }
     }
-}
+    }
+
+    #[macro_export]
+    macro_rules! paramstruct {
+    ( $src_name:ident, $struct_desc:literal, [
+        $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
+    ]) => {
+        #[doc=$struct_desc]
+        #[derive(Clone, Copy, Default)]
+        pub struct $src_name {
+            $( #[doc=$desc]
+                pub $attr_name : $attr_type ),*
+        }
+    }
+    }
+
+    #[macro_export]
+    macro_rules! specgen {
+    ( $specs_name:ident, $vals_name: ident, $struct_desc:literal, [
+        $( ($attr_name:ident, $attr_type:ty, $desc:literal) ),* $(,)?
+    ], [
+        $( ($val_name:ident, $val_type:ty) ),* $(,)?
+    ]$(,)? ) => {
+        #[doc=$struct_desc]
+        #[derive(Clone, Copy, Default)]
+        pub(crate) struct $specs_name {
+            $( #[doc=$desc]
+                pub(crate) $attr_name : Option<$attr_type> ),*
+        }
+        #[doc=$struct_desc]
+        #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
+        pub(crate) struct $vals_name {
+            $( pub(crate) $attr_name : $attr_type, )*
+            $( pub(crate) $val_name : $val_type, )*
+        }
+    }
+    }
 
     #[cfg(test)]
     mod tests {
@@ -96,18 +134,18 @@ pub mod analysis;
 pub mod circuit;
 pub mod comps;
 pub mod proto;
+pub mod spresult;
 
 // Re-exports
 pub use analysis::*;
 pub use proto::*;
+pub use spresult::*;
 
 // Crate-wide public
 pub(crate) use spnum::*;
-pub(crate) use spresult::*;
 
 // Private modules
 mod assert;
 mod sparse21;
 mod spnum;
-mod spresult;
 mod tests;

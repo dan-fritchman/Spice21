@@ -5,8 +5,9 @@ use std::usize::MAX;
 
 use num::{Num, One, Zero};
 
-use super::assert::assert;
-use super::SpNum;
+use crate::assert::assert;
+use crate::{SpNum, SpResult, sperror};
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eindex(usize);
@@ -203,8 +204,6 @@ impl AxisData {
     }
 }
 
-type SpResult<T> = Result<T, &'static str>;
-
 struct MarkowitzConfig {
     rel_threshold: f64,
     abs_threshold: f64,
@@ -284,7 +283,7 @@ impl<T: SpNum> Matrix<T> {
     /// Multiply by Vec
     pub fn vecmul(&self, x: &Vec<T>) -> SpResult<Vec<T>> {
         if x.len() != self.num_cols() {
-            return Err("Invalid Dimensions");
+            return Err(sperror("Invalid Dimensions"));
         }
         let mut y: Vec<T> = vec![T::zero(); self.num_rows()];
         for row in 0..self.num_rows() {
@@ -655,12 +654,12 @@ impl<T: SpNum> Matrix<T> {
         assert(self.diag.len()).gt(0)?;
         for k in 0..self.axes[ROWS].hdrs.len() {
             if self.hdr(ROWS, k).is_none() {
-                return Err("Singular Matrix");
+                return Err(sperror("Singular Matrix"));
             }
         }
         for k in 0..self.axes[COLS].hdrs.len() {
             if self.hdr(COLS, k).is_none() {
-                return Err("Singular Matrix");
+                return Err(sperror("Singular Matrix"));
             }
         }
         self.state = MatrixState::FACTORING;
@@ -669,7 +668,7 @@ impl<T: SpNum> Matrix<T> {
 
         for n in 0..self.diag.len() - 1 {
             let pivot = match self.search_for_pivot(n) {
-                None => return Err("Pivot Search Fail"),
+                None => return Err(sperror("Pivot Search Fail")),
                 Some(p) => p,
             };
             self.swap(ROWS, self[pivot].row, n);
@@ -873,7 +872,7 @@ impl<T: SpNum> Matrix<T> {
     fn row_col_elim(&mut self, pivot: Eindex, n: usize) -> SpResult<()> {
         let de = match self.diag[n] {
             Some(de) => de,
-            None => return Err("Singular Matrix"),
+            None => return Err(sperror("Singular Matrix")),
         };
         assert(de).eq(pivot)?;
         let pivot_val = self[pivot].val;
@@ -950,7 +949,7 @@ impl<T: SpNum> Matrix<T> {
                 c[k] = rhs[row_mapping.i2e[k]];
             }
         } else {
-            return Err("Missing Row Mapping");
+            return Err(sperror("Missing Row Mapping"));
         }
 
         // Forward substitution: Lc=b
@@ -964,7 +963,7 @@ impl<T: SpNum> Matrix<T> {
 
             let di = match self.diag[k] {
                 Some(di) => di,
-                None => return Err("Singular Matrix"),
+                None => return Err(sperror("Singular Matrix")),
             };
             let mut e = self[di].next_in_col;
             while let Some(ei) = e {
@@ -978,7 +977,7 @@ impl<T: SpNum> Matrix<T> {
             // Walk each row, update c
             let di = match self.diag[k] {
                 Some(di) => di,
-                None => return Err("Singular Matrix"),
+                None => return Err(sperror("Singular Matrix")),
             };
             let mut ep = self[di].next_in_row;
             while let Some(ei) = ep {
@@ -995,7 +994,7 @@ impl<T: SpNum> Matrix<T> {
                 soln[k] = c[col_mapping.e2i[k]];
             }
         } else {
-            return Err("Missing Column Mapping");
+            return Err(sperror("Missing Column Mapping"));
         }
         return Ok(soln);
     }
@@ -1148,7 +1147,7 @@ impl<T: SpNum> Matrix<T> {
                 if let Some(d) = self.diag[r] {
                     assert(self[d].val).eq(e)?;
                 } else {
-                    return Err("FAIL!");
+                    return Err(sperror("FAIL!"));
                 }
             // FIXME: would prefer something like the previous "same element ID" testing
             // assert_eq!(e, m[self.diag[r]].val);

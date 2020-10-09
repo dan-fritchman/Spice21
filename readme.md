@@ -3,6 +3,12 @@
 
 SPICE for the 21st century 
 
+---
+
+![test](https://github.com/HW21/Spice21/workflows/test/badge.svg)
+
+--- 
+
 ## Circuit Simulation Circa 2020 
 
 Spice21 is a circuit simulation library akin to the original Berkeley 
@@ -66,7 +72,7 @@ Add [spice21](https://crates.io/crates/spice21) to the Cargo.toml of any Rust pr
 
 ```toml
 [dependencies]
-spice21 = "0.1.3"
+spice21 = "0.1.4"
 ```
 
 ### [Python](https://pypi.org/project/spice21py/)

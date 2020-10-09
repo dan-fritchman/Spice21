@@ -1,7 +1,8 @@
-///
-/// Assertion-Based Debugging Utilities
-///
-use super::spresult::TestResult;
+//!
+//! Assertion-Based Debugging Utilities
+//!
+use super::spresult::{sperror, TestResult};
+use std::fmt::Debug;
 
 pub struct Assert<T> {
     val: T,
@@ -12,54 +13,53 @@ pub fn assert<T>(val: T) -> Assert<T> {
 }
 
 impl<T> Assert<T> {
-    fn raise(&self) -> TestResult {
-        // Breakpoint here
-        return Err("Assertion Failed");
+    fn raise<S: Into<String>>(&self, s: S) -> TestResult {
+        return Err(sperror(s.into())); // Breakpoint here catches all failures
     }
 }
 
-impl<T: PartialEq> Assert<T> {
+impl<T: PartialEq + Debug> Assert<T> {
     pub fn eq(&self, other: T) -> TestResult {
         if self.val != other {
-            self.raise()
+            self.raise(format!("Assert Eq Failed: {:?} != {:?}", self.val, other))
         } else {
             Ok(())
         }
     }
     pub fn ne(&self, other: T) -> TestResult {
         if self.val == other {
-            self.raise()
+            self.raise(format!("Assert Neq Failed: {:?} == {:?}", self.val, other))
         } else {
             Ok(())
         }
     }
 }
 
-impl<T: PartialOrd> Assert<T> {
+impl<T: PartialOrd + Debug> Assert<T> {
     pub fn gt(&self, other: T) -> TestResult {
         if self.val <= other {
-            self.raise()
+            self.raise(format!("Assert Gt Failed: {:?} <= {:?}", self.val, other))
         } else {
             Ok(())
         }
     }
     pub fn lt(&self, other: T) -> TestResult {
         if self.val >= other {
-            self.raise()
+            self.raise(format!("Assert Lt Failed: {:?} >= {:?}", self.val, other))
         } else {
             Ok(())
         }
     }
     pub fn ge(&self, other: T) -> TestResult {
         if self.val < other {
-            self.raise()
+            self.raise(format!("Assert Geq Failed: {:?} < {:?}", self.val, other))
         } else {
             Ok(())
         }
     }
     pub fn le(&self, other: T) -> TestResult {
         if self.val > other {
-            self.raise()
+            self.raise(format!("Assert Leq Failed: {:?} > {:?}", self.val, other))
         } else {
             Ok(())
         }
@@ -68,13 +68,11 @@ impl<T: PartialOrd> Assert<T> {
 
 impl Assert<f64> {
     pub fn abs(self) -> Assert<f64> {
-        Assert {
-            val: self.val.abs(),
-        }
+        Assert { val: self.val.abs() }
     }
     pub fn isclose(&self, other: f64, tol: f64) -> TestResult {
         if (self.val - other).abs() > tol {
-            self.raise()
+            self.raise(format!("Assert IsClose Failed: abs({:?} - {:?}) > {:?}", self.val, other, tol))
         } else {
             Ok(())
         }
