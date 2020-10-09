@@ -35,9 +35,7 @@ jobs:
         run: maturin build 
       - name: pip-install-wheel
         working-directory: ./spice21py 
-        run: |
-          pip debug --verbose
-          pip install target/wheels/*cp37*.whl 
+        run: pip install target/wheels/*cp37*.whl 
       - name: test
         working-directory: ./spice21py 
         run: pytest 
