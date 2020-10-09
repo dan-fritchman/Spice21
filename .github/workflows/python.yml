@@ -38,7 +38,7 @@ jobs:
         run: pip install target/wheels/*cp37*.whl 
       - name: test
         working-directory: ./spice21py 
-        run: pytest 
+        run: pytest --pyargs spice21py
       
       # - uses: actions/upload-artifact@v1
       #   name: upload-wheel
