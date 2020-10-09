@@ -3,14 +3,15 @@
 //!
 //! Primary `Component` trait and basic implementations
 //!
+
 use enum_dispatch::enum_dispatch;
 use num::Complex;
-
+use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
 use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
 use super::sparse21::{Eindex, Matrix};
-use crate::{SpNum, SpResult, assert};
+use crate::{SpNum, SpResult};
 
 use diode::Diode0;
 pub mod diode;
@@ -36,23 +37,15 @@ pub mod consts {
     pub(crate) const EPSSI: f64 = 1.03594e-10;
 }
 
-/// FakeComp is a placeholder in the `ComponentSolver` enum, 
-/// largely to pipe-clean using references and lifetimes in its variants. 
+/// FakeComp is a placeholder in the `ComponentSolver` enum,
+/// largely to pipe-clean using references and lifetimes in its variants.
 pub(crate) struct FakeComp<'a> {
-    pub(crate) name: &'a str,
+    pub(crate) p: &'a PhantomData<()>,
 }
 
 impl<'a> Component for FakeComp<'a> {
-    fn commit(&mut self) {}
-    fn update(&mut self, _val: f64) {}
-    fn validate(&self) -> SpResult<()> {
-        assert::assert(self.name).eq("fake")
-    }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
-        Stamps::new()
-    }
     fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
-        Stamps::new()
+        panic!("FakeComp somehow got instantiated")
     }
     fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
 }
@@ -93,7 +86,7 @@ pub(crate) trait Component {
     }
 
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
-        Stamps::<Complex<f64>>::new()
+        panic!("AC Not Implemented For This Component!")
     }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64>;
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>);

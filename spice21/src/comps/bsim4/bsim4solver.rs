@@ -5061,9 +5061,9 @@ mod tests {
         ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
         ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
         let soln = dcop(ckt)?;
-        let vgd = soln.map.get("gd").ok_or(sperror(""))?.clone();
+        let vgd = soln.get("gd")?;
         assert(vgd).eq(1.0)?;
-        let id = soln.map.get("v1").ok_or(sperror(""))?.clone();
+        let id = soln.get("v1")?;
         assert(id).abs().isclose(150e-6, 1e-6)?;
 
         Ok(())
@@ -5095,7 +5095,10 @@ mod tests {
         ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
         ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
         let soln = dcop(ckt)?;
-        println!("{:?}", soln);
+        let vgd = soln.get("gd")?;
+        assert(vgd).eq(-1.0)?;
+        let id = soln.get("v1")?;
+        assert(id).abs().isclose(57e-6, 1e-6)?;
 
         Ok(())
     }
@@ -5116,25 +5119,34 @@ mod tests {
                 ..Default::default()
             },
         );
-        let inst = Bsim4InstSpecs::default();
+
         ckt.add(Bsim4i {
             name: "p".to_string(),
-            ports: [n("d"), n("inp"), n("vdd"), n("vdd")].into(),
+            ports: ("d", "inp", "vdd", "vdd").into(),
             model: "pmos".to_string(),
-            params: inst,
+            params: Bsim4InstSpecs::default(),
         });
         ckt.add(Bsim4i {
             name: "n".to_string(),
-            ports: [n("d"), n("inp"), Gnd, Gnd].into(),
+            ports: ("d", "inp", Gnd, Gnd).into(),
             model: "nmos".to_string(),
-            params: inst,
+            params: Bsim4InstSpecs::default(),
         });
-        let p = 1.0;
         ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
         ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
 
         let soln = dcop(ckt)?;
-        println!("{:?}", soln.map);
+        
+        let vd = soln.get("vdd")?;
+        assert(vd).eq(1.0)?;
+        let vd = soln.get("inp")?;
+        assert(vd).eq(0.0)?;
+        let vd = soln.get("d")?;
+        assert(vd).gt(0.95)?;
+        let id = soln.get("vinp")?;
+        assert(id).abs().lt(1e-6)?;
+        let id = soln.get("vvdd")?;
+        assert(id).abs().lt(1e-6)?;
 
         Ok(())
     }

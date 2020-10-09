@@ -3,9 +3,9 @@
 //!
 
 use num::Complex;
+use serde::{Deserialize, Serialize};
 use std::convert::From;
 use std::ops::{Index, IndexMut};
-use serde::{Serialize, Deserialize};
 
 use super::consts;
 use super::{make_matrix_elem, Component};
@@ -29,7 +29,7 @@ pub struct MosPorts<T> {
     pub s: T,
     pub b: T,
 }
-
+/// Index MosPorts by the `MosTerm` enum 
 impl<T> Index<MosTerm> for MosPorts<T> {
     type Output = T;
     fn index(&self, t: MosTerm) -> &T {
@@ -41,14 +41,26 @@ impl<T> Index<MosTerm> for MosPorts<T> {
         }
     }
 }
-
-impl<T: Clone> From<[T; 4]> for MosPorts<T> {
-    fn from(n: [T; 4]) -> MosPorts<T> {
+/// Very fun conversion from four-element arrays into MosPorts of `From`-able types. 
+impl<S, T: Clone + Into<S>> From<[T; 4]> for MosPorts<S> {
+    fn from(n: [T; 4]) -> MosPorts<S> {
         return MosPorts {
-            d: n[0].clone(),
-            g: n[1].clone(),
-            s: n[2].clone(),
-            b: n[3].clone(),
+            d: n[0].clone().into(),
+            g: n[1].clone().into(),
+            s: n[2].clone().into(),
+            b: n[3].clone().into(),
+        };
+    }
+}
+/// Even more fun conversion from four-element tuples into MosPorts of `From`-able types. 
+/// Note in this case, each of the four elements can be of distinct types. 
+impl<S, T: Clone + Into<S>, U: Clone + Into<S>, V: Clone + Into<S>, W: Clone + Into<S>> From<(T, U, V, W)> for MosPorts<S> {
+    fn from(n: (T, U, V, W)) -> MosPorts<S> {
+        return MosPorts {
+            d: n.0.clone().into(),
+            g: n.1.clone().into(),
+            s: n.2.clone().into(),
+            b: n.3.clone().into(),
         };
     }
 }
@@ -68,7 +80,6 @@ impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
         &mut self.0[ts.0 as usize][ts.1 as usize]
     }
 }
-
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum MosType {
@@ -352,7 +363,6 @@ impl Mos1 {
 
 impl Component for Mos1 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        use MosTerm::{B, D, G, S};
         for t1 in [G, D, S, B].iter() {
             for t2 in [G, D, S, B].iter() {
                 self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
@@ -364,8 +374,6 @@ impl Component for Mos1 {
         self.op = self.guess.clone();
     }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        use MosTerm::{B, D, G, S};
-
         let vg = guess.get(self.ports[G]);
         let vd = guess.get(self.ports[D]);
         let vs = guess.get(self.ports[S]);
@@ -586,8 +594,6 @@ impl Component for Mos1 {
         };
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
-        use MosTerm::{B, D, G, S};
-
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(opts, state) => state.omega,
@@ -693,7 +699,6 @@ impl Mos0 {
 
 impl Component for Mos0 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        use MosTerm::{D, G, S};
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);

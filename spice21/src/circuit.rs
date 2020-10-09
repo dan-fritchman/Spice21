@@ -26,7 +26,10 @@ pub enum NodeRef {
     Num(usize),
     Name(String),
 }
-
+/// Conversion to create Nodes from string-refs
+impl From<&str> for NodeRef {
+    fn from(f: &str) -> Self { n(f) }
+}
 /// Create a Node from anything convertible into String
 /// Empty string is a cardinal value for creating Gnd
 pub(crate) fn n<S: Into<String>>(name: S) -> NodeRef {
