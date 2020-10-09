@@ -76,3 +76,25 @@ def test_json():
     assert isinstance(c2, Circuit)
     assert c == c2
 
+
+def test_bsim4_model():
+    from .. import Bsim4Model, MosType
+
+    b = Bsim4Model()
+    assert b.mos_type == MosType.NMOS
+    b = Bsim4Model(mos_type=MosType.PMOS)
+    assert b.mos_type == MosType.PMOS
+
+
+def test_bsim4_inst_params():
+    from .. import Bsim4InstParams
+
+    p = Bsim4InstParams()
+    assert isinstance(p, Bsim4InstParams)
+    p.l.value = 1e-6
+    p.w.value = 1e-6
+    p.nf.value = 2
+    assert p.l.value == 1e-6
+    assert p.w.value == 1e-6
+    assert p.nf.value == 2
+

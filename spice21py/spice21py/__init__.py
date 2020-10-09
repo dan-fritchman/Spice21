@@ -2,9 +2,11 @@
 Spice21 Python 
 """
 from typing import List, Union, Any, Dict 
-# Import and rename the protobuf-generated content
+
+# Import protobuf-generated content
 from . import protos
-from .protos import Capacitor, Resistor, Diode, Mos, Isrc, Vsrc
+from .protos import Capacitor, Resistor, Diode, Mos, Isrc, Vsrc, Bsim4Model, Bsim4InstParams, MosType 
+
 # Import from the core Rust interface
 from .spice21py import health
 
@@ -32,26 +34,27 @@ def ac(ckt: protos.Circuit) -> Dict[str, List[complex]]:
     return {name: [complex(*v) for v in vals] for name, vals in res.items()}
 
 
-def instance(comp) -> protos.Instance:
+def instance(comp: Any) -> protos.Instance:
     """ Create an Instance from Component `comp`.
     Raises a TypeError if `comp` is not a Component or Instance. """
+
     from .protos import Instance
     if isinstance(comp, Instance):
         return comp
-    elif isinstance(comp, Diode):
+    if isinstance(comp, Diode):
         return Instance(d=comp)
-    elif isinstance(comp, Capacitor):
+    if isinstance(comp, Capacitor):
         return Instance(c=comp)
-    elif isinstance(comp, Resistor):
+    if isinstance(comp, Resistor):
         return Instance(r=comp)
-    elif isinstance(comp, Mos):
+    if isinstance(comp, Mos):
         return Instance(mos=comp)
-    elif isinstance(comp, Isrc):
+    if isinstance(comp, Isrc):
         return Instance(i=comp)
-    elif isinstance(comp, Vsrc):
+    if isinstance(comp, Vsrc):
         return Instance(v=comp)
-    else:
-        raise TypeError(f"Invalid Circuit Component {type(comp)}")
+
+    raise TypeError(f"Invalid Circuit Component {type(comp)}")
 
 
 def circuit(*args) -> protos.Circuit:

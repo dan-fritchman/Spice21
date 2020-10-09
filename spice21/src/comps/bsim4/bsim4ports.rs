@@ -1,4 +1,4 @@
-use super::bsim4defs::*;
+use super::{Bsim4InstVals, Bsim4ModelVals};
 use super::Bsim4InternalParams;
 use crate::analysis::{Solver, VarIndex, VarKind};
 use crate::comps::mos::{MosTerm, MosPorts};
@@ -37,7 +37,7 @@ impl Bsim4Ports<Option<VarIndex>> {
         let bNode = terms[B];
 
         // Terminal resistances
-        // FIXME: can potentially filter our the noise-mode depenedence only when doing noise analysis
+        // FIXME: can potentially filter our the noise-mode dependence only when doing noise analysis
         let dNodePrime = if model.rdsmod != 0 || (model.tnoimod == 1) {
             let mut name = iname.clone();
             name.push_str("_drain");
