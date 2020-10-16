@@ -5,7 +5,8 @@ from typing import List, Union, Any, Dict
 
 # Import protobuf-generated content
 from . import protos
-from .protos import Capacitor, Resistor, Diode, Mos, Isrc, Vsrc, Bsim4Model, Bsim4InstParams, MosType 
+from .protos import Capacitor, Resistor, Diode, Mos, Isrc, Vsrc, MosType 
+from .protos import Bsim4, Bsim4Model, Bsim4InstParams
 
 # Import from the core Rust interface
 from .spice21py import health
@@ -34,26 +35,38 @@ def ac(ckt: protos.Circuit) -> Dict[str, List[complex]]:
     return {name: [complex(*v) for v in vals] for name, vals in res.items()}
 
 
-def instance(comp: Any) -> protos.Instance:
-    """ Create an Instance from Component `comp`.
-    Raises a TypeError if `comp` is not a Component or Instance. """
+def add(ckt: protos.Circuit, comp: Any) -> None:
+    """ Organize and Add Circuit Items. 
+    Visit by type and append to component and definition-lists, 
+    inserting our enum-layers along the way. 
+    Raises a TypeError for anything that can't get into a `protos.Circuit`. """
 
+    # Instances 
     from .protos import Instance
     if isinstance(comp, Instance):
-        return comp
+        return ckt.comps.append(comp)
     if isinstance(comp, Diode):
-        return Instance(d=comp)
+        return ckt.comps.append( Instance(d=comp))
     if isinstance(comp, Capacitor):
-        return Instance(c=comp)
+        return ckt.comps.append( Instance(c=comp))
     if isinstance(comp, Resistor):
-        return Instance(r=comp)
+        return ckt.comps.append( Instance(r=comp))
     if isinstance(comp, Mos):
-        return Instance(mos=comp)
+        return ckt.comps.append( Instance(m=comp))
     if isinstance(comp, Isrc):
-        return Instance(i=comp)
+        return ckt.comps.append( Instance(i=comp))
     if isinstance(comp, Vsrc):
-        return Instance(v=comp)
-
+        return ckt.comps.append( Instance(v=comp))
+    if isinstance(comp, Bsim4):
+        return ckt.comps.append( Instance(bsim4=comp))
+    
+    # Definitions 
+    if isinstance(comp, protos.Bsim4Model):
+        return ckt.defs.append(protos.Def(bsim4model=comp))
+    if isinstance(comp, protos.Bsim4InstParams):
+        return ckt.defs.append(protos.Def(bsim4inst=comp))
+    
+    # Anything else got here by mistake
     raise TypeError(f"Invalid Circuit Component {type(comp)}")
 
 
@@ -61,13 +74,12 @@ def circuit(*args) -> protos.Circuit:
     """ Circuit generation from component list *args """
     from .protos import Circuit, Instance
 
+    _args = args
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
-        comps = args[0]
-    else:
-        comps = args
+        _args = args[0]
 
     c = Circuit()
-    for comp in comps:
-        c.comps.append(instance(comp))
+    for arg in _args:
+        add(c, arg)
 
     return c

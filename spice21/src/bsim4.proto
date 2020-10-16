@@ -1,7 +1,25 @@
 syntax = "proto3";
-package spice21.proto;
+package spice21;
 import "google/protobuf/wrappers.proto";
-enum MosType { NMOS = 0; PMOS = 1; }
+import "mos.proto";
+
+
+// message Bsim4 {
+//         string name = 1; // Intance Name
+//         MosPorts ports = 2; // Port Connections 
+//         Bsim4Params params = 3; // Parameters 
+// }
+
+// message Bsim4Params { // "Full" Instance Parameters, including Model and Inst 
+//         oneof model { // Model Name or Parameters
+//                 string mname = 3;
+//                 Bsim4Model modelparams = 4;
+//         }
+//         oneof params { // Instance Name or Parameters
+//                 string pname = 5;
+//                 Bsim4InstParams instparams = 6;
+//         }
+// }
 
 message Bsim4InstParams {
         google.protobuf.DoubleValue l = 1; // Length
@@ -38,6 +56,8 @@ message Bsim4InstParams {
         google.protobuf.UInt64Value rbodymod = 29; // Distributed body R model selector
         google.protobuf.UInt64Value rgatemod = 30; // Gate resistance model selector
         google.protobuf.UInt64Value geomod = 31; // Geometry dependent parasitics model selector
+
+        string name = 40; // Param-set name, for reference by instances 
 }    
 
 message Bsim4Model { 
@@ -917,5 +937,7 @@ message Bsim4Model {
         google.protobuf.DoubleValue ef = 873; // Flicker noise frequency exponent
         google.protobuf.DoubleValue af = 874; // Flicker noise exponent
         google.protobuf.DoubleValue kf = 875; // Flicker noise coefficient
+
+        string name = 900; // Model name
 }
 

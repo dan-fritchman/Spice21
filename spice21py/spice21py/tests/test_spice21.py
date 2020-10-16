@@ -98,3 +98,20 @@ def test_bsim4_inst_params():
     assert p.w.value == 1e-6
     assert p.nf.value == 2
 
+def test_bsim4_ckt():
+    from .. import Bsim4Model, Bsim4InstParams, Mos, circuit
+    b = Mos(name='inst1')
+    b.ports.g = 'vdd'
+    b.ports.d = 'vdd'
+    b.params.bsim4.mname = 'default'
+    b.params.bsim4.pname = 'inst'
+    c = circuit(
+        Bsim4Model(name='default'),
+        Bsim4InstParams(name='inst'),
+        b,
+        Vsrc(p="vdd", dc=1.0)
+    )
+
+    from .. import dcop
+    res = dcop(c)
+    print(res)

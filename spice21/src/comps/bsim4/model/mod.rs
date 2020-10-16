@@ -8,8 +8,9 @@ use crate::comps::mos::MosType;
 impl Bsim4ModelSpecs {
     /// Create a new Bsim4Model of MosType `t`.
     /// All other parameters take on their default values
-    pub(crate) fn new(t: MosType) -> Self {
+    pub(crate) fn new<S: Into<String>>(name: S, t: MosType) -> Self {
         Self {
+            name: name.into(),
             mos_type: t as i32, // Convert into protobuf's enum repr, which is just i32
             ..Default::default()
         }

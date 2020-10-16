@@ -374,8 +374,10 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 use crate::comps::mos::MosPorts;
 
                 let circuit::Bsim4i { name, ports, model, params } = b4i;
-
-                let (model, inst) = self.models.bsim4.inst(&model, params).unwrap();
+                
+                // let iname = params.name.clone();// FIXME: elsewhere 
+                // self.models.bsim4.add_inst(params); // FIXME: elsewhere 
+                let (model, inst) = self.models.bsim4.get(&model, &params).unwrap();
 
                 let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),

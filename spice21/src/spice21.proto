@@ -1,11 +1,8 @@
 syntax = "proto3";
+package spice21;
+import "mos.proto";
+import "bsim4.proto";
 
-package spice21.proto;
-import "google/protobuf/wrappers.proto";
-
-message Node {
-    string name = 1;
-}
 
 message Resistor {
     string name = 1;
@@ -21,13 +18,7 @@ message Capacitor {
     double c = 4;
 }
 
-message Mos {
-    string name = 1;
-    string g = 2;
-    string d = 3;
-    string s = 4;
-    string b = 5;
-}
+
 
 message Isrc {
     string name = 1;
@@ -88,9 +79,19 @@ message Circuit {
     repeated Def defs = 3;
 }
 
+message Subckt {
+    // Not yet available 
+}
+message Lib {
+    // Not yet available 
+}
 message Def {
     oneof defines {
-        DiodeModel diodemodel = 1;
+        Subckt subckt = 1;
+        Lib lib = 2;
+        DiodeModel diodemodel = 3;
+        Bsim4Model bsim4model = 4;
+        Bsim4InstParams bsim4inst = 5;
     }
 }
 

@@ -11,13 +11,14 @@
 use super::comps::{DiodeInstParams, DiodeModel};
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
 use super::proto::instance::Comp as CompProto;
+use super::proto::def::Defines as DefProto;
 use super::proto::Circuit as CircuitProto;
 use crate::SpResult;
 
 use crate::comps::bsim4::Bsim4InstSpecs;
 use crate::comps::mos::MosPorts;
 
-use crate::comps::bsim4::Bsim4ModelCache;
+use crate::comps::bsim4::Bsim4Cache;
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -26,9 +27,13 @@ pub enum NodeRef {
     Num(usize),
     Name(String),
 }
+use NodeRef::Gnd;
+
 /// Conversion to create Nodes from string-refs
 impl From<&str> for NodeRef {
-    fn from(f: &str) -> Self { n(f) }
+    fn from(f: &str) -> Self {
+        n(f)
+    }
 }
 /// Create a Node from anything convertible into String
 /// Empty string is a cardinal value for creating Gnd
@@ -92,9 +97,8 @@ pub struct Bsim4i {
     pub(crate) name: String,
     pub(crate) ports: MosPorts<NodeRef>,
     pub(crate) model: String,
-    pub(crate) params: Bsim4InstSpecs,
+    pub(crate) params: String,
 }
-
 pub struct Mos0i {
     pub(crate) name: String,
     pub(crate) mos_type: MosType,
@@ -132,7 +136,7 @@ impl Comp {
         })
     }
     // Convert from protobuf-generated classes
-    pub fn from(c: CompProto) -> Self {
+    pub fn from(c: CompProto, models: &ModelCache) -> Self {
         match c {
             CompProto::I(i) => Comp::I(i.dc, n(i.p), n(i.n)),
             CompProto::R(r) => Comp::R(r.g, n(r.p), n(r.n)),
@@ -151,7 +155,33 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::M(m) => Comp::Mos1(Mos1i { name: m.name, model:Mos1Model::default(), params:Mos1InstanceParams::default(), ports: MosPorts { g: n(m.g), d: n(m.d), s: n(m.s), b: n(m.b) } }),
+            CompProto::M(m) => {
+                let ports: MosPorts<NodeRef> = match m.ports {
+                    Some(p) => MosPorts {
+                        g: n(p.g),
+                        d: n(p.d),
+                        s: n(p.s),
+                        b: n(p.b),
+                    },
+                    None => MosPorts{ g:Gnd, d:Gnd, s:Gnd, b:Gnd}, // FIXME: whether to default or not 
+                };
+                // Mos instances break out to their solver-types here
+                if let Some(model) = models.bsim4.models.get(&m.model) {
+                    Comp::Bsim4(Bsim4i {
+                            name: m.name,
+                            model: m.model.clone(),
+                            params: m.params.clone(),
+                            ports,
+                        })
+                } else {
+                    Comp::Mos1(Mos1i {
+                        name: m.name,
+                        model: Mos1Model::default(),
+                        params: Mos1InstanceParams::default(),
+                        ports,
+                    })
+                }
+            }
         }
     }
 }
@@ -163,12 +193,12 @@ impl From<Ds> for Comp {
 }
 
 pub struct ModelCache {
-    pub(crate) bsim4: Bsim4ModelCache,
+    pub(crate) bsim4: Bsim4Cache,
 }
 impl ModelCache {
     pub(crate) fn new() -> Self {
         Self {
-            bsim4: Bsim4ModelCache::new(),
+            bsim4: Bsim4Cache::new(),
         }
     }
 }
@@ -195,18 +225,31 @@ impl Ckt {
     }
     /// Create from a protobuf-generated circuit
     pub fn from(c: CircuitProto) -> Self {
-        let CircuitProto { name, comps, .. } = c;
+        let CircuitProto { name, comps, defs, .. } = c;
+        let mut models = ModelCache::new();
+
+        for def in defs.into_iter() {
+            match def.defines.unwrap() {
+                DefProto::Subckt(x) => panic!("!!!"),
+                DefProto::Lib(x) => panic!("!!!"),
+                DefProto::Diodemodel(x) => panic!("!!!"),
+                DefProto::Bsim4inst(x) => {
+                    models.bsim4.add_inst(x);
+                },
+                DefProto::Bsim4model(x) => {
+                    models.bsim4.add_model(x);
+                },
+                _ => panic!("!!!"),
+            }
+        }
 
         let mut cs: Vec<Comp> = vec![];
         for opt in comps.into_iter() {
             if let Some(c) = opt.comp {
-                cs.push(Comp::from(c));
+                cs.push(Comp::from(c, &models));
             }
         }
-        Self {
-            comps: cs,
-            models: ModelCache::new(),
-        }
+        Self { comps: cs, models }
     }
     /// Decode from bytes
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {

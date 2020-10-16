@@ -5,7 +5,7 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 
 // Include the prost-expanded proto-file content
-include!(concat!(env!("OUT_DIR"), "/spice21.proto.rs"));
+include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
 
 #[cfg(test)]
 mod tests {
@@ -33,10 +33,14 @@ mod tests {
                 Instance {
                     comp: Some(M(Mos {
                         name: s("mq"),
-                        g: s("a"),
-                        d: s("b"),
-                        s: s("b"),
-                        b: s("b"),
+                        ports: Some(MosPorts {
+                            g: s("a"),
+                            d: s("b"),
+                            s: s("c"),
+                            b: s("d"),
+                        }),
+                        model: s("nomodel"),
+                        params: s("noparams"),
                     })),
                 },
             ],

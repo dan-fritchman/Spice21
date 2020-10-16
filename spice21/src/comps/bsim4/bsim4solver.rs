@@ -4997,18 +4997,22 @@ impl Bsim4 {
 }
 
 mod tests {
-    use super::cache::Bsim4ModelCache;
+    use super::cache::Bsim4Cache;
     use super::model::Bsim4ModelSpecs;
     use super::*;
     use crate::assert::assert;
     use crate::{assert, sperror, TestResult};
 
+    /// "Direct" creation of the default Bsim4Solver,
+    /// without the simulation runtime or solver
+    /// Check that the operating-point function returns something sane
     #[test]
     fn test_bsim4_load() -> TestResult {
-        let mut models = Bsim4ModelCache::new();
-        models.add("default".to_string(), Bsim4ModelSpecs::default());
-        let inst = Bsim4InstSpecs::default();
-        let (model, inst) = models.inst(&"default".to_string(), inst).ok_or(sperror("Model Not Found"))?;
+        // Create & retrieve model & instance params, the normal way
+        let mut cache = Bsim4Cache::new();
+        cache.add_model(Bsim4ModelSpecs::new("default", MosType::NMOS));
+        cache.add_inst(Bsim4InstSpecs::default());
+        let (model, inst) = cache.get(&"default".to_string(), &"".to_string()).ok_or(sperror("Model Not Found"))?;
 
         let ports = Bsim4Ports::<Option<VarIndex>>::default();
         let mut solver = Bsim4::new(ports, model, inst);
@@ -5051,13 +5055,14 @@ mod tests {
             b: NodeRef::Gnd,
         };
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("default".to_string(), Bsim4ModelSpecs::default());
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("default", MosType::NMOS));
+        ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {
             name: "bsim4".to_string(),
             ports,
             model: "default".to_string(),
-            params: inst,
+            params: "".to_string(),
         });
         let p = 1.0;
         ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
@@ -5079,13 +5084,14 @@ mod tests {
         use NodeRef::Gnd;
 
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("pmos", MosType::PMOS));
+        ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {
             name: "bsim4".to_string(),
             ports: [n("gd"), n("gd"), Gnd, Gnd].into(),
             model: "pmos".to_string(),
-            params: Bsim4InstSpecs::default(),
+            params: "".into(),
         });
         let p = -1.0;
         ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
@@ -5107,20 +5113,21 @@ mod tests {
         use NodeRef::Gnd;
 
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
-        ckt.models.bsim4.add("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("nmos", MosType::NMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("pmos", MosType::PMOS));
+        ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {
             name: "p".to_string(),
             ports: ("d", "inp", "vdd", "vdd").into(),
             model: "pmos".to_string(),
-            params: Bsim4InstSpecs::default(),
+            params: "".into(),
         });
         ckt.add(Bsim4i {
             name: "n".to_string(),
             ports: ("d", "inp", Gnd, Gnd).into(),
             model: "nmos".to_string(),
-            params: Bsim4InstSpecs::default(),
+            params: "".into(),
         });
         ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
         ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
@@ -5148,19 +5155,21 @@ mod tests {
         use NodeRef::Gnd;
 
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
-        ckt.models.bsim4.add("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("nmos", MosType::NMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("pmos", MosType::PMOS));
+        ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
+
         ckt.add(Bsim4i {
             name: "p".to_string(),
             ports: [n("d"), n("inp"), n("vdd"), n("vdd")].into(),
             model: "pmos".to_string(),
-            params: Bsim4InstSpecs::default(),
+            params: "".into(),
         });
         ckt.add(Bsim4i {
             name: "n".to_string(),
             ports: [n("d"), n("inp"), Gnd, Gnd].into(),
             model: "nmos".to_string(),
-            params: Bsim4InstSpecs::default(),
+            params: "".into(),
         });
         let p = 1.0;
         ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
