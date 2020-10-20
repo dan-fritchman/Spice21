@@ -1,6 +1,6 @@
-//! 
+//!
 //! Spice21 Result and Error Types
-//! 
+//!
 use std::error::Error;
 use std::fmt;
 
@@ -8,9 +8,13 @@ use std::fmt;
 pub struct SpError {
     pub desc: String,
 }
-
+impl SpError {
+    pub(crate) fn new<S: Into<String>>(s: S) -> SpError {
+        SpError { desc: s.into() }
+    }
+}
 pub(crate) fn sperror<S: Into<String>>(s: S) -> SpError {
-    SpError { desc: s.into() }
+    SpError::new(s)
 }
 
 impl Error for SpError {}

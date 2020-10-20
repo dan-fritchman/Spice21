@@ -149,7 +149,7 @@ impl DiodeIntParams {
             // SPICE models this as `ibv` being constant across temperature, and `bv` changing to meet it.
             // We skip any convergence check here, and just get as close as we can in N iterations.
             let ibv = model.ibv;
-            for i in 0..25 {
+            for _i in 0..25 {
                 bv = model.bv - vt * (ibv / isat + 1.0 - bv / vt).ln();
             }
         }
@@ -215,15 +215,6 @@ impl Diode {
             intp,
             ..Default::default()
         };
-    }
-    /// Create a new Diode
-    pub(crate) fn new(ports: DiodePorts, model: DiodeModel, inst: DiodeInstParams) -> Diode {
-        Diode {
-            ports,
-            model,
-            inst,
-            ..Default::default()
-        }
     }
     /// Voltage limiting
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
@@ -400,7 +391,7 @@ impl Component for Diode0 {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         let vp = guess.get(self.p);
         let vn = guess.get(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);

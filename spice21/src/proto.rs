@@ -1,11 +1,22 @@
 //!
 //! # Spice21 Protobuf Definitions
 //!
-use prost::Message;
+
+use crate::SpError;
+#[allow(unused_imports)] // These are used by the macro-expanded code
 use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use prost::Message;
 
 // Include the prost-expanded proto-file content
 include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
+
+/// Error Conversion
+impl From<prost::DecodeError> for SpError {
+    fn from(e: prost::DecodeError) -> Self {
+        SpError::new("Error Decoding Circuit Binary")
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -21,6 +32,14 @@ mod tests {
         let c = Circuit {
             name: String::from("tbd"),
             comps: vec![
+                Instance {
+                    comp: Some(R(Resistor {
+                        name: s("dtbd"),
+                        p: s("a"),
+                        n: s("b"),
+                        g: 1e-3,
+                    })),
+                },
                 Instance {
                     comp: Some(D(Diode {
                         name: s("dtbd"),
@@ -61,7 +80,6 @@ mod tests {
         assert(&c.name).eq(&d.name)?;
 
         // Serde-JSON Serialization Round-Trip
-        use serde::{Deserialize, Serialize};
         let s = serde_json::to_string(&c).unwrap();
         // let mut rfj = File::create("ckt.json").unwrap();
         // rfj.write_all(s.as_bytes()).unwrap();

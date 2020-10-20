@@ -80,6 +80,7 @@ impl<NumT: SpNum> Variables<NumT> {
 
 /// Solver Iteration Struct
 /// Largely for debug of convergence and progress
+#[allow(dead_code)] // Used for debug 
 struct Iteration<NumT: SpNum> {
     n: usize,
     x: Vec<NumT>,
@@ -340,7 +341,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 use crate::comps::mos::MosPorts;
                 use crate::comps::Mos0;
 
-                let circuit::Mos0i { name, mos_type, ports } = m;
+                let circuit::Mos0i { mos_type, ports, .. } = m;
 
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
@@ -357,7 +358,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 use crate::comps::mos::MosPorts;
                 use crate::comps::Mos1;
 
-                let circuit::Mos1i { name, model, params, ports } = m;
+                let circuit::Mos1i { model, params, ports, .. } = m;
 
                 let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),
@@ -374,9 +375,9 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 use crate::comps::mos::MosPorts;
 
                 let circuit::Bsim4i { name, ports, model, params } = b4i;
-                
-                // let iname = params.name.clone();// FIXME: elsewhere 
-                // self.models.bsim4.add_inst(params); // FIXME: elsewhere 
+
+                // let iname = params.name.clone();// FIXME: elsewhere
+                // self.models.bsim4.add_inst(params); // FIXME: elsewhere
                 let (model, inst) = self.models.bsim4.get(&model, &params).unwrap();
 
                 let ports: MosPorts<Option<VarIndex>> = [
@@ -430,10 +431,10 @@ impl OpResult {
         let Variables { names, values, .. } = vars;
         OpResult { names, values, map }
     }
-    /// Get the value of signal `signame`, or an `SpError` if not present 
-    pub(crate) fn get<S:Into<String>>(&self, signame: S) -> SpResult<f64> {
+    /// Get the value of signal `signame`, or an `SpError` if not present
+    pub(crate) fn get<S: Into<String>>(&self, signame: S) -> SpResult<f64> {
         match self.map.get(&signame.into()) {
-            Some(v) => Ok(v.clone()), 
+            Some(v) => Ok(v.clone()),
             None => Err(sperror("Signal Not Found")),
         }
     }
@@ -904,8 +905,8 @@ mod tests {
     #[test]
     fn test_ac1() -> TestResult {
         let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
@@ -924,12 +925,13 @@ mod tests {
                 n: Gnd,
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
     #[test]
-    #[ignore] // FIXME: aint no Mos0 AC! 
+    #[ignore] // FIXME: aint no Mos0 AC!
     fn test_ac3() -> TestResult {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, Num(0), Num(1)),
@@ -946,8 +948,8 @@ mod tests {
                 },
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
@@ -978,8 +980,8 @@ mod tests {
                 n: Gnd,
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
@@ -1009,8 +1011,8 @@ mod tests {
                 },
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 }

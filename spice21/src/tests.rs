@@ -3,7 +3,7 @@
 mod tests {
     use crate::analysis::*;
     use crate::assert::*;
-    use crate::circuit::NodeRef::{Gnd, Name, Num};
+    use crate::circuit::NodeRef::Gnd;
     use crate::circuit::*;
     use crate::comps::*;
     use crate::spresult::*;
@@ -11,7 +11,7 @@ mod tests {
     /// Create a very basic Circuit
     #[test]
     fn test_ckt_parse() -> TestResult {
-        let ckt = Ckt::from_comps(vec![
+        Ckt::from_comps(vec![
             Comp::I(1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
             Comp::R(1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
         ]);
@@ -59,7 +59,11 @@ mod tests {
     fn test_dcop4() -> TestResult {
         use Comp::R;
         use NodeRef::Gnd;
-        let ckt = Ckt::from_comps(vec![Comp::vdc("v1", 1.0, n("vdd"), Gnd), R(2e-3, n("vdd"), n("div")), R(2e-3, n("div"), Gnd)]);
+        let ckt = Ckt::from_comps(vec![
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
+            R(2e-3, n("vdd"), n("div")),
+            R(2e-3, n("div"), Gnd),
+        ]);
         let soln = dcop(ckt)?;
         assert(soln.values).eq(vec![-1e-3, 1.0, 0.5])?;
         Ok(())
@@ -651,7 +655,7 @@ mod tests {
     // RC High-Pass Filter DcOp
     #[test]
     fn test_dcop13b() -> TestResult {
-        use NodeRef::{Gnd, Num};
+        use NodeRef::Gnd;
         let ckt = Ckt::from_comps(vec![
             Comp::C(1e-9, n("i"), n("o")),
             Comp::R(1e-3, n("o"), Gnd),
@@ -792,10 +796,9 @@ mod tests {
             tstop: 100e-12,
             ..Default::default()
         };
-        let mut models = ModelCache::new();
         let mut tran = Tran::new(ckt, opts);
         tran.ic(Num(1), 0.0);
-        let soln = tran.solve()?;
+        tran.solve()?;
         // FIXME: dream up some checks
         Ok(())
     }
@@ -897,7 +900,8 @@ mod tests {
             }),
             Comp::R(1e-4, Num(1), Gnd),
         ]);
-        let soln = dcop(ckt)?;
+        dcop(ckt)?;
+        // FIXME: checks on solution
         Ok(())
     }
 

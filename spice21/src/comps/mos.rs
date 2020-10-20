@@ -596,7 +596,7 @@ impl Component for Mos1 {
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         // Grab the frequency-variable from our analysis
         let omega = match an {
-            AnalysisInfo::AC(opts, state) => state.omega,
+            AnalysisInfo::AC(_opts, state) => state.omega,
             _ => panic!("Invalid AC AnalysisInfo"),
         };
 

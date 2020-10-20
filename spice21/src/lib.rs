@@ -15,9 +15,6 @@
 /// Note: this must be defined *before* any uses of it.
 ///
 
-
-use serde::{Serialize, Deserialize};
-
 #[macro_use]
 pub(crate) mod macros {
     /// GetAttr-enabled struct builder.
@@ -135,6 +132,7 @@ pub mod circuit;
 pub mod comps;
 pub mod proto;
 pub mod spresult;
+pub mod sparse21;
 
 // Re-exports
 pub use analysis::*;
@@ -146,6 +144,5 @@ pub(crate) use spnum::*;
 
 // Private modules
 mod assert;
-mod sparse21;
 mod spnum;
 mod tests;
