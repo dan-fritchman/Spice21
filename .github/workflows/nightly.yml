@@ -3,21 +3,21 @@
 name: Nightly
 on:
   schedule:
-    - cron: '0 2 * * *' # run at 2 AM UTC
+  - cron: '0 2 * * *' # run at 2 AM UTC
 
 jobs:
-    check:
-        name: Cargo Install 
-        runs-on: ubuntu-latest
-        steps:
-        - name: Install Stable Rust Toolchain
-            uses: actions-rs/toolchain@v1
-            with:
-            profile: minimal
-            toolchain: stable
-            override: true
+  cargo:
+    name: Cargo Install 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Stable Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
 
-        - name: Cargo Install 
-            run: cargo install spice21 
-            continue-on-error: true  # FIXME: remove. No binaries for it to install yet. 
-            
+      - name: Cargo Install 
+        run: cargo install spice21 
+        continue-on-error: true  # FIXME: remove. No binaries for it to install yet. 
+        
