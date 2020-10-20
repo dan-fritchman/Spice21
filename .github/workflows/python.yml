@@ -29,7 +29,9 @@ jobs:
         working-directory: ./spice21py 
         run: |
           pip install --upgrade pip
-          pip install cffi maturin pytest
+          pip install cffi maturin pytest protobuf 
+      - name: protoc
+        run: bash build.sh 
       - name: py-install
         working-directory: ./spice21py 
         run: maturin build 
