@@ -32,7 +32,7 @@ jobs:
           pip install cffi maturin pytest protobuf 
       - name: protoc
         run: |
-          apt install -y protobuf-compiler
+          sudo apt install -y protobuf-compiler
           protoc --version
           bash build.sh 
       - name: py-install
