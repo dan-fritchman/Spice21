@@ -1,10 +1,9 @@
 # Nightly Run of Active Versions from Package Repositories 
 
 name: Nightly
-on: [push, pull_request] # To test this out
-# on:
-#   schedule:
-#   - cron: '0 2 * * *' # run at 2 AM UTC
+on:
+  schedule:
+  - cron: '0 2 * * *' # run at 2 AM UTC
 
 jobs:
   cargo:
