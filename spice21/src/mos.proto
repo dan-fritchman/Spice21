@@ -1,0 +1,34 @@
+
+syntax = "proto3";
+package spice21;
+
+enum MosType { NMOS = 0; PMOS = 1; }
+
+message MosPorts {
+    string d = 1; // Drain 
+    string g = 2; // Gate
+    string s = 3; // Source 
+    string b = 4; // Bulk
+}
+
+message Mos1Params {
+    // Not yet available 
+}
+
+message Mos1Model {
+    // Not yet available 
+}
+
+// message MosParams {
+//     oneof p {
+//         Mos1Params mos1 = 1;
+//         Bsim4Params bsim4 = 2;
+//     }
+// }
+
+message Mos {
+    string name = 1; // Instance Name 
+    MosPorts ports = 2; // Port connections
+    string params = 3; // Instance parameter-set name
+    string model = 4; // Model Name
+}
