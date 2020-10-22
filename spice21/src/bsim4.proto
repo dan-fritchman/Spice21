@@ -3,24 +3,6 @@ package spice21;
 import "google/protobuf/wrappers.proto";
 import "mos.proto";
 
-
-// message Bsim4 {
-//         string name = 1; // Intance Name
-//         MosPorts ports = 2; // Port Connections 
-//         Bsim4Params params = 3; // Parameters 
-// }
-
-// message Bsim4Params { // "Full" Instance Parameters, including Model and Inst 
-//         oneof model { // Model Name or Parameters
-//                 string mname = 3;
-//                 Bsim4Model modelparams = 4;
-//         }
-//         oneof params { // Instance Name or Parameters
-//                 string pname = 5;
-//                 Bsim4InstParams instparams = 6;
-//         }
-// }
-
 message Bsim4InstParams {
         google.protobuf.DoubleValue l = 1; // Length
         google.protobuf.DoubleValue w = 2; // Width
@@ -50,7 +32,7 @@ message Bsim4InstParams {
         google.protobuf.DoubleValue delvto = 24; // Zero bias threshold voltage variation
         google.protobuf.DoubleValue xgw = 25; // Distance from gate contact center to device edge
         google.protobuf.DoubleValue ngcon = 26; // Number of gate contacts
-        // Modes, also model params 
+        // Modes, which are also model params 
         google.protobuf.UInt64Value trnqsmod = 27; // Transient NQS model selector
         google.protobuf.UInt64Value acnqsmod = 28; // AC NQS model selector
         google.protobuf.UInt64Value rbodymod = 29; // Distributed body R model selector

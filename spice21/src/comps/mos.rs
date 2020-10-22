@@ -29,7 +29,7 @@ pub struct MosPorts<T> {
     pub s: T,
     pub b: T,
 }
-/// Index MosPorts by the `MosTerm` enum 
+/// Index MosPorts by the `MosTerm` enum
 impl<T> Index<MosTerm> for MosPorts<T> {
     type Output = T;
     fn index(&self, t: MosTerm) -> &T {
@@ -41,7 +41,7 @@ impl<T> Index<MosTerm> for MosPorts<T> {
         }
     }
 }
-/// Very fun conversion from four-element arrays into MosPorts of `From`-able types. 
+/// Very fun conversion from four-element arrays into MosPorts of `From`-able types.
 impl<S, T: Clone + Into<S>> From<[T; 4]> for MosPorts<S> {
     fn from(n: [T; 4]) -> MosPorts<S> {
         return MosPorts {
@@ -52,8 +52,8 @@ impl<S, T: Clone + Into<S>> From<[T; 4]> for MosPorts<S> {
         };
     }
 }
-/// Even more fun conversion from four-element tuples into MosPorts of `From`-able types. 
-/// Note in this case, each of the four elements can be of distinct types. 
+/// Even more fun conversion from four-element tuples into MosPorts of `From`-able types.
+/// Note in this case, each of the four elements can be of distinct types.
 impl<S, T: Clone + Into<S>, U: Clone + Into<S>, V: Clone + Into<S>, W: Clone + Into<S>> From<(T, U, V, W)> for MosPorts<S> {
     fn from(n: (T, U, V, W)) -> MosPorts<S> {
         return MosPorts {
@@ -138,41 +138,47 @@ pub struct Mos1Model {
     pub af: f64,
 }
 
+use crate::proto::Mos1Model as Mos1ModelSpecs;
+impl Mos1Model {
+    pub(crate) fn resolve(specs: Mos1ModelSpecs) -> Self {
+        Self {
+            mos_type: if specs.mos_type == 1 { MosType::PMOS } else { MosType::NMOS },
+            vt0: if let Some(val) = specs.vt0 { val } else { 0.0 },
+            kp: if let Some(val) = specs.kp { val } else { 2.0e-5 },
+            gamma: if let Some(val) = specs.gamma { val } else { 0.0 },
+            phi: if let Some(val) = specs.phi { val } else { 0.6 },
+            lambda: if let Some(val) = specs.lambda { val } else { 0.0 },
+            rd: if let Some(val) = specs.rd { val } else { 0.0 },
+            rs: if let Some(val) = specs.rs { val } else { 0.0 },
+            cbd: if let Some(val) = specs.cbd { val } else { 0.0 },
+            cbs: if let Some(val) = specs.cbs { val } else { 0.0 },
+            is: if let Some(val) = specs.is { val } else { 1.0e-14 },
+            pb: if let Some(val) = specs.pb { val } else { 0.8 },
+            cgso: if let Some(val) = specs.cgso { val } else { 0.0 },
+            cgdo: if let Some(val) = specs.cgdo { val } else { 0.0 },
+            cgbo: if let Some(val) = specs.cgbo { val } else { 0.0 },
+            rsh: if let Some(val) = specs.rsh { val } else { 0.0 },
+            cj: if let Some(val) = specs.cj { val } else { 0.0 },
+            mj: if let Some(val) = specs.mj { val } else { 0.5 },
+            cjsw: if let Some(val) = specs.cjsw { val } else { 0.0 },
+            mjsw: if let Some(val) = specs.mjsw { val } else { 0.5 },
+            js: if let Some(val) = specs.js { val } else { 1.0e-8 }, // FIXME
+            tox: if let Some(val) = specs.tox { val } else { 1.0e-7 },
+            nsub: if let Some(val) = specs.nsub { val } else { 0.0 },
+            nss: if let Some(val) = specs.nss { val } else { 0.0 },
+            ld: if let Some(val) = specs.ld { val } else { 0.0 },
+            u0: if let Some(val) = specs.u0 { val } else { 600.0 },
+            fc: if let Some(val) = specs.fc { val } else { 0.5 },
+            kf: if let Some(val) = specs.kf { val } else { 0.0 },
+            af: if let Some(val) = specs.af { val } else { 1.0 },
+            tnom: if let Some(val) = specs.tnom { val } else { 27.0 },
+            tpg: specs.tpg,
+        }
+    }
+}
 impl Default for Mos1Model {
     fn default() -> Self {
-        Mos1Model {
-            mos_type: MosType::NMOS,
-            vt0: 0.0,
-            kp: 2.0e-5,
-            gamma: 0.0,
-            phi: 0.6,
-            lambda: 0.0,
-            rd: 0.0,
-            rs: 0.0,
-            cbd: 0.0,
-            cbs: 0.0,
-            is: 1.0e-14,
-            pb: 0.8,
-            cgso: 0.0,
-            cgdo: 0.0,
-            cgbo: 0.0,
-            rsh: 0.0,
-            cj: 0.0,
-            mj: 0.5,
-            cjsw: 0.0,
-            mjsw: 0.5,
-            js: 1.0e-8, // FIXME
-            tox: 1.0e-7,
-            nsub: 0.0,
-            nss: 0.0,
-            tpg: false,
-            ld: 0.0,
-            u0: 600.0,
-            fc: 0.5,
-            kf: 0.0,
-            af: 1.0,
-            tnom: 27.0,
-        }
+        Self::resolve(Mos1ModelSpecs::default())
     }
 }
 
@@ -189,36 +195,40 @@ pub struct Mos1InstanceParams {
     nrd: f64,
     nrs: f64,
     temp: f64,
-    // FIXME: explicitly ignore these
-    dtemp: f64,
-    off: bool,
-    icvds: f64,
-    icvgs: f64,
-    icvbs: f64,
-    ic: f64,
+    // FIXME: maybe even more explicitly ignore these
+    // dtemp: f64,
+    // off: bool,
+    // icvds: f64,
+    // icvgs: f64,
+    // icvbs: f64,
+    // ic: f64,
 }
-
+use crate::proto::Mos1InstParams as Mos1InstSpecs;
+impl Mos1InstanceParams {
+    pub(crate) fn resolve(specs: Mos1InstSpecs) -> Self {
+        Mos1InstanceParams {
+            m: if let Some(val) = specs.m { val } else { 0.0 }, 
+            l: if let Some(val) = specs.l { val } else { 1e-6 }, 
+            w: if let Some(val) = specs.w { val } else { 1e-6 }, 
+            a_d: if let Some(val) = specs.a_d { val } else { 1e-12 }, 
+            a_s: if let Some(val) = specs.a_s { val } else { 1e-12 }, 
+            pd: if let Some(val) = specs.pd { val } else { 1e-6 }, 
+            ps: if let Some(val) = specs.ps { val } else { 1e-6 }, 
+            nrd: if let Some(val) = specs.nrd { val } else { 1.0 }, 
+            nrs: if let Some(val) = specs.nrs { val } else { 1.0 }, 
+            temp: if let Some(val) = specs.temp { val } else{consts::TEMP_REF},
+            // dtemp: if let Some(val) = specs.dtemp { val } else { 0.0 }, 
+            // icvds: if let Some(val) = specs.icvds { val } else { 0.0 }, 
+            // icvgs: if let Some(val) = specs.icvgs { val } else { 0.0 }, 
+            // icvbs: if let Some(val) = specs.icvbs { val } else { 0.0 }, 
+            // ic: if let Some(val) = specs.ic { val } else { 0.0 }, 
+            // off: specs.off,
+        }
+    }
+}
 impl Default for Mos1InstanceParams {
     fn default() -> Self {
-        Mos1InstanceParams {
-            m: 0.0,
-            l: 1e-6,
-            w: 1e-6,
-            a_d: 1e-12,
-            a_s: 1e-12,
-            pd: 1e-6,
-            ps: 1e-6,
-            nrd: 1.0,
-            nrs: 1.0,
-            temp: consts::TEMP_REF,
-            // FIXME: explicitly ignore these
-            off: false,
-            dtemp: 0.0,
-            icvds: 0.0,
-            icvgs: 0.0,
-            icvbs: 0.0,
-            ic: 0.0,
-        }
+        Self::resolve(Mos1InstSpecs::default())
     }
 }
 

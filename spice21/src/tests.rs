@@ -808,11 +808,11 @@ mod tests {
         let model = Mos1Model::default();
         let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::Mos1(Mos1i {
                 name: s("m"),
-                model: model,
-                params: params,
+                model: "default".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -822,6 +822,16 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("default".into(), nmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+        
         let soln = dcop(ckt)?;
         assert(soln[0]).eq(1.0)?;
         assert(soln[1]).lt(0.0)?;
@@ -831,14 +841,12 @@ mod tests {
 
     #[test]
     fn test_mos1_tran() -> TestResult {
-        let model = Mos1Model::default();
-        let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::Mos1(Mos1i {
                 name: s("m"),
-                model: model,
-                params: params,
+                model: "default".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -848,6 +856,16 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
+
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("default".into(), nmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
 
         let opts = TranOptions {
             tstep: 1e-9,
@@ -867,19 +885,13 @@ mod tests {
     fn test_mos1_inv_dcop() -> TestResult {
         // Mos1 Inverter DCOP
 
-        let nmos = Mos1Model::default();
-        let pmos = Mos1Model {
-            mos_type: MosType::PMOS,
-            ..Mos1Model::default()
-        };
-        let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("p"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Gnd,
                     d: Num(1),
@@ -889,8 +901,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Gnd,
                     d: Num(1),
@@ -900,6 +912,21 @@ mod tests {
             }),
             Comp::R(1e-4, Num(1), Gnd),
         ]);
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("nmos".into(), nmos);
+        let pmos = Mos1Model {
+            mos_type: MosType::PMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("pmos".into(), pmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+
         dcop(ckt)?;
         // FIXME: checks on solution
         Ok(())
@@ -908,19 +935,13 @@ mod tests {
     /// Mos1 Ring Oscillator Dc Op
     #[test]
     fn test_mos1_ro_dcop() -> TestResult {
-        let nmos = Mos1Model::default();
-        let pmos = Mos1Model {
-            mos_type: MosType::PMOS,
-            ..Mos1Model::default()
-        };
-        let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::R(1e-9, Num(0), Gnd), // "gmin"-ish
             Comp::Mos1(Mos1i {
                 name: s("p1"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -930,8 +951,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n1"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -941,8 +962,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("p2"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -952,8 +973,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n2"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -963,8 +984,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("p3"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
@@ -974,8 +995,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n3"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
@@ -985,6 +1006,21 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
+
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("nmos".into(), nmos);
+        let pmos = Mos1Model {
+            mos_type: MosType::PMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("pmos".into(), pmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
 
         let soln = dcop(ckt)?;
         assert(soln[0]).eq(1.0)?;
@@ -995,24 +1031,17 @@ mod tests {
         Ok(())
     }
 
+    /// Mos1 Ring Oscillator Tran
     #[test]
     fn test_mos1_ro_tran() -> TestResult {
-        // Mos1 Ring Oscillator Tran
-
-        let nmos = Mos1Model::default();
-        let pmos = Mos1Model {
-            mos_type: MosType::PMOS,
-            ..Mos1Model::default()
-        };
-        let params = Mos1InstanceParams::default();
         use NodeRef::{Gnd, Num};
         let c = 1e-12;
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("p1"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
@@ -1022,8 +1051,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n1"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
@@ -1035,8 +1064,8 @@ mod tests {
             Comp::R(1e-9, Num(1), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("p2"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -1046,8 +1075,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n2"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -1059,8 +1088,8 @@ mod tests {
             Comp::R(1e-9, Num(2), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("p3"),
-                model: pmos.clone(),
-                params: params,
+                model: "pmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -1070,8 +1099,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("n3"),
-                model: nmos.clone(),
-                params: params,
+                model: "nmos".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -1083,9 +1112,24 @@ mod tests {
             Comp::R(1e-9, Num(3), Gnd),
         ]);
 
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("nmos".into(), nmos);
+        let pmos = Mos1Model {
+            mos_type: MosType::PMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("pmos".into(), pmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+
         let opts = TranOptions {
-            tstep: 5e-9,
-            tstop: 1000e-9,
+            tstep: 1e-9,
+            tstop: 1e-6,
             ..Default::default()
         };
         let mut tran = Tran::new(ckt, opts);

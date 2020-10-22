@@ -13,7 +13,7 @@ include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
 
 /// Error Conversion
 impl From<prost::DecodeError> for SpError {
-    fn from(e: prost::DecodeError) -> Self {
+    fn from(_e: prost::DecodeError) -> Self {
         SpError::new("Error Decoding Circuit Binary")
     }
 }

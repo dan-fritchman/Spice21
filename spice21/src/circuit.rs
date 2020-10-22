@@ -8,6 +8,8 @@
 //! * (b) Directly for testing or in Rust use-cases
 //!
 
+use std::collections::HashMap;
+
 use super::comps::{DiodeInstParams, DiodeModel};
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
 use super::proto::def::Defines as DefProto;
@@ -90,12 +92,6 @@ impl Ds {
     }
 }
 
-pub struct Bsim4i {
-    pub(crate) name: String,
-    pub(crate) ports: MosPorts<NodeRef>,
-    pub(crate) model: String,
-    pub(crate) params: String,
-}
 pub struct Mos0i {
     pub(crate) name: String,
     pub(crate) mos_type: MosType,
@@ -103,9 +99,15 @@ pub struct Mos0i {
 }
 pub struct Mos1i {
     pub(crate) name: String,
-    pub(crate) model: Mos1Model,
-    pub(crate) params: Mos1InstanceParams,
     pub(crate) ports: MosPorts<NodeRef>,
+    pub(crate) model: String,
+    pub(crate) params: String,
+}
+pub struct Bsim4i {
+    pub(crate) name: String,
+    pub(crate) ports: MosPorts<NodeRef>,
+    pub(crate) model: String,
+    pub(crate) params: String,
 }
 
 /// Component Enum.
@@ -178,8 +180,8 @@ impl Comp {
                 } else {
                     Comp::Mos1(Mos1i {
                         name: m.name,
-                        model: Mos1Model::default(),
-                        params: Mos1InstanceParams::default(),
+                        model: m.model.clone(),
+                        params: m.params.clone(),
                         ports,
                     })
                 }
@@ -194,12 +196,23 @@ impl From<Ds> for Comp {
     }
 }
 
+use crate::proto::Mos1InstParams as Mos1InstSpecs;
+use crate::proto::Mos1Model as Mos1ModelSpecs;
+#[derive(Default)]
+pub struct Mos1Defs {
+    pub(crate) models: HashMap<String, Mos1ModelSpecs>,
+    pub(crate) insts: HashMap<String, Mos1InstSpecs>,
+}
 pub struct ModelCache {
+    pub(crate) mos1: Mos1Defs,
     pub(crate) bsim4: Bsim4Cache,
 }
 impl ModelCache {
     pub(crate) fn new() -> Self {
-        Self { bsim4: Bsim4Cache::new() }
+        Self {
+            mos1: Mos1Defs::default(),
+            bsim4: Bsim4Cache::new(),
+        }
     }
 }
 
@@ -236,6 +249,12 @@ impl Ckt {
                 }
                 DefProto::Bsim4model(x) => {
                     models.bsim4.add_model(x);
+                }
+                DefProto::Mos1model(x) => {
+                    models.mos1.models.insert(x.name.clone(), x);
+                }
+                DefProto::Mos1inst(x) => {
+                    models.mos1.insts.insert(x.name.clone(), x);
                 }
                 // DefProto::Subckt(_x),
                 // DefProto::Lib(_x),

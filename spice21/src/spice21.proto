@@ -18,8 +18,6 @@ message Capacitor {
     double c = 4;
 }
 
-
-
 message Isrc {
     string name = 1;
     string p = 2;
@@ -92,25 +90,13 @@ message Def {
         DiodeModel diodemodel = 3;
         Bsim4Model bsim4model = 4;
         Bsim4InstParams bsim4inst = 5;
-    }
-}
-
-message Statement {
-    oneof s {
-        Instance inst = 1;
-        Def def = 2;
+        Mos1Model mos1model = 6;
+        Mos1InstParams mos1inst = 7;
     }
 }
 
 message TranOptions {
     double tstop = 1;
     double tstep = 2;
-}
-
-message Sim {
-    Circuit ckt = 1;
-}
-
-message OpResult {
-    map<string, double> data = 2;
+    map <string, double> ic = 3;
 }

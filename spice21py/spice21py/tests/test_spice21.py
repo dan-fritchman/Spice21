@@ -98,20 +98,107 @@ def test_bsim4_inst_params():
     assert p.w.value == 1e-6
     assert p.nf.value == 2
 
+
 def test_bsim4_ckt():
     from .. import Bsim4Model, Bsim4InstParams, Mos, circuit
-    b = Mos(name='inst1')
-    b.ports.g = 'vdd'
-    b.ports.d = 'vdd'
-    b.params.bsim4.mname = 'default'
-    b.params.bsim4.pname = 'inst'
-    c = circuit(
-        Bsim4Model(name='default'),
-        Bsim4InstParams(name='inst'),
-        b,
-        Vsrc(p="vdd", dc=1.0)
-    )
 
+    b = Mos(name="inst1")
+    b.ports.g = "vdd"
+    b.ports.d = "vdd"
+    b.model = "default"
+    b.params = "inst"
+    c = circuit(
+        Bsim4Model(name="default"),
+        Bsim4InstParams(name="inst"),
+        b,
+        Vsrc(p="vdd", dc=1.0),
+    )
     from .. import dcop
+
     res = dcop(c)
-    print(res)
+    # FIXME: checks
+
+
+def test_bsim4_ro():
+    from .. import circuit 
+    from .. import Bsim4Model, Bsim4InstParams, Mos, MosType, TranOptions, Capacitor
+
+    def inverter(name: str, inp: str, out: str) -> list:
+        p = Mos(name=f"{name}p", model="pmos", params="default")
+        p.ports.g = inp
+        p.ports.d = out
+        p.ports.s = "vdd"
+        p.ports.b = "vdd"
+        n = Mos(name=f"{name}n", model="nmos", params="default")
+        n.ports.g = inp
+        n.ports.d = out
+        n.ports.s = "vss"
+        n.ports.b = "vss"
+        c = Capacitor(name=f"{name}c", p=out, n="vss", c=1e-12)
+        return [p, n, c]
+
+    nstg = 3
+    insts = []
+    for k in range(nstg):
+        insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
+
+    ckt = circuit(
+        Bsim4Model(name="nmos", mos_type=MosType.NMOS),
+        Bsim4Model(name="pmos", mos_type="PMOS"),
+        Bsim4InstParams(name="default"),
+        Vsrc(name="vvdd", p="vdd", n="vss", dc=1.0),
+        Vsrc(name="vvss", p="vss", dc=0),
+        Vsrc(name="vvfb", p="ring0", n=f"ring{nstg}", dc=0),
+        *insts,
+    )
+    opts = TranOptions(tstop=1e-7, tstep=1e-12)
+    opts.ic['ring0'] = 0.0
+
+    from .. import tran
+
+    res = tran(ckt, opts)
+    assert isinstance(res, dict)
+    # FIXME: checks
+
+
+def test_mos1_ro():
+    from .. import circuit 
+    from .. import Mos, MosType, TranOptions, Capacitor
+    from ..protos import Mos1Model, Mos1InstParams
+
+    def inverter(name: str, inp: str, out: str) -> list:
+        p = Mos(name=f"{name}p", model="pmos", params="default")
+        p.ports.g = inp
+        p.ports.d = out
+        p.ports.s = "vdd"
+        p.ports.b = "vdd"
+        n = Mos(name=f"{name}n", model="nmos", params="default")
+        n.ports.g = inp
+        n.ports.d = out
+        n.ports.s = "vss"
+        n.ports.b = "vss"
+        c = Capacitor(name=f"{name}c", p=out, n="vss", c=1e-12)
+        return [p, n, c]
+
+    nstg = 3
+    insts = []
+    for k in range(nstg):
+        insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
+
+    ckt = circuit(
+        Mos1Model(name="nmos", mos_type=MosType.NMOS),
+        Mos1Model(name="pmos", mos_type="PMOS"),
+        Mos1InstParams(name="default"),
+        Vsrc(name="vvdd", p="vdd", n="vss", dc=1.0),
+        Vsrc(name="vvss", p="vss", dc=0),
+        Vsrc(name="vvfb", p="ring0", n=f"ring{nstg}", dc=0),
+        *insts,
+    )
+    opts = TranOptions(tstop=1e-7, tstep=1e-12)
+    opts.ic['ring0'] = 0.0
+
+    from .. import tran
+
+    res = tran(ckt, opts)
+    assert isinstance(res, dict)
+    # FIXME: checks
