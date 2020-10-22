@@ -207,21 +207,21 @@ use crate::proto::Mos1InstParams as Mos1InstSpecs;
 impl Mos1InstanceParams {
     pub(crate) fn resolve(specs: Mos1InstSpecs) -> Self {
         Mos1InstanceParams {
-            m: if let Some(val) = specs.m { val } else { 0.0 }, 
-            l: if let Some(val) = specs.l { val } else { 1e-6 }, 
-            w: if let Some(val) = specs.w { val } else { 1e-6 }, 
-            a_d: if let Some(val) = specs.a_d { val } else { 1e-12 }, 
-            a_s: if let Some(val) = specs.a_s { val } else { 1e-12 }, 
-            pd: if let Some(val) = specs.pd { val } else { 1e-6 }, 
-            ps: if let Some(val) = specs.ps { val } else { 1e-6 }, 
-            nrd: if let Some(val) = specs.nrd { val } else { 1.0 }, 
-            nrs: if let Some(val) = specs.nrs { val } else { 1.0 }, 
-            temp: if let Some(val) = specs.temp { val } else{consts::TEMP_REF},
-            // dtemp: if let Some(val) = specs.dtemp { val } else { 0.0 }, 
-            // icvds: if let Some(val) = specs.icvds { val } else { 0.0 }, 
-            // icvgs: if let Some(val) = specs.icvgs { val } else { 0.0 }, 
-            // icvbs: if let Some(val) = specs.icvbs { val } else { 0.0 }, 
-            // ic: if let Some(val) = specs.ic { val } else { 0.0 }, 
+            m: if let Some(val) = specs.m { val } else { 0.0 },
+            l: if let Some(val) = specs.l { val } else { 1e-6 },
+            w: if let Some(val) = specs.w { val } else { 1e-6 },
+            a_d: if let Some(val) = specs.a_d { val } else { 1e-12 },
+            a_s: if let Some(val) = specs.a_s { val } else { 1e-12 },
+            pd: if let Some(val) = specs.pd { val } else { 1e-6 },
+            ps: if let Some(val) = specs.ps { val } else { 1e-6 },
+            nrd: if let Some(val) = specs.nrd { val } else { 1.0 },
+            nrs: if let Some(val) = specs.nrs { val } else { 1.0 },
+            temp: if let Some(val) = specs.temp { val } else { consts::TEMP_REF },
+            // dtemp: if let Some(val) = specs.dtemp { val } else { 0.0 },
+            // icvds: if let Some(val) = specs.icvds { val } else { 0.0 },
+            // icvgs: if let Some(val) = specs.icvgs { val } else { 0.0 },
+            // icvbs: if let Some(val) = specs.icvbs { val } else { 0.0 },
+            // ic: if let Some(val) = specs.ic { val } else { 0.0 },
             // off: specs.off,
         }
     }
@@ -369,37 +369,30 @@ impl Mos1 {
             ..Default::default()
         }
     }
-}
-
-impl Component for Mos1 {
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        for t1 in [G, D, S, B].iter() {
-            for t2 in [G, D, S, B].iter() {
-                self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
-            }
+    /// Gather the voltages on each of our node-variables from `Variables` `guess`.
+    fn vs(&self, vars: &Variables<f64>) -> MosPorts<f64> {
+        MosPorts {
+            g: vars.get(self.ports[G]),
+            d: vars.get(self.ports[D]),
+            s: vars.get(self.ports[S]),
+            b: vars.get(self.ports[B]),
         }
     }
-    /// Load our last guess as the new operating point
-    fn commit(&mut self) {
-        self.op = self.guess.clone();
-    }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        let vg = guess.get(self.ports[G]);
-        let vd = guess.get(self.ports[D]);
-        let vs = guess.get(self.ports[S]);
-        let vb = guess.get(self.ports[B]);
-
+    /// Primary action behind dc & transient loading.
+    /// Returns calculated "guess" operating point, plus matrix stamps
+    fn op_stamp(&self, v: MosPorts<f64>, an: &AnalysisInfo) -> (Mos1OpPoint, Stamps<f64>) {
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
         // i.e. the polarities typically expressed for NMOS
         let p = self.model.mos_type.p();
-        let vds1 = p * (vd - vs);
-        let reversed = vds1 < 0.0;
+        let reversed = p * (v.d - v.s) < 0.0;
         // FIXME: add inter-step limiting
-        let vgs = if reversed { p * (vg - vd) } else { p * (vg - vs) };
-        let vds = if reversed { -vds1 } else { vds1 };
-        let vsb = if reversed { vd - vb } else { vs - vb };
-        let vdb = if reversed { vs - vb } else { vd - vb };
+        let (vd, vs) = if reversed { (v.s, v.d) } else { (v.d, v.s) };
+        let vgs = p * (v.g - vs);
+        let vds = p * (v.d - vs);
+        // Same for bulk junction diodes - polarities such that more `vsb`, `vdb` = more *reverse* bias.
+        let vsb = p * (vs - v.b);
+        let vdb = p * (vd - v.b);
 
         let von = if vsb > 0.0 {
             self.intparams.vt_t + self.model.gamma * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
@@ -435,7 +428,7 @@ impl Component for Mos1 {
         }
 
         // Bulk Junction Diodes
-        let gmin_temp = 1e-9; // FIXME: get from the circuit. Also failing for smaller values.
+        let gmin_temp = 1e-9; // FIXME: get from the circuit
         let (isat_bs, isat_bd, vtherm) = (self.intparams.isat_bs, self.intparams.isat_bd, self.intparams.vtherm);
         // Source-Bulk
         let ibs = isat_bs * ((-vsb / vtherm).exp() - 1.0);
@@ -537,7 +530,7 @@ impl Component for Mos1 {
         let gcbg = 0.0;
 
         // Store as our op point for next time
-        self.guess = Mos1OpPoint {
+        let guess = Mos1OpPoint {
             ids,
             vgs,
             vgd,
@@ -569,7 +562,7 @@ impl Component for Mos1 {
         let grd = self.intparams.grd;
         let grs = self.intparams.grs;
         // And finally send back our matrix contributions
-        return Stamps {
+        let stamps = Stamps {
             g: vec![
                 (self.matps[(dr, dr)], gds + grd + gbd + gcgd),
                 (self.matps[(sr, sr)], gm + gds + grs + gbs + gmbs + gcgs),
@@ -596,12 +589,33 @@ impl Component for Mos1 {
                 (self.matps[(sx, sx)], grs),
             ],
             b: vec![
-                (self.ports[dr], -p * irhs + ibd_rhs + p * rhsgd),
-                (self.ports[sr], p * irhs + ibs_rhs + p * rhsgs),
+                (self.ports[dr], p * (-irhs + ibd_rhs + rhsgd)),
+                (self.ports[sr], p * (irhs + ibs_rhs + rhsgs)),
                 (self.ports[G], -p * (rhsgs + rhsgb + rhsgd)),
-                (self.ports[B], -(ibd_rhs + ibs_rhs - p * rhsgb)),
+                (self.ports[B], -p * (ibd_rhs + ibs_rhs - rhsgb)),
             ],
         };
+        (guess, stamps)
+    }
+}
+
+impl Component for Mos1 {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+        for t1 in [G, D, S, B].iter() {
+            for t2 in [G, D, S, B].iter() {
+                self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
+            }
+        }
+    }
+    fn commit(&mut self) {
+        // Load our last guess as the new operating point
+        self.op = self.guess.clone();
+    }
+    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        let v = self.vs(vars); // Collect terminal voltages
+        let (op, stamps) = self.op_stamp(v, an); // Do most of our work here
+        self.guess = op; // Save the calculated operating point 
+        stamps // And return our matrix stamps 
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         // Grab the frequency-variable from our analysis
