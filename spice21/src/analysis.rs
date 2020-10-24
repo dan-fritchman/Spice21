@@ -145,6 +145,7 @@ impl Solver<'_, f64> {
                 for c in self.comps.iter_mut() {
                     c.commit();
                 }
+                println!("Converged to: {:?}", self.vars.values);
                 return Ok(self.vars.values.clone()); // FIXME: stop cloning
             }
             // Haven't Converged. Solve for our update.
@@ -411,7 +412,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
         }
         // KCL convergence
         for e in res.iter() {
-            if e.absv() > 1e-9 {
+            if e.absv() > 1e-12 {
                 return false;
             }
         }
@@ -651,7 +652,7 @@ impl<'a> Tran<'a> {
         }
 
         let mut tpoint: usize = 0;
-        let max_tpoints: usize = 10000;
+        let max_tpoints: usize = 100000;
         self.state.t = self.opts.tstep;
         self.state.dt = self.opts.tstep;
         while self.state.t < self.opts.tstop && tpoint < max_tpoints {

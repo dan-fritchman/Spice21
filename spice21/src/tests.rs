@@ -693,11 +693,11 @@ mod tests {
     fn test_tran2() -> TestResult {
         // I-C Integrator, with Initial Condition
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![Comp::I(5e-3, Num(0), Gnd), Comp::C(1e-9, Num(0), Gnd)]);
+        let ckt = Ckt::from_comps(vec![Comp::I(1e-3, Num(0), Gnd), Comp::C(4e-12, Num(0), Gnd)]);
 
         let opts = TranOptions {
-            tstep: 1e-9,
-            tstop: 100e-9,
+            tstep: 1e-18,
+            tstop: 1e-15,
             ..Default::default()
         };
         let mut tran = Tran::new(ckt, opts);
@@ -1129,7 +1129,7 @@ mod tests {
 
         let opts = TranOptions {
             tstep: 1e-9,
-            tstop: 1e-6,
+            tstop: 10e-6,
             ..Default::default()
         };
         let mut tran = Tran::new(ckt, opts);

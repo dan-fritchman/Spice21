@@ -28,10 +28,19 @@ mod tests {
         use crate::assert::assert;
         use circuit::s;
         use instance::Comp::{C, D, I, M, R, V};
+        use def::Defines;
 
         let c = Circuit {
             name: String::from("tbd"),
             comps: vec![
+                Instance {
+                    comp: Some(C(Capacitor {
+                        name: s("cccc"),
+                        p: s("ac"),
+                        n: s("bc"),
+                        c: 1e-12,
+                    })),
+                },
                 Instance {
                     comp: Some(R(Resistor {
                         name: s("dtbd"),
@@ -63,12 +72,18 @@ mod tests {
                     })),
                 },
             ],
-            defs: vec![],
+            defs: vec![
+                Def {
+                    defines: Some(Defines::Mos1model(
+                        Mos1Model::default()
+                    ))
+                }
+            ],
         };
 
         use std::io::Cursor;
-        // use std::fs::File;
-        // use std::io::prelude::*;
+        use std::fs::File;
+        use std::io::prelude::*;
 
         // Prost/ Protobuf Serialization Round-Trip
         let mut buf = Vec::<u8>::new();
@@ -81,11 +96,15 @@ mod tests {
 
         // Serde-JSON Serialization Round-Trip
         let s = serde_json::to_string(&c).unwrap();
-        // let mut rfj = File::create("ckt.json").unwrap();
-        // rfj.write_all(s.as_bytes()).unwrap();
+        let mut rfj = File::create("ckt.json").unwrap();
+        rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = serde_json::from_str(&s).unwrap();
         assert(&c.name).eq(&d.name)?;
-
+        // Serde-YAML Round-Trip
+        // let s = serde_yaml::to_string(&c).unwrap();
+        // let mut rfj = File::create("ckt.yaml").unwrap();
+        // rfj.write_all(s.as_bytes()).unwrap();
+        
         Ok(())
     }
 }

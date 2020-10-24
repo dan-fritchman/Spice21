@@ -428,7 +428,7 @@ impl Mos1 {
         }
 
         // Bulk Junction Diodes
-        let gmin_temp = 1e-9; // FIXME: get from the circuit
+        let gmin_temp = 1e-15; // FIXME: get from the circuit
         let (isat_bs, isat_bd, vtherm) = (self.intparams.isat_bs, self.intparams.isat_bd, self.intparams.vtherm);
         // Source-Bulk
         let ibs = isat_bs * ((-vsb / vtherm).exp() - 1.0);
