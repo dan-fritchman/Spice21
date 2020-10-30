@@ -122,6 +122,7 @@ impl Solver<'_, f64> {
         }
     }
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<f64>> {
+        self.history = vec![]; // Reset our guess-history 
         let mut dx = vec![0.0; self.vars.len()];
 
         for _k in 0..100 {
@@ -205,6 +206,7 @@ impl<'a> Solver<'a, Complex<f64>> {
         }
     }
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<Complex<f64>>> {
+        self.history = vec![]; // Reset our guess-history 
         let mut dx = vec![Complex::zero(); self.vars.len()];
         let mut iters: Vec<Iteration<Complex<f64>>> = vec![];
 
@@ -494,6 +496,7 @@ impl TranState {
                 (g, i, rhs)
             }
             NumericalIntegration::TRAP => {
+                panic!("Trapezoidal Integration is Disabled!");
                 let g = 2.0 * dq_dv / dt;
                 let i = 2.0 * dq / dt - ip;
                 let rhs = i - g * vguess;
@@ -618,7 +621,7 @@ impl<'a> Tran<'a> {
         }
 
         let mut tpoint: usize = 0;
-        let max_tpoints: usize = 10000;
+        let max_tpoints: usize = 1e9 as usize;
         self.state.dt = self.opts.tstep;
         while self.state.t < self.opts.tstop && tpoint < max_tpoints {
             let aninfo = AnalysisInfo::TRAN(&self.opts, &self.state);
@@ -633,7 +636,7 @@ impl<'a> Tran<'a> {
             results.push(self.state.t, &tdata);
             tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
-            self.state.ni = NumericalIntegration::TRAP;
+            // self.state.ni = NumericalIntegration::TRAP; // FIXME!
             tpoint += 1;
             self.state.t += self.opts.tstep;
         }
@@ -695,6 +698,13 @@ impl TranResult {
     }
     pub fn len(&self) -> usize {
         self.time.len()
+    }
+    /// Retrieve values of signal `name`
+    pub fn get(&self, name: &str) -> SpResult<&Vec<f64>>{
+        match self.map.get(name) {
+            Some(v) => Ok(v),
+            None => Err(sperror(format!("Signal Not Found: {}", name))),
+        }
     }
 }
 /// Maintain much (most?) of our original vector-result-format

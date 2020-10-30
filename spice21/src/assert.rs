@@ -16,8 +16,13 @@ impl<T> Assert<T> {
     fn raise<S: Into<String>>(&self, s: S) -> TestResult {
         return Err(sperror(s.into())); // Breakpoint here catches all failures
     }
+    /// Identity function
+    /// For "grammatical" usage, such as
+    /// `assert(3).is().gt(0);`
+    pub fn is(self) -> Self {
+        self
+    }
 }
-
 impl<T: PartialEq + Debug> Assert<T> {
     pub fn eq(&self, other: T) -> TestResult {
         if self.val != other {
@@ -34,7 +39,6 @@ impl<T: PartialEq + Debug> Assert<T> {
         }
     }
 }
-
 impl<T: PartialOrd + Debug> Assert<T> {
     pub fn gt(&self, other: T) -> TestResult {
         if self.val <= other {
@@ -65,7 +69,6 @@ impl<T: PartialOrd + Debug> Assert<T> {
         }
     }
 }
-
 impl Assert<f64> {
     pub fn abs(self) -> Assert<f64> {
         Assert { val: self.val.abs() }
@@ -76,6 +79,62 @@ impl Assert<f64> {
         } else {
             Ok(())
         }
+    }
+}
+impl Assert<&Vec<f64>> {
+    /// Last value in vector 
+    pub fn last(&self) -> Assert<f64> {
+        assert(self.val[self.val.len()-1])
+    }
+    /// Tests that a vector is strictly increasing,
+    /// i.e. that each element k is > element k-1.
+    pub fn increasing(&self) -> TestResult {
+        for k in 0..self.val.len() - 1 {
+            if self.val[k + 1] <= self.val[k] {
+                return self.raise(format!(
+                    "Non-increasing vector values {:?} and {:?} at index {}",
+                    self.val[k],
+                    self.val[k + 1],
+                    k
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn nondecreasing(&self) -> TestResult {
+        for k in 0..self.val.len() - 1 {
+            if self.val[k + 1] < self.val[k] {
+                return self.raise(format!(
+                    "Decreasing vector values {:?} and {:?} at index {}",
+                    self.val[k],
+                    self.val[k + 1],
+                    k
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn decreasing(&self) -> TestResult {
+        for k in 0..self.val.len() - 1 {
+            if self.val[k + 1] >= self.val[k] {
+                return self.raise(format!(
+                    "Non-decreasing vector values {:?} and {:?} at index {}",
+                    self.val[k],
+                    self.val[k + 1],
+                    k
+                ));
+            }
+        }
+        Ok(())
+    }
+    /// Test for constant-valued vectors
+    pub fn constant(&self, val: f64) -> TestResult {
+        for k in 0..self.val.len() {
+            if self.val[k] != val {
+                return self.raise(format!("Non-constant vector with value {} at index {}", self.val[k], k));
+            }
+        }
+        Ok(())
     }
 }
 

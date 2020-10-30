@@ -29,7 +29,7 @@ pub struct MosPorts<T> {
     pub s: T,
     pub b: T,
 }
-/// Index MosPorts by the `MosTerm` enum 
+/// Index MosPorts by the `MosTerm` enum
 impl<T> Index<MosTerm> for MosPorts<T> {
     type Output = T;
     fn index(&self, t: MosTerm) -> &T {
@@ -41,7 +41,7 @@ impl<T> Index<MosTerm> for MosPorts<T> {
         }
     }
 }
-/// Very fun conversion from four-element arrays into MosPorts of `From`-able types. 
+/// Very fun conversion from four-element arrays into MosPorts of `From`-able types.
 impl<S, T: Clone + Into<S>> From<[T; 4]> for MosPorts<S> {
     fn from(n: [T; 4]) -> MosPorts<S> {
         return MosPorts {
@@ -52,8 +52,8 @@ impl<S, T: Clone + Into<S>> From<[T; 4]> for MosPorts<S> {
         };
     }
 }
-/// Even more fun conversion from four-element tuples into MosPorts of `From`-able types. 
-/// Note in this case, each of the four elements can be of distinct types. 
+/// Even more fun conversion from four-element tuples into MosPorts of `From`-able types.
+/// Note in this case, each of the four elements can be of distinct types.
 impl<S, T: Clone + Into<S>, U: Clone + Into<S>, V: Clone + Into<S>, W: Clone + Into<S>> From<(T, U, V, W)> for MosPorts<S> {
     fn from(n: (T, U, V, W)) -> MosPorts<S> {
         return MosPorts {
@@ -254,6 +254,7 @@ struct Mos1OpPoint {
     //    ibd: f64,
     //    ibs: f64,
     vgs: f64,
+    vds: f64,
     vgd: f64,
     vgb: f64,
     //    vds: f64,
@@ -359,48 +360,45 @@ impl Mos1 {
             ..Default::default()
         }
     }
-}
-
-impl Component for Mos1 {
-    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        for t1 in [G, D, S, B].iter() {
-            for t2 in [G, D, S, B].iter() {
-                self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
-            }
+    /// Gather the voltages on each of our node-variables from `Variables` `guess`.
+    fn vs(&self, vars: &Variables<f64>) -> MosPorts<f64> {
+        MosPorts {
+            g: vars.get(self.ports[G]),
+            d: vars.get(self.ports[D]),
+            s: vars.get(self.ports[S]),
+            b: vars.get(self.ports[B]),
         }
     }
-    /// Load our last guess as the new operating point
-    fn commit(&mut self) {
-        self.op = self.guess.clone();
-    }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        let vg = guess.get(self.ports[G]);
-        let vd = guess.get(self.ports[D]);
-        let vs = guess.get(self.ports[S]);
-        let vb = guess.get(self.ports[B]);
-
+    /// Primary action behind dc & transient loading.
+    /// Returns calculated "guess" operating point, plus matrix stamps
+    fn op_stamp(&self, v: MosPorts<f64>, an: &AnalysisInfo) -> (Mos1OpPoint, Stamps<f64>) {
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
         // i.e. the polarities typically expressed for NMOS
         let p = self.model.mos_type.p();
-        let vds1 = p * (vd - vs);
-        let reversed = vds1 < 0.0;
+        let reversed = p * (v.d - v.s) < 0.0;
+        
         // FIXME: add inter-step limiting
-        let vgs = if reversed { p * (vg - vd) } else { p * (vg - vs) };
-        let vds = if reversed { -vds1 } else { vds1 };
-        let vsb = if reversed { vd - vb } else { vs - vb };
-        let vdb = if reversed { vs - vb } else { vd - vb };
+        let (vd, vs) = if reversed { (v.s, v.d) } else { (v.d, v.s) };
+        let vgs = p * (v.g - vs);
+        let vgd = p * (v.g - vd);
+        let vds = p * (vd - vs);
+        let vgb = p * (v.g - v.b);
+        // Same for bulk junction diodes - polarities such that more `vsb`, `vdb` = more *reverse* bias.
+        let vsb = p * (vs - v.b);
+        let vdb = p * (vd - v.b);
 
+        // Threshold & body effect calcs
         let von = if vsb > 0.0 {
             self.intparams.vt_t + self.model.gamma * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
         } else {
             self.intparams.vt_t // FIXME: body effect for Vsb < 0
         };
-
         let vov = vgs - von;
         let vdsat = vov.max(0.0);
 
-        // Cutoff values
+        // Drain current & its g-derivatives
+        // Default to cutoff values
         let mut ids = 0.0;
         let mut gm = 0.0;
         let mut gds = 0.0;
@@ -425,7 +423,7 @@ impl Component for Mos1 {
         }
 
         // Bulk Junction Diodes
-        let gmin_temp = 1e-9; // FIXME: get from the circuit. Also failing for smaller values.
+        let gmin_temp = 1e-15; // FIXME: get from the circuit
         let (isat_bs, isat_bd, vtherm) = (self.intparams.isat_bs, self.intparams.isat_bd, self.intparams.vtherm);
         // Source-Bulk
         let ibs = isat_bs * ((-vsb / vtherm).exp() - 1.0);
@@ -435,7 +433,6 @@ impl Component for Mos1 {
         let ibd = isat_bd * ((-vdb / vtherm).exp() - 1.0);
         let gbd = (isat_bd / vtherm) * (-vdb / vtherm).exp() + gmin_temp;
         let ibd_rhs = ibd + vdb * gbd;
-
         // let (gsb, isb) = if vsb > 0.0 {
         //     // Reverse Bias
         //     // Not buying this "linear reverse bias" shortcut from SPICE yet.
@@ -479,43 +476,47 @@ impl Component for Mos1 {
         // Now start incorporating past history
         // FIXME: gotta sort out swaps in polarity between time-points
         // FIXME: this isnt quite right as we move from OP into first TRAN point. hacking that for now
-        let cgs2 = if self.op.cgs == 0.0 { cgs1 } else { self.op.cgs };
+        let cgs2 = if self.op.cgs == 0.0 {
+            // This is the fake initial-time check to be cleaned
+            cgs1
+        } else if reversed == self.op.reversed {
+            self.op.cgs
+        } else {
+            self.op.cgd
+        };
         let cgs = cgs1 + cgs2 + self.intparams.cgs_ov;
-        let cgd = cgd1 + self.op.cgd + self.intparams.cgd_ov;
-        let cgb = cgb1 + self.op.cgb + self.intparams.cgb_ov;
+        let cgd = cgd1 + self.intparams.cgd_ov + if reversed == self.op.reversed { self.op.cgd } else { self.op.cgs };
+        let cgb = cgb1 + self.intparams.cgb_ov + self.op.cgb;
 
-        let vgd = vgs - vds;
-        let vgb = vgs + vsb;
-
-        let vgs1 = self.op.vgs;
-        let vgd1 = self.op.vgd;
-        let vgb1 = self.op.vgb;
-        let qgs = (vgs - vgs1) * cgs + self.op.qgs;
-        let qgd = (vgd - vgd1) * cgd + self.op.qgd;
-        let qgb = (vgb - vgb1) * cgb + self.op.qgb;
-
-        //        let (mut icgs, mut icgd, icgb) = (0.0, 0.0, 0.0);
-        //        let (mut gcgs, mut gcgd, gcgb) = (0.0, 0.0, 0.0);
-        //        let (mut _rhsgs, mut _rhsgd, _rhsgb) = (0.0, 0.0, 0.0);
-
+        // Numerical integrations for cap currents and impedances
         let (gcgs, icgs, rhsgs) = if let AnalysisInfo::TRAN(_, state) = an {
-            state.integrate(qgs - self.op.qgs, cgs, vgs, self.op.icgs)
+            let dqgs = if reversed == self.op.reversed {
+                (vgs - self.op.vgs) * cgs
+            } else {
+                (vgs - self.op.vgd) * cgs
+            };
+            let ip = if reversed == self.op.reversed { self.op.icgs } else { self.op.icgd };
+            state.integrate(dqgs, cgs, vgs, ip)
         } else {
             (0.0, 0.0, 0.0)
         };
         let (gcgd, icgd, rhsgd) = if let AnalysisInfo::TRAN(_, state) = an {
-            state.integrate(qgd - self.op.qgd, cgd, vgd, self.op.icgd)
+            let dqgd = if reversed == self.op.reversed {
+                (vgd - self.op.vgd) * cgd
+            } else {
+                (vgd - self.op.vgs) * cgd
+            };
+            let ip = if reversed == self.op.reversed { self.op.icgd } else { self.op.icgs };
+            state.integrate(dqgd, cgd, vgd, ip)
         } else {
             (0.0, 0.0, 0.0)
         };
         let (gcgb, icgb, rhsgb) = if let AnalysisInfo::TRAN(_, state) = an {
-            state.integrate(qgd - self.op.qgd, cgd, vgd, self.op.icgd)
+            let dqgb = (vgb - self.op.vgb) * cgb;
+            state.integrate(dqgb, cgb, vgb, self.op.icgb)
         } else {
             (0.0, 0.0, 0.0)
         };
-        //            icgs += -gcgs * vgs - 2.0 * qgs / THE_TIMESTEP;
-        //            icgd += -gcgd * vgd - 2.0 * qgd / THE_TIMESTEP;
-        //            icgb += -gcgd * vgb - 2.0 * qgb / THE_TIMESTEP;
 
         // FIXME: bulk junction diodes
         let cbs = 0.0;
@@ -524,20 +525,20 @@ impl Component for Mos1 {
         // let gbs = 1e-9;
         let gcbd = 0.0;
         let gcbs = 0.0;
-        let gcbg = 0.0;
 
         // Store as our op point for next time
-        self.guess = Mos1OpPoint {
+        let guess = Mos1OpPoint {
             ids,
             vgs,
+            vds,
             vgd,
             vgb,
             cgs: cgs1,
             cgd: cgd1,
             cgb: cgb1,
-            qgs,
-            qgd,
-            qgb,
+            qgs: 0.0, // FIXME: unused
+            qgd: 0.0,
+            qgb: 0.0,
             icgs,
             icgd,
             icgb,
@@ -559,7 +560,7 @@ impl Component for Mos1 {
         let grd = self.intparams.grd;
         let grs = self.intparams.grs;
         // And finally send back our matrix contributions
-        return Stamps {
+        let stamps = Stamps {
             g: vec![
                 (self.matps[(dr, dr)], gds + grd + gbd + gcgd),
                 (self.matps[(sr, sr)], gm + gds + grs + gbs + gmbs + gcgs),
@@ -572,8 +573,7 @@ impl Component for Mos1 {
                 (self.matps[(G, B)], -gcgb),
                 (self.matps[(G, dr)], -gcgd),
                 (self.matps[(G, sr)], -gcgs),
-                (self.matps[(B, G)], -gcbg),
-                (self.matps[(G, dr)], -gcgd),
+                (self.matps[(B, G)], -gcgb),
                 (self.matps[(B, dr)], -gbd),
                 (self.matps[(B, sr)], -gbs),
                 (self.matps[(dr, B)], -gbd + gmbs),
@@ -586,17 +586,38 @@ impl Component for Mos1 {
                 (self.matps[(sx, sx)], grs),
             ],
             b: vec![
-                (self.ports[dr], -p * irhs + ibd_rhs + p * rhsgd),
-                (self.ports[sr], p * irhs + ibs_rhs + p * rhsgs),
+                (self.ports[dr], p * (-irhs + ibd_rhs + rhsgd)),
+                (self.ports[sr], p * (irhs + ibs_rhs + rhsgs)),
                 (self.ports[G], -p * (rhsgs + rhsgb + rhsgd)),
-                (self.ports[B], -(ibd_rhs + ibs_rhs - p * rhsgb)),
+                (self.ports[B], -p * (ibd_rhs + ibs_rhs - rhsgb)),
             ],
         };
+        (guess, stamps)
+    }
+}
+
+impl Component for Mos1 {
+    fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+        for t1 in [G, D, S, B].iter() {
+            for t2 in [G, D, S, B].iter() {
+                self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
+            }
+        }
+    }
+    fn commit(&mut self) {
+        // Load our last guess as the new operating point
+        self.op = self.guess.clone();
+    }
+    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+        let v = self.vs(vars); // Collect terminal voltages
+        let (op, stamps) = self.op_stamp(v, an); // Do most of our work here
+        self.guess = op; // Save the calculated operating point
+        stamps // And return our matrix stamps
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
         // Grab the frequency-variable from our analysis
         let omega = match an {
-            AnalysisInfo::AC(opts, state) => state.omega,
+            AnalysisInfo::AC(_opts, state) => state.omega,
             _ => panic!("Invalid AC AnalysisInfo"),
         };
 
