@@ -1,6 +1,8 @@
 /// "Integration" Tests
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::analysis::*;
     use crate::assert::*;
     use crate::circuit::NodeRef::{Gnd, Name, Num};
@@ -17,7 +19,7 @@ mod tests {
         ]);
         Ok(())
     }
-
+    /// R-Only DCOP
     #[test]
     fn test_dcop1() -> TestResult {
         let ckt = Ckt::from_comps(vec![Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)]);
@@ -26,7 +28,7 @@ mod tests {
         assert_eq!(soln.values, vec![0.0]);
         Ok(())
     }
-
+    /// I-R DCOP
     #[test]
     fn test_dcop2() -> TestResult {
         let ckt = Ckt::from_comps(vec![
@@ -38,10 +40,9 @@ mod tests {
         assert_eq!(soln.values, vec![1.0,]);
         Ok(())
     }
-
+    /// I - R - R divider
     #[test]
     fn test_dcop3() -> TestResult {
-        // I - R - R divider
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
             Comp::R(1e-3, NodeRef::Num(1), NodeRef::Num(0)),
@@ -460,7 +461,6 @@ mod tests {
         assert!((soln[2] - 1e-3).abs() < 0.1e-3);
         Ok(())
     }
-
     /// Mos0 CMOS Inverter DC-Op, Vin=Vdd
     #[test]
     fn test_dcop11() -> TestResult {
@@ -496,7 +496,6 @@ mod tests {
         assert(soln.values).eq(vec![0.0, 1.0, 0.0])?;
         Ok(())
     }
-
     /// Mos0 CMOS Inverter DC-Op, Vin=Vss
     #[test]
     fn test_dcop11b() -> TestResult {
@@ -532,10 +531,9 @@ mod tests {
         assert(soln.values).eq(vec![1.0, 1.0, 0.0])?;
         Ok(())
     }
-
+    /// DCOP, Several Series CMOS Inverters
     #[test]
     fn test_dcop12() -> TestResult {
-        // Several CMOS Inverters
         use NodeRef::{Gnd, Num};
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-9, Num(0), Gnd),
@@ -655,7 +653,6 @@ mod tests {
     // RC High-Pass Filter DcOp
     #[test]
     fn test_dcop13b() -> TestResult {
-        use NodeRef::{Gnd, Num};
         let ckt = Ckt::from_comps(vec![
             Comp::C(1e-9, n("i"), n("o")),
             Comp::R(1e-3, n("o"), Gnd),
@@ -670,7 +667,7 @@ mod tests {
     /// RC Low-Pass Filter Tran
     #[test]
     fn test_tran1() -> TestResult {
-        // Circuit 
+        // Circuit
         let ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("inp"), Gnd),
             Comp::R(1e-3, n("inp"), n("out")),
@@ -683,12 +680,12 @@ mod tests {
             ic: vec![(n("out"), 0.0)],
         };
         let soln = tran(ckt, opts)?;
-        // Checks 
+        // Checks
         let inp = soln.get("inp")?;
         assert(inp).is().constant(1.0)?;
         let out = soln.get("out")?;
         assert(out[0]).abs().lt(1e-3)?;
-        assert(out[out.len()-1]).isclose(1.0, 1e-3)?;
+        assert(out[out.len() - 1]).isclose(1.0, 1e-3)?;
         assert(out).is().increasing()?;
         Ok(())
     }
@@ -747,13 +744,13 @@ mod tests {
 
     /// Mos0 Ring Oscillator (a very fast one)
     #[test]
-    fn test_tran3() -> TestResult {
+    fn test_mos0_cmos_ro_tran() -> TestResult {
         let opts = TranOptions {
             tstep: 1e-50, // Told you its fast
             tstop: 1e-47, // See?
             ic: vec![(Num(1), 0.0)],
         };
-        let c = 2.5e-50; // Yeah especially this part 
+        let c = 2.5e-50; // Yeah especially this part
         let ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, Num(0), Gnd),
             Comp::R(1e-3, Num(0), Gnd),
@@ -824,13 +821,13 @@ mod tests {
             Comp::R(1e-9, Num(3), Gnd),
             Comp::C(c, Num(3), Gnd),
         ]);
-        // Simulate 
+        // Simulate
         let soln = tran(ckt, opts)?;
-        
-        // FIXME: dream up some checks
+        // Checks
+        let golden = load_golden("test_mos0_cmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6)?;
         Ok(())
     }
-
     #[test]
     fn test_mos1_op() -> TestResult {
         let model = Mos1Model::default();
@@ -892,7 +889,6 @@ mod tests {
     /// Mos1 Inverter DCOP
     #[test]
     fn test_mos1_inv_dcop() -> TestResult {
-
         let nmos = Mos1Model::default();
         let pmos = Mos1Model {
             mos_type: MosType::PMOS,
@@ -927,12 +923,12 @@ mod tests {
             Comp::R(1e-4, Num(1), Gnd),
         ]);
         let soln = dcop(ckt)?;
+        // FIXME: checks
         Ok(())
     }
-
-    /// Mos1 Ring Oscillator Dc Op
+    /// Mos1 CMOS Ring Oscillator Dc Op
     #[test]
-    fn test_mos1_ro_dcop() -> TestResult {
+    fn test_mos1_cmos_ro_dcop() -> TestResult {
         let nmos = Mos1Model::default();
         let pmos = Mos1Model {
             mos_type: MosType::PMOS,
@@ -1019,11 +1015,9 @@ mod tests {
         }
         Ok(())
     }
-
     /// Mos1 CMOS Ring Oscillator Tran
     #[test]
     fn test_mos1_cmos_ro_tran() -> TestResult {
-
         let nmos = Mos1Model::default();
         let pmos = Mos1Model {
             mos_type: MosType::PMOS,
@@ -1108,7 +1102,10 @@ mod tests {
             ic: vec![(Num(1), 0.0)],
         };
         let soln = tran(ckt, opts)?;
-        // FIXME: dream up some checks
+        // to_file(&soln, "test_mos1_cmos_ro_tran.json"); // Writes new golden data
+        // Checks
+        let golden = load_golden("test_mos1_cmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6);
         Ok(())
     }
 
@@ -1117,13 +1114,7 @@ mod tests {
     fn test_mos1_nmos_ro_tran() -> TestResult {
         let nmos = Mos1Model::default();
         let params = Mos1InstanceParams::default();
-        use NodeRef::{Gnd, Num};
 
-        let opts = TranOptions {
-            tstep: 1e-11,
-            tstop: 1e-8,
-            ic: vec![(Num(1), 0.0)],
-        };
         let gl = 1e-6;
         let ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
@@ -1164,10 +1155,17 @@ mod tests {
             Comp::R(gl, Num(2), n("vdd")),
             Comp::R(gl, Num(3), n("vdd")),
         ]);
-
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-11,
+            tstop: 1e-8,
+            ic: vec![(Num(1), 0.0)],
+        };
         let soln = tran(ckt, opts)?;
-
-        // FIXME: dream up some checks
+        // to_file(&soln, "test_mos1_nmos_ro_tran.json"); // Writes new golden data
+        // Checks
+        let golden = load_golden("test_mos1_nmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6);
         Ok(())
     }
 
@@ -1179,13 +1177,7 @@ mod tests {
             ..Mos1Model::default()
         };
         let params = Mos1InstanceParams::default();
-        use NodeRef::{Gnd, Num};
 
-        let opts = TranOptions {
-            tstep: 1e-11,
-            tstop: 1e-8,
-            ic: vec![(Num(1), 0.0)],
-        };
         let cl = 1e-16;
         let gl = 1e-6;
         let ckt = Ckt::from_comps(vec![
@@ -1230,10 +1222,17 @@ mod tests {
             Comp::C(cl, Num(2), Gnd),
             Comp::C(cl, Num(3), Gnd),
         ]);
-
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-11,
+            tstop: 1e-8,
+            ic: vec![(Num(1), 0.0)],
+        };
         let soln = tran(ckt, opts)?;
-
-        // FIXME: dream up some checks
+        // to_file(&soln, "test_mos1_pmos_ro_tran.json"); // Writes new golden data
+        // Checks
+        let golden = load_golden("test_mos1_pmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6);
         Ok(())
     }
 
@@ -1269,14 +1268,14 @@ mod tests {
             ic: vec![(n("inp"), 0.0)],
         };
         let soln = tran(ckt, opts)?;
-        // Checks 
+        // Checks
         let inp = soln.get("inp")?;
         assert(inp[0]).isclose(0.0, 1e-6)?;
-        assert(inp[inp.len()-1]).isclose(1.0, 5e-3)?;
-        assert(inp).is().nondecreasing()?; 
+        assert(inp[inp.len() - 1]).isclose(1.0, 5e-3)?;
+        assert(inp).is().nondecreasing()?;
         let out = soln.get("out")?;
         assert(out[0] - 1.0).abs().le(0.1)?;
-        assert(out[out.len()-1]).abs().le(1e-3)?;
+        assert(out[out.len() - 1]).abs().le(1e-3)?;
         // assert(out).is().decreasing()?; // FIXME: time step 0-1 increases slightly
         Ok(())
     }
@@ -1313,14 +1312,13 @@ mod tests {
         ]);
         // Simulate
         let soln = tran(ckt, opts)?;
-        // Checks 
+        // Checks
         let g = soln.get("g")?;
         assert(g[0]).isclose(-1.0, 1e-3)?;
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
-
-    // Mos1 NMOS-R Tran
+    /// Mos1 NMOS-R Tran
     #[test]
     fn test_mos1_nmos_rg_tran() -> TestResult {
         let nmos = Mos1Model {
@@ -1328,7 +1326,6 @@ mod tests {
             ..Mos1Model::default()
         };
         let params = Mos1InstanceParams::default();
-        use NodeRef::{Gnd, Num};
 
         let opts = TranOptions {
             tstep: 1e-11,
@@ -1352,20 +1349,34 @@ mod tests {
         ]);
         // Simulate
         let soln = tran(ckt, opts)?;
-        // Checks 
+        // Checks
         let g = soln.get("g")?;
         assert(g[0]).isclose(1.0, 1e-3)?;
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
-    /// Test-helper to write results to JSON file 
-    fn to_file(soln: &TranResult) -> SpResult<()> {
+    /// Test-helper to write results to JSON file
+    fn to_file(soln: &TranResult, fname: &str) -> SpResult<()> {
         use serde::ser::{SerializeSeq, Serializer};
         use std::fs::File;
         use std::io::prelude::*;
-        let mut rfj = File::create("tran.json").unwrap(); // FIXME: name
+        let mut rfj = File::create(fname).unwrap();
         let s = serde_json::to_string(&soln.map).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         Ok(())
+    }
+    /// Read golden results
+    fn load_golden(fname: &str) -> HashMap<String, Vec<f64>> {
+        use std::fs::File;
+        use std::io::BufReader;
+        use std::path::PathBuf;
+
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("resources/");
+        d.push(fname);
+        let file = File::open(d).unwrap();
+        let reader = BufReader::new(file);
+        let golden: HashMap<String, Vec<f64>> = serde_json::from_reader(reader).unwrap();
+        golden
     }
 }

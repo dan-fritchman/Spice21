@@ -2,7 +2,9 @@
 //! Assertion-Based Debugging Utilities
 //!
 use super::spresult::{sperror, TestResult};
+use std::collections::HashMap;
 use std::fmt::Debug;
+use std::hash::Hash;
 
 pub struct Assert<T> {
     val: T,
@@ -82,9 +84,9 @@ impl Assert<f64> {
     }
 }
 impl Assert<&Vec<f64>> {
-    /// Last value in vector 
+    /// Last value in vector
     pub fn last(&self) -> Assert<f64> {
-        assert(self.val[self.val.len()-1])
+        assert(self.val[self.val.len() - 1])
     }
     /// Tests that a vector is strictly increasing,
     /// i.e. that each element k is > element k-1.
@@ -132,6 +134,29 @@ impl Assert<&Vec<f64>> {
         for k in 0..self.val.len() {
             if self.val[k] != val {
                 return self.raise(format!("Non-constant vector with value {} at index {}", self.val[k], k));
+            }
+        }
+        Ok(())
+    }
+}
+fn keys_match<T: Eq + Hash, U, V>(map1: &HashMap<T, U>, map2: &HashMap<T, V>) -> bool {
+    map1.len() == map2.len() && map1.keys().all(|k| map2.contains_key(k))
+}
+impl Assert<&HashMap<String, Vec<f64>>> {
+    pub fn isclose(&self, other: HashMap<String, Vec<f64>>, tol: f64) -> TestResult {
+        if !keys_match(self.val, &other) {
+            return self.raise("HashMap keys do not match");
+        }
+        for key in self.val.keys() {
+            let s = self.val.get(key).unwrap();
+            let o = other.get(key).unwrap();
+            if s.len() != o.len() {
+                return self.raise("Mismatched Vector Length");
+            }
+            for i in 0..s.len() {
+                if (s[i] - o[i]).abs() > tol {
+                    return self.raise(format!("Assert IsClose Failed: abs({:?} - {:?}) > {:?}", s[i], o[i], tol));
+                }
             }
         }
         Ok(())
