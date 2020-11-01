@@ -5010,7 +5010,7 @@ mod tests {
     fn test_bsim4_load() -> TestResult {
         // Create & retrieve model & instance params, the normal way
         let mut cache = Bsim4Cache::new();
-        cache.add_model(Bsim4ModelSpecs::new("default", MosType::NMOS));
+        cache.add_model(Bsim4ModelSpecs_new("default", MosType::NMOS));
         cache.add_inst(Bsim4InstSpecs::default());
         let (model, inst) = cache.get(&"default".to_string(), &"".to_string()).ok_or(sperror("Model Not Found"))?;
 
@@ -5055,7 +5055,7 @@ mod tests {
             b: NodeRef::Gnd,
         };
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("default", MosType::NMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs_new("default", MosType::NMOS));
         ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {
@@ -5084,7 +5084,7 @@ mod tests {
         use NodeRef::Gnd;
 
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("pmos", MosType::PMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs_new("pmos", MosType::PMOS));
         ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {
@@ -5113,8 +5113,8 @@ mod tests {
         use NodeRef::Gnd;
 
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("nmos", MosType::NMOS));
-        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("pmos", MosType::PMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs_new("nmos", MosType::NMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs_new("pmos", MosType::PMOS));
         ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {
@@ -5155,8 +5155,8 @@ mod tests {
         use NodeRef::Gnd;
 
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("nmos", MosType::NMOS));
-        ckt.models.bsim4.add_model(Bsim4ModelSpecs::new("pmos", MosType::PMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs_new("nmos", MosType::NMOS));
+        ckt.models.bsim4.add_model(Bsim4ModelSpecs_new("pmos", MosType::PMOS));
         ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {

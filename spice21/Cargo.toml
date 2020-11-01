@@ -1,25 +1,21 @@
 [package]
-name = "spice21"
-version = "0.1.4"
 authors = [
-    "Dan Fritchman <dan@fritch.mn>",
-    "HW21 <hw21@hw21.io>"
+  "Dan Fritchman <dan@fritch.mn>",
+  "HW21 <hw21@hw21.io>",
 ]
+description = "Coming Soon"
 edition = "2018"
 license = "BSD-3-Clause"
-description = "Coming Soon"
+name = "spice21"
+version = "0.1.4"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-# serde_yaml = "0.8"
-serde_derive = "1.0.88"
 bytes = "0.5.4"
 prost = "0.6.1"
 prost-types = "0.6.1"
-num = {version="0.3.0", features=["serde"]}
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+# serde_yaml = "0.8"
 enum_dispatch = "0.3.1"
-
-[build-dependencies]
-prost-build = "0.6.1"
-serde_derive = "1.0.88"
+num = {version = "0.3.0", features = ["serde"]}
+spice21protos = {version = "0.1.4", path = "../spice21protos"}
