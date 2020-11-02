@@ -248,7 +248,9 @@ impl Ckt {
                     models.bsim4.add_inst(x);
                 }
                 DefProto::Bsim4model(x) => {
-                    models.bsim4.add_model(x);
+                    use crate::comps::bsim4::Bsim4ModelSpecs;
+                    let specs = Bsim4ModelSpecs::from(&x);
+                    models.bsim4.add_model(&x.name, specs);
                 }
                 DefProto::Mos1model(x) => {
                     models.mos1.models.insert(x.name.clone(), x);

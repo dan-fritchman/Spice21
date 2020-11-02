@@ -11,11 +11,7 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
 
     let tnom = 300.15; // FIXME: from ckt->CKTnomTemp
 
-    // MosType NMOS vs PMOS, from protobuf-style integer enum 
-    vals.mos_type = match specs.mos_type {
-        1 => PMOS,
-        _ => NMOS,
-    };
+    vals.mos_type = if let Some(val) = specs.mos_type { val } else { NMOS };
 
     // Model Modes
     vals.mobmod = if let Some(val) = specs.mobmod { val as usize } else { 0 };
@@ -507,7 +503,6 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.tpbsw = if let Some(val) = specs.tpbsw { val } else { 0.0 };
     vals.tcjswg = if let Some(val) = specs.tcjswg { val } else { 0.0 };
     vals.tpbswg = if let Some(val) = specs.tpbswg { val } else { 0.0 };
-
     /* Length dependence */
     vals.lcdsc = if let Some(val) = specs.lcdsc { val } else { 0.0 };
     vals.lcdscb = if let Some(val) = specs.lcdscb { val } else { 0.0 };
@@ -1028,18 +1023,19 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.pmoin = if let Some(val) = specs.pmoin { val } else { 0.0 };
     vals.pnoff = if let Some(val) = specs.pnoff { val } else { 0.0 };
     vals.pvoffcv = if let Some(val) = specs.pvoffcv { val } else { 0.0 };
-    vals.gamma1 = if let Some(val) = specs.gamma1 { val } else { 0.0 };
     vals.lgamma1 = if let Some(val) = specs.lgamma1 { val } else { 0.0 };
     vals.wgamma1 = if let Some(val) = specs.wgamma1 { val } else { 0.0 };
     vals.pgamma1 = if let Some(val) = specs.pgamma1 { val } else { 0.0 };
-    vals.gamma2 = if let Some(val) = specs.gamma2 { val } else { 0.0 };
     vals.lgamma2 = if let Some(val) = specs.lgamma2 { val } else { 0.0 };
     vals.wgamma2 = if let Some(val) = specs.wgamma2 { val } else { 0.0 };
     vals.pgamma2 = if let Some(val) = specs.pgamma2 { val } else { 0.0 };
-    vals.vbx = if let Some(val) = specs.vbx { val } else { 0.0 };
     vals.lvbx = if let Some(val) = specs.lvbx { val } else { 0.0 };
     vals.wvbx = if let Some(val) = specs.wvbx { val } else { 0.0 };
     vals.pvbx = if let Some(val) = specs.pvbx { val } else { 0.0 };
+
+    vals.vbx = if let Some(val) = specs.vbx { val } else { 0.0 };
+    vals.gamma1 = if let Some(val) = specs.gamma1 { val } else { 0.0 };
+    vals.gamma2 = if let Some(val) = specs.gamma2 { val } else { 0.0 };
 
     vals.tnom = if let Some(val) = specs.tnom { val } else { tnom };
     vals.lint = if let Some(val) = specs.lint { val } else { 0.0 };

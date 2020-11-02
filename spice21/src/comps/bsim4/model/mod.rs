@@ -1,6 +1,7 @@
 pub(crate) mod vals;
+pub(crate) use super::bsim4defs::Bsim4ModelSpecs;
 pub(crate) use super::bsim4defs::Bsim4ModelVals;
-pub(crate) use crate::proto::Bsim4Model as Bsim4ModelSpecs;
+pub(crate) use crate::proto::Bsim4Model as Bsim4ModelProto;
 pub(crate) use vals::*;
 
 use crate::comps::mos::MosType;
@@ -8,10 +9,19 @@ use crate::comps::mos::MosType;
 impl Bsim4ModelSpecs {
     /// Create a new Bsim4Model of MosType `t`.
     /// All other parameters take on their default values
-    pub(crate) fn new<S: Into<String>>(name: S, t: MosType) -> Self {
+    pub(crate) fn new (t: MosType) -> Self {
         Self {
-            name: name.into(),
-            mos_type: t as i32, // Convert into protobuf's enum repr, which is just i32
+            mos_type: Some(t), 
+            ..Default::default()
+        }
+    }
+    pub(crate) fn from(proto: &Bsim4ModelProto) -> Self {
+        let mos_type = match proto.mos_type {
+            1 => MosType::PMOS,
+            _ => MosType::NMOS,
+        };
+        Self {
+            mos_type:Some(mos_type),
             ..Default::default()
         }
     }

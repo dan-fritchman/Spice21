@@ -58,8 +58,8 @@ impl Bsim4Cache {
             cache: HashMap::new(),
         }
     }
-    pub(crate) fn add_model(&mut self, specs: Bsim4ModelSpecs) {
-        self.models.insert(specs.name.clone(), specs);
+    pub(crate) fn add_model(&mut self, name:&str, specs: Bsim4ModelSpecs) {
+        self.models.insert(name.to_string(), specs);
     }
     pub(crate) fn add_inst(&mut self, inst: Bsim4InstSpecs) {
         self.insts.insert(inst.name.clone(), inst);

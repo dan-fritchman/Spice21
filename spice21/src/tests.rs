@@ -690,6 +690,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_tran2() -> TestResult {
         // I-C Integrator, with Initial Condition
         use NodeRef::{Gnd, Num};
