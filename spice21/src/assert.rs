@@ -49,39 +49,6 @@ impl<T: PartialOrd + Debug> Assert<T> {
             Ok(())
         }
     }
-    pub fn lt(&self, other: T) -> TestResult {
-        if self.val >= other {
-            self.raise(format!("Assert Lt Failed: {:?} >= {:?}", self.val, other))
-        } else {
-            Ok(())
-        }
-    }
-    pub fn ge(&self, other: T) -> TestResult {
-        if self.val < other {
-            self.raise(format!("Assert Geq Failed: {:?} < {:?}", self.val, other))
-        } else {
-            Ok(())
-        }
-    }
-    pub fn le(&self, other: T) -> TestResult {
-        if self.val > other {
-            self.raise(format!("Assert Leq Failed: {:?} > {:?}", self.val, other))
-        } else {
-            Ok(())
-        }
-    }
-}
-impl Assert<f64> {
-    pub fn abs(self) -> Assert<f64> {
-        Assert { val: self.val.abs() }
-    }
-    pub fn isclose(&self, other: f64, tol: f64) -> TestResult {
-        if (self.val - other).abs() > tol {
-            self.raise(format!("Assert IsClose Failed: abs({:?} - {:?}) > {:?}", self.val, other, tol))
-        } else {
-            Ok(())
-        }
-    }
 }
 impl Assert<&Vec<f64>> {
     /// Last value in vector
@@ -151,7 +118,7 @@ impl Assert<&HashMap<String, Vec<f64>>> {
             let s = self.val.get(key).unwrap();
             let o = other.get(key).unwrap();
             if s.len() != o.len() {
-                return self.raise("Mismatched Vector Length");
+                return self.raise(format!("Mismatched Vector Lengths {} vs {} for Signal {}", s.len(), o.len(), key));
             }
             for i in 0..s.len() {
                 if (s[i] - o[i]).abs() > tol {
@@ -167,6 +134,41 @@ impl Assert<&HashMap<String, Vec<f64>>> {
 mod tests {
     use super::*;
 
+    impl<T: PartialOrd + Debug> Assert<T> {
+        pub fn lt(&self, other: T) -> TestResult {
+            if self.val >= other {
+                self.raise(format!("Assert Lt Failed: {:?} >= {:?}", self.val, other))
+            } else {
+                Ok(())
+            }
+        }
+        pub fn ge(&self, other: T) -> TestResult {
+            if self.val < other {
+                self.raise(format!("Assert Geq Failed: {:?} < {:?}", self.val, other))
+            } else {
+                Ok(())
+            }
+        }
+        pub fn le(&self, other: T) -> TestResult {
+            if self.val > other {
+                self.raise(format!("Assert Leq Failed: {:?} > {:?}", self.val, other))
+            } else {
+                Ok(())
+            }
+        }
+    }
+    impl Assert<f64> {
+        pub fn abs(self) -> Assert<f64> {
+            Assert { val: self.val.abs() }
+        }
+        pub fn isclose(&self, other: f64, tol: f64) -> TestResult {
+            if (self.val - other).abs() > tol {
+                self.raise(format!("Assert IsClose Failed: abs({:?} - {:?}) > {:?}", self.val, other, tol))
+            } else {
+                Ok(())
+            }
+        }
+    }
     #[test]
     fn test_eq() -> TestResult {
         assert(5).eq(5)

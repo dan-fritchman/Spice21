@@ -1,5 +1,5 @@
-use super::bsim4defs::*;
 use super::*;
+use super::model::*;
 use crate::comps::consts::*;
 use crate::comps::mos::MosType;
 
@@ -26,7 +26,6 @@ pub(crate) fn from(
     let mut T7: f64;
     let mut T8: f64;
     let mut T9: f64;
-
 
     let mut Inv_L: f64;
     let mut Inv_W: f64;
@@ -120,8 +119,8 @@ pub(crate) fn from(
     intp.delvto = if let Some(val) = inst.delvto { val } else { 0.0 };
     // Modal instance params
     // FIXME: check ranges, or enum-ize
-    intp.min = if let Some(val) = inst.min { val } else { 0 };
-    intp.rgeomod = if let Some(val) = inst.rgeomod { val } else { 0 };
+    intp.min = if let Some(val) = inst.min { val as usize } else { 0 };
+    intp.rgeomod = if let Some(val) = inst.rgeomod { val as usize } else { 0 };
 
     // Also model parameters
     intp.rbdb = if let Some(val) = inst.rbdb { val } else { model.rbdb };
@@ -669,7 +668,7 @@ pub(crate) fn from(
             T4 = T3 + 2.0 * T1 * MIN_EXP;
             T5 = T1 / T4;
         } else {
-            T5 = 1.0 / (MAX_EXP - 2.0); 
+            T5 = 1.0 / (MAX_EXP - 2.0);
         }
         size_params.thetaRout = size_params.pdibl1 * T5 + size_params.pdibl2;
 
@@ -1374,7 +1373,6 @@ pub(crate) fn from(
             + size_params.weffCJ * intp.nf * model_derived.DjctGateSidewallTempSatCurDensity;
     }
     intp.DrainSatCurrent = DrainSatCurrent;
-    
 
     // FIXME: linking these two, or returning both
     // intp.size_params = size_params;
@@ -1749,6 +1747,5 @@ fn BSIM4RdseffGeo(nf: f64, geo: usize, rgeo: usize, minSD: usize, Weffcj: f64, R
         println!("Warning: Zero resistance returned from RdseffGeo\n");
     }
 
-    
     return rv;
 }

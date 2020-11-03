@@ -1005,6 +1005,5 @@ specgen! {
         (xtGiven, bool),
         (vbxGiven, bool),
         (phigGiven, bool),
-
     ],
 }

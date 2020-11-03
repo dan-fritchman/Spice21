@@ -1,6 +1,6 @@
 //!
-//! # Spice21 Python Bindings 
-//! 
+//! # Spice21 Python Bindings
+//!
 use std::collections::HashMap;
 
 use pyo3::exceptions::RuntimeError;
@@ -61,30 +61,36 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
 
     /// Transient
     #[pyfn(m, "_tran")]
-    fn tran_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, Vec<f64>>> {
+    fn tran_py(_py: Python, ckt_: &[u8], opts_: &[u8]) -> PyResult<HashMap<String, Vec<f64>>> {
         use spice21rs::analysis::{tran, TranOptions};
         // Decode the proto-encoded circuit
-        let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
-        let res = tran(ckt, TranOptions::default()).map_err(TempError::from)?;
+        let ckt = Ckt::decode(ckt_).map_err(TempError::from)?;
+        let opts = if opts_.len() > 0 {
+            TranOptions::decode(opts_).map_err(TempError::from)?
+        } else {
+            TranOptions::default()
+        };
+        println!("OPTS: {:?}", opts);
+        let res = tran(ckt, opts).map_err(TempError::from)?;
         Ok(res.map)
     }
 
-    /// AC Analysis 
+    /// AC Analysis
     #[pyfn(m, "_ac")]
     fn ac_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, Vec<(f64, f64)>>> {
         use spice21rs::analysis::{ac, AcOptions};
         // Decode the proto-encoded circuit
         let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
         let res = ac(ckt, AcOptions::default()).map_err(TempError::from)?;
-        // PyO3 doesn't quite understand Rust's complex numbers, so we decode a bit 
+        // PyO3 doesn't quite understand Rust's complex numbers, so we decode a bit
         let mut map: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
         for (name, vals) in &res.map {
             let mut v: Vec<(f64, f64)> = Vec::new();
-            for k in 0..vals.len(){
+            for k in 0..vals.len() {
                 v.push((vals[k].re, vals[k].im));
             }
             map.insert(name.to_string(), v);
-          }
+        }
         Ok(map)
     }
 

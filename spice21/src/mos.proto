@@ -1,0 +1,76 @@
+
+syntax = "proto3";
+package spice21;
+import "google/protobuf/wrappers.proto";
+
+enum MosType { NMOS = 0; PMOS = 1; }
+
+message MosPorts {
+  string d = 1; // Drain 
+  string g = 2; // Gate
+  string s = 3; // Source 
+  string b = 4; // Bulk
+}
+
+message Mos {
+  string name = 1; // Instance Name 
+  MosPorts ports = 2; // Port connections
+  string params = 3; // Instance parameter-set name
+  string model = 4; // Model Name
+}
+
+message Mos1InstParams { // Level One Model Instance Parameters
+  string name = 1;
+  google.protobuf.DoubleValue m = 2;
+  google.protobuf.DoubleValue l = 3;
+  google.protobuf.DoubleValue w = 4;
+  google.protobuf.DoubleValue a_d = 5;
+  google.protobuf.DoubleValue a_s = 6;
+  google.protobuf.DoubleValue pd = 7;
+  google.protobuf.DoubleValue ps = 8;
+  google.protobuf.DoubleValue nrd = 9;
+  google.protobuf.DoubleValue nrs = 10;
+  google.protobuf.DoubleValue temp = 11;
+  // Deprecated SPICE parameters 
+  // google.protobuf.DoubleValue dtemp = 12;
+  // bool off = 13;
+  // google.protobuf.DoubleValue icvds = 14;
+  // google.protobuf.DoubleValue icvgs = 15;
+  // google.protobuf.DoubleValue icvbs = 16;
+  // google.protobuf.DoubleValue ic = 17;
+}
+
+message Mos1Model { // Level One Model Parameters
+  string name = 1;
+  MosType mos_type = 2;
+  google.protobuf.DoubleValue vt0 = 3;
+  google.protobuf.DoubleValue kp = 4;
+  google.protobuf.DoubleValue gamma = 5;
+  google.protobuf.DoubleValue phi = 6;
+  google.protobuf.DoubleValue lambda = 7;
+  google.protobuf.DoubleValue rd = 8;
+  google.protobuf.DoubleValue rs = 9;
+  google.protobuf.DoubleValue cbd = 10;
+  google.protobuf.DoubleValue cbs = 11;
+  google.protobuf.DoubleValue is = 12;
+  google.protobuf.DoubleValue pb = 13;
+  google.protobuf.DoubleValue cgso = 14;
+  google.protobuf.DoubleValue cgdo = 15;
+  google.protobuf.DoubleValue cgbo = 16;
+  google.protobuf.DoubleValue rsh = 17;
+  google.protobuf.DoubleValue cj = 18;
+  google.protobuf.DoubleValue mj = 19;
+  google.protobuf.DoubleValue cjsw = 20;
+  google.protobuf.DoubleValue mjsw = 21;
+  google.protobuf.DoubleValue js = 22;
+  google.protobuf.DoubleValue tox = 23;
+  google.protobuf.DoubleValue ld = 24;
+  google.protobuf.DoubleValue u0 = 25;
+  google.protobuf.DoubleValue fc = 26;
+  google.protobuf.DoubleValue nsub = 27;
+  bool tpg = 28;
+  google.protobuf.DoubleValue nss = 29;
+  google.protobuf.DoubleValue tnom = 30;
+  google.protobuf.DoubleValue kf = 31;
+  google.protobuf.DoubleValue af = 32;
+}

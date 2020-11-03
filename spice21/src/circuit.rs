@@ -8,16 +8,16 @@
 //! * (b) Directly for testing or in Rust use-cases
 //!
 
+use std::collections::HashMap;
+
 use super::comps::{DiodeInstParams, DiodeModel};
 use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
+use super::proto::def::Defines as DefProto;
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
-use crate::SpResult;
-
-use crate::comps::bsim4::Bsim4InstSpecs;
+use crate::comps::bsim4::Bsim4Cache;
 use crate::comps::mos::MosPorts;
-
-use crate::comps::bsim4::Bsim4ModelCache;
+use crate::{SpError, SpResult};
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -26,9 +26,13 @@ pub enum NodeRef {
     Num(usize),
     Name(String),
 }
+use NodeRef::Gnd;
+
 /// Conversion to create Nodes from string-refs
 impl From<&str> for NodeRef {
-    fn from(f: &str) -> Self { n(f) }
+    fn from(f: &str) -> Self {
+        n(f)
+    }
 }
 /// Create a Node from anything convertible into String
 /// Empty string is a cardinal value for creating Gnd
@@ -88,13 +92,6 @@ impl Ds {
     }
 }
 
-pub struct Bsim4i {
-    pub(crate) name: String,
-    pub(crate) ports: MosPorts<NodeRef>,
-    pub(crate) model: String,
-    pub(crate) params: Bsim4InstSpecs,
-}
-
 pub struct Mos0i {
     pub(crate) name: String,
     pub(crate) mos_type: MosType,
@@ -102,9 +99,15 @@ pub struct Mos0i {
 }
 pub struct Mos1i {
     pub(crate) name: String,
-    pub(crate) model: Mos1Model,
-    pub(crate) params: Mos1InstanceParams,
     pub(crate) ports: MosPorts<NodeRef>,
+    pub(crate) model: String,
+    pub(crate) params: String,
+}
+pub struct Bsim4i {
+    pub(crate) name: String,
+    pub(crate) ports: MosPorts<NodeRef>,
+    pub(crate) model: String,
+    pub(crate) params: String,
 }
 
 /// Component Enum.
@@ -132,7 +135,7 @@ impl Comp {
         })
     }
     // Convert from protobuf-generated classes
-    pub fn from(c: CompProto) -> Self {
+    pub fn from(c: CompProto, models: &ModelCache) -> Self {
         match c {
             CompProto::I(i) => Comp::I(i.dc, n(i.p), n(i.n)),
             CompProto::R(r) => Comp::R(r.g, n(r.p), n(r.n)),
@@ -151,7 +154,38 @@ impl Comp {
                 Comp::V(vs)
             }
             CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
-            CompProto::M(m) => Comp::Mos1(Mos1i { name: m.name, model:Mos1Model::default(), params:Mos1InstanceParams::default(), ports: MosPorts { g: n(m.g), d: n(m.d), s: n(m.s), b: n(m.b) } }),
+            CompProto::M(m) => {
+                let ports: MosPorts<NodeRef> = match m.ports {
+                    Some(p) => MosPorts {
+                        g: n(p.g),
+                        d: n(p.d),
+                        s: n(p.s),
+                        b: n(p.b),
+                    },
+                    None => MosPorts {
+                        g: Gnd,
+                        d: Gnd,
+                        s: Gnd,
+                        b: Gnd,
+                    }, // FIXME: whether to default or not
+                };
+                // Mos instances break out to their solver-types here
+                if let Some(_model) = models.bsim4.models.get(&m.model) {
+                    Comp::Bsim4(Bsim4i {
+                        name: m.name,
+                        model: m.model.clone(),
+                        params: m.params.clone(),
+                        ports,
+                    })
+                } else {
+                    Comp::Mos1(Mos1i {
+                        name: m.name,
+                        model: m.model.clone(),
+                        params: m.params.clone(),
+                        ports,
+                    })
+                }
+            }
         }
     }
 }
@@ -162,13 +196,22 @@ impl From<Ds> for Comp {
     }
 }
 
+use crate::proto::Mos1InstParams as Mos1InstSpecs;
+use crate::proto::Mos1Model as Mos1ModelSpecs;
+#[derive(Default)]
+pub struct Mos1Defs {
+    pub(crate) models: HashMap<String, Mos1ModelSpecs>,
+    pub(crate) insts: HashMap<String, Mos1InstSpecs>,
+}
 pub struct ModelCache {
-    pub(crate) bsim4: Bsim4ModelCache,
+    pub(crate) mos1: Mos1Defs,
+    pub(crate) bsim4: Bsim4Cache,
 }
 impl ModelCache {
     pub(crate) fn new() -> Self {
         Self {
-            bsim4: Bsim4ModelCache::new(),
+            mos1: Mos1Defs::default(),
+            bsim4: Bsim4Cache::new(),
         }
     }
 }
@@ -187,42 +230,60 @@ impl Ckt {
             models: ModelCache::new(),
         }
     }
-    pub(crate) fn from_comps(comps: Vec<Comp>) -> Self {
+    pub fn from_comps(comps: Vec<Comp>) -> Self {
         Self {
             comps: comps,
             models: ModelCache::new(),
         }
     }
     /// Create from a protobuf-generated circuit
-    pub fn from(c: CircuitProto) -> Self {
-        let CircuitProto { name, comps, .. } = c;
+    pub fn from(c: CircuitProto) -> SpResult<Self> {
+        let CircuitProto { comps, defs, .. } = c;
+        let mut models = ModelCache::new();
 
+        // Step through all definitions
+        for def in defs.into_iter() {
+            match def.defines.unwrap() {
+                DefProto::Bsim4inst(x) => {
+                    models.bsim4.add_inst(x);
+                }
+                DefProto::Bsim4model(x) => {
+                    use crate::comps::bsim4::Bsim4ModelSpecs;
+                    let specs = Bsim4ModelSpecs::from(&x);
+                    models.bsim4.add_model(&x.name, specs);
+                }
+                DefProto::Mos1model(x) => {
+                    models.mos1.models.insert(x.name.clone(), x);
+                }
+                DefProto::Mos1inst(x) => {
+                    models.mos1.insts.insert(x.name.clone(), x);
+                }
+                // DefProto::Subckt(_x),
+                // DefProto::Lib(_x),
+                // DefProto::Diodemodel(_x),
+                _ => {
+                    return Err(SpError::new("Unsupported Definition"));
+                }
+            }
+        }
+        // And step through all instances
         let mut cs: Vec<Comp> = vec![];
         for opt in comps.into_iter() {
             if let Some(c) = opt.comp {
-                cs.push(Comp::from(c));
+                cs.push(Comp::from(c, &models));
             }
         }
-        Self {
-            comps: cs,
-            models: ModelCache::new(),
-        }
+        Ok(Self { comps: cs, models })
     }
-    /// Decode from bytes
+    /// Decode from bytes, via proto definitions
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
         use prost::Message;
         use std::io::Cursor;
 
         // Decode the protobuf version
-        let c = CircuitProto::decode(&mut Cursor::new(bytes_));
-        // Unfortunately these conversion errors don't convert to our Result
-        let ckt_proto = match c {
-            Ok(ckt) => ckt,
-            Err(e) => panic!("Circuit Decode Failed"),
-        };
+        let ckt_proto = CircuitProto::decode(&mut Cursor::new(bytes_))?;
         // And convert into a Circuit
-        let c = Self::from(ckt_proto);
-        Ok(c)
+        Self::from(ckt_proto)
     }
     /// Add anything convertible into `Comp`,
     /// typically the enum-associated structs `Vsrc` et al.

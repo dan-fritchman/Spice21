@@ -80,6 +80,7 @@ impl<NumT: SpNum> Variables<NumT> {
 
 /// Solver Iteration Struct
 /// Largely for debug of convergence and progress
+#[allow(dead_code)] // Used for debug
 struct Iteration<NumT: SpNum> {
     n: usize,
     x: Vec<NumT>,
@@ -139,9 +140,9 @@ impl Solver<'_, f64> {
             // Calculate the residual error
             let res: Vec<f64> = self.mat.res(&self.vars.values, &self.rhs)?;
 
+            // Check convergence
             if self.converged(&dx, &res) {
-                // Check convergence
-                // Commit component results
+                // Converged. Commit component states
                 for c in self.comps.iter_mut() {
                     c.commit();
                 }
@@ -342,7 +343,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 use crate::comps::mos::MosPorts;
                 use crate::comps::Mos0;
 
-                let circuit::Mos0i { name, mos_type, ports } = m;
+                let circuit::Mos0i { mos_type, ports, .. } = m;
 
                 //let dp = self.vars.add(VarKind::V);
                 //let sp = self.vars.add(VarKind::V);
@@ -357,9 +358,9 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
             }
             Comp::Mos1(m) => {
                 use crate::comps::mos::MosPorts;
-                use crate::comps::Mos1;
+                use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
 
-                let circuit::Mos1i { name, model, params, ports } = m;
+                let circuit::Mos1i { model, params, ports, .. } = m;
 
                 let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),
@@ -368,7 +369,20 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                     self.node_var(ports.b.clone()),
                 ]
                 .into();
-                Mos1::new(model.clone(), params.clone(), ports.into()).into()
+                let model = match self.models.mos1.models.get(&model) {
+                    Some(m) => m.clone(),
+                    None => panic!(format!("Model not defined: {}", model)),
+                };
+                let params = match self.models.mos1.insts.get(&params){
+                    Some(m) => m.clone(),
+                    None => panic!(format!("Parameters not defined: {}", params)),
+                };
+                Mos1::new(
+                    Mos1Model::resolve(model),
+                    Mos1InstanceParams::resolve(params),
+                    ports.into(),
+                )
+                .into() // FIXME: Into/From
             }
             Comp::Bsim4(b4i) => {
                 use crate::comps::bsim4::bsim4ports::Bsim4Ports;
@@ -377,7 +391,9 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
 
                 let circuit::Bsim4i { name, ports, model, params } = b4i;
 
-                let (model, inst) = self.models.bsim4.inst(&model, params).unwrap();
+                // let iname = params.name.clone();// FIXME: elsewhere
+                // self.models.bsim4.add_inst(params); // FIXME: elsewhere
+                let (model, inst) = self.models.bsim4.get(&model, &params).unwrap();
 
                 let ports: MosPorts<Option<VarIndex>> = [
                     self.node_var(ports.d.clone()),
@@ -403,7 +419,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
         }
         // KCL convergence
         for e in res.iter() {
-            if e.absv() > 1e-9 {
+            if e.absv() > 1e-12 {
                 return false;
             }
         }
@@ -430,10 +446,10 @@ impl OpResult {
         let Variables { names, values, .. } = vars;
         OpResult { names, values, map }
     }
-    /// Get the value of signal `signame`, or an `SpError` if not present 
-    pub(crate) fn get<S:Into<String>>(&self, signame: S) -> SpResult<f64> {
+    /// Get the value of signal `signame`, or an `SpError` if not present
+    pub(crate) fn get<S: Into<String>>(&self, signame: S) -> SpResult<f64> {
         match self.map.get(&signame.into()) {
-            Some(v) => Ok(v.clone()), 
+            Some(v) => Ok(v.clone()),
             None => Err(sperror("Signal Not Found")),
         }
     }
@@ -483,7 +499,6 @@ pub(crate) struct TranState {
     pub(crate) ric: Vec<usize>,
     pub(crate) ni: NumericalIntegration,
 }
-
 impl TranState {
     /// Numerical Integration
     pub fn integrate(&self, dq: f64, dq_dv: f64, vguess: f64, ip: f64) -> (f64, f64, f64) {
@@ -507,12 +522,36 @@ impl TranState {
 }
 
 /// Transient Analysis Options
+#[derive(Debug)]
 pub struct TranOptions {
     pub tstep: f64,
     pub tstop: f64,
     pub ic: Vec<(NodeRef, f64)>,
 }
+use super::proto::TranOptions as OptsProto;
+impl TranOptions {
+    pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
+        use prost::Message;
+        use std::io::Cursor;
 
+        // Decode the protobuf version
+        let proto = OptsProto::decode(&mut Cursor::new(bytes_))?;
+        // And convert into the real thing
+        Ok(Self::from(proto))
+    }
+    pub fn from(proto: OptsProto) -> Self {
+        use super::circuit::n;
+        let mut ic: Vec<(NodeRef, f64)> = vec![];
+        for (name, val) in &proto.ic {
+            ic.push((n(name), val.clone()));
+        }
+        Self {
+            tstep: proto.tstep,
+            tstop: proto.tstop,
+            ic,
+        }
+    }
+}
 impl Default for TranOptions {
     fn default() -> TranOptions {
         TranOptions {
@@ -622,6 +661,7 @@ impl<'a> Tran<'a> {
 
         let mut tpoint: usize = 0;
         let max_tpoints: usize = 1e9 as usize;
+        self.state.t = self.opts.tstep;
         self.state.dt = self.opts.tstep;
         while self.state.t < self.opts.tstop && tpoint < max_tpoints {
             let aninfo = AnalysisInfo::TRAN(&self.opts, &self.state);
@@ -912,8 +952,8 @@ mod tests {
     #[test]
     fn test_ac1() -> TestResult {
         let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
@@ -932,12 +972,13 @@ mod tests {
                 n: Gnd,
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
     #[test]
-    #[ignore] // FIXME: aint no Mos0 AC! 
+    #[ignore] // FIXME: aint no Mos0 AC!
     fn test_ac3() -> TestResult {
         let ckt = Ckt::from_comps(vec![
             Comp::R(1e-3, Num(0), Num(1)),
@@ -954,22 +995,21 @@ mod tests {
                 },
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
-    // NMOS Common-Source Amp
+    /// NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
-        use crate::comps::{Mos1InstanceParams, Mos1Model};
 
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::C(1e-9, n("d"), Gnd),
             Comp::Mos1(Mos1i {
                 name: s("m"),
-                model: Mos1Model::default(),
-                params: Mos1InstanceParams::default(),
+                model: "default".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: n("g"),
                     d: n("d"),
@@ -986,8 +1026,19 @@ mod tests {
                 n: Gnd,
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
-
+        
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("default".into(), nmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+        
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 
@@ -995,9 +1046,8 @@ mod tests {
     #[test]
     fn test_ac5() -> TestResult {
         use crate::circuit::Vs;
-        use crate::comps::{Mos1InstanceParams, Mos1Model};
 
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::V(Vs {
                 name: s("vd"),
                 vdc: 0.5,
@@ -1007,8 +1057,8 @@ mod tests {
             }),
             Comp::Mos1(Mos1i {
                 name: s("m"),
-                model: Mos1Model::default(),
-                params: Mos1InstanceParams::default(),
+                model: "default".into(),
+                params: "default".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -1017,8 +1067,19 @@ mod tests {
                 },
             }),
         ]);
-        let soln = ac(ckt, AcOptions::default())?;
 
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("default".into(), nmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+        
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
         Ok(())
     }
 }

@@ -39,10 +39,11 @@ pub mod consts {
 
 /// FakeComp is a placeholder in the `ComponentSolver` enum,
 /// largely to pipe-clean using references and lifetimes in its variants.
+#[allow(dead_code)]
 pub(crate) struct FakeComp<'a> {
     pub(crate) p: &'a PhantomData<()>,
 }
-
+#[allow(dead_code)]
 impl<'a> Component for FakeComp<'a> {
     fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         panic!("FakeComp somehow got instantiated")

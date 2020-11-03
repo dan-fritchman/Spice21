@@ -6,8 +6,7 @@ use std::usize::MAX;
 use num::{Num, One, Zero};
 
 use crate::assert::assert;
-use crate::{SpNum, SpResult, sperror};
-
+use crate::{sperror, SpNum, SpResult};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eindex(usize);
@@ -573,13 +572,7 @@ impl<T: SpNum> Matrix<T> {
         }
         return Some(pi);
     }
-    fn before_loc(
-        &self,
-        ax: Axis,
-        loc: usize,
-        before: usize,
-        hint: Option<Eindex>,
-    ) -> Option<Eindex> {
+    fn before_loc(&self, ax: Axis, loc: usize, before: usize, hint: Option<Eindex>) -> Option<Eindex> {
         let prev: Option<Eindex> = match hint {
             Some(_) => hint,
             None => self.hdr(ax, loc),
@@ -760,8 +753,7 @@ impl<T: SpNum> Matrix<T> {
                 Some(d) => d,
             };
             // FIXME: abs-value criterion for max_in_col
-            let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.absv()
-                + MARKOWITZ_CONFIG.abs_threshold;
+            let threshold = MARKOWITZ_CONFIG.rel_threshold * self[max_in_col].val.absv() + MARKOWITZ_CONFIG.abs_threshold;
             if self[d].val.absv() < threshold {
                 continue;
             }
@@ -900,9 +892,7 @@ impl<T: SpNum> Matrix<T> {
                 }
                 let pse = match psub {
                     None => self.add_fillin(self[ple].row, pupper_col),
-                    Some(pse) if self[pse].row > self[ple].row => {
-                        self.add_fillin(self[ple].row, pupper_col)
-                    }
+                    Some(pse) if self[pse].row > self[ple].row => self.add_fillin(self[ple].row, pupper_col),
                     Some(pse) => pse,
                 };
 
@@ -1077,102 +1067,99 @@ impl<T: SpNum> fmt::Debug for Matrix<T> {
     }
 }
 
-use crate::spresult::TestResult;
-
-#[cfg(test)]
-impl<T: SpNum> Matrix<T> {
-    pub fn swap_rows(&mut self, x: usize, y: usize) {
-        self.swap(ROWS, x, y)
-    }
-    pub fn swap_cols(&mut self, x: usize, y: usize) {
-        self.swap(COLS, x, y)
-    }
-    pub fn size(&self) -> (usize, usize) {
-        (self.num_rows(), self.num_cols())
-    }
-
-    pub fn checkups(&self) -> TestResult {
-        // Internal consistency tests.  Probably pretty slow.
-
-        self.check_diagonal()?;
-
-        let mut next_in_rows: Vec<Eindex> = vec![];
-        let mut next_in_cols: Vec<Eindex> = vec![];
-
-        for n in 0..self.axes[COLS].hdrs.len() {
-            let mut ep = self.hdr(COLS, n);
-            while let Some(ei) = ep {
-                assert(self[ei].col).eq(n)?;
-
-                if let Some(nxt) = self[ei].next_in_col {
-                    assert(self[nxt].row).gt(self[ei].row)?;
-                    assert!(!next_in_cols.contains(&nxt));
-                    next_in_cols.push(nxt);
-                }
-                if let Some(nxt) = self[ei].next_in_row {
-                    assert(self[nxt].col).gt(self[ei].col)?;
-                    assert!(!next_in_rows.contains(&nxt));
-                    next_in_rows.push(nxt);
-                }
-                ep = self[ei].next_in_col;
-            }
-        }
-        // Add the row/column headers to the "next" vectors
-        for ep in self.axes[Axis::COLS].hdrs.iter() {
-            if let Some(ei) = ep {
-                assert!(!next_in_cols.contains(ei));
-                next_in_cols.push(*ei);
-            }
-        }
-        for ep in self.axes[Axis::ROWS].hdrs.iter() {
-            if let Some(ei) = ep {
-                assert!(!next_in_rows.contains(ei));
-                next_in_rows.push(*ei);
-            }
-        }
-        // Check that all elements are included
-        assert(next_in_cols.len()).eq(self.elements.len())?;
-        assert(next_in_rows.len()).eq(self.elements.len())?;
-        for n in 0..self.elements.len() {
-            assert!(next_in_cols.contains(&Eindex(n)));
-            assert!(next_in_rows.contains(&Eindex(n)));
-        }
-        Ok(())
-    }
-
-    fn check_diagonal(&self) -> TestResult {
-        for r in 0..self.diag.len() {
-            let eo = self.get(r, r);
-            if let Some(e) = eo {
-                if let Some(d) = self.diag[r] {
-                    assert(self[d].val).eq(e)?;
-                } else {
-                    return Err(sperror("FAIL!"));
-                }
-            // FIXME: would prefer something like the previous "same element ID" testing
-            // assert_eq!(e, m[self.diag[r]].val);
-            //                    assert_eq!(e.index, self.diag[r]);
-            //                    assert_eq!(e.row, r);
-            //                    assert_eq!(e.col, r);
-            } else {
-                assert(self.diag[r]).eq(None)?;
-            }
-        }
-        Ok(())
-    }
-    fn assert_entries(&self, entries: Vec<Entry<T>>) -> TestResult {
-        for e in entries.into_iter() {
-            assert(self.get(e.0, e.1).ok_or("ElementMissing")?).eq(e.2)?;
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::spresult::TestResult;
     use num::Complex;
+
+    impl<T: SpNum> Matrix<T> {
+        pub fn swap_rows(&mut self, x: usize, y: usize) {
+            self.swap(ROWS, x, y)
+        }
+        pub fn swap_cols(&mut self, x: usize, y: usize) {
+            self.swap(COLS, x, y)
+        }
+        pub fn size(&self) -> (usize, usize) {
+            (self.num_rows(), self.num_cols())
+        }
+
+        pub fn checkups(&self) -> TestResult {
+            // Internal consistency tests.  Probably pretty slow.
+
+            self.check_diagonal()?;
+
+            let mut next_in_rows: Vec<Eindex> = vec![];
+            let mut next_in_cols: Vec<Eindex> = vec![];
+
+            for n in 0..self.axes[COLS].hdrs.len() {
+                let mut ep = self.hdr(COLS, n);
+                while let Some(ei) = ep {
+                    assert(self[ei].col).eq(n)?;
+
+                    if let Some(nxt) = self[ei].next_in_col {
+                        assert(self[nxt].row).gt(self[ei].row)?;
+                        assert!(!next_in_cols.contains(&nxt));
+                        next_in_cols.push(nxt);
+                    }
+                    if let Some(nxt) = self[ei].next_in_row {
+                        assert(self[nxt].col).gt(self[ei].col)?;
+                        assert!(!next_in_rows.contains(&nxt));
+                        next_in_rows.push(nxt);
+                    }
+                    ep = self[ei].next_in_col;
+                }
+            }
+            // Add the row/column headers to the "next" vectors
+            for ep in self.axes[Axis::COLS].hdrs.iter() {
+                if let Some(ei) = ep {
+                    assert!(!next_in_cols.contains(ei));
+                    next_in_cols.push(*ei);
+                }
+            }
+            for ep in self.axes[Axis::ROWS].hdrs.iter() {
+                if let Some(ei) = ep {
+                    assert!(!next_in_rows.contains(ei));
+                    next_in_rows.push(*ei);
+                }
+            }
+            // Check that all elements are included
+            assert(next_in_cols.len()).eq(self.elements.len())?;
+            assert(next_in_rows.len()).eq(self.elements.len())?;
+            for n in 0..self.elements.len() {
+                assert!(next_in_cols.contains(&Eindex(n)));
+                assert!(next_in_rows.contains(&Eindex(n)));
+            }
+            Ok(())
+        }
+
+        fn check_diagonal(&self) -> TestResult {
+            for r in 0..self.diag.len() {
+                let eo = self.get(r, r);
+                if let Some(e) = eo {
+                    if let Some(d) = self.diag[r] {
+                        assert(self[d].val).eq(e)?;
+                    } else {
+                        return Err(sperror("FAIL!"));
+                    }
+                // FIXME: would prefer something like the previous "same element ID" testing
+                // assert_eq!(e, m[self.diag[r]].val);
+                //                    assert_eq!(e.index, self.diag[r]);
+                //                    assert_eq!(e.row, r);
+                //                    assert_eq!(e.col, r);
+                } else {
+                    assert(self.diag[r]).eq(None)?;
+                }
+            }
+            Ok(())
+        }
+        fn assert_entries(&self, entries: Vec<Entry<T>>) -> TestResult {
+            for e in entries.into_iter() {
+                assert(self.get(e.0, e.1).ok_or("ElementMissing")?).eq(e.2)?;
+            }
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_create_element() -> TestResult {
@@ -1375,26 +1362,14 @@ mod tests {
         m.swap_rows(0, 3);
 
         m.checkups()?;
-        assert_eq!(
-            m.axes[Axis::ROWS].mapping.as_ref().unwrap().e2i,
-            vec![3, 1, 2, 0]
-        );
-        assert_eq!(
-            m.axes[Axis::ROWS].mapping.as_ref().unwrap().i2e,
-            vec![3, 1, 2, 0]
-        );
+        assert_eq!(m.axes[Axis::ROWS].mapping.as_ref().unwrap().e2i, vec![3, 1, 2, 0]);
+        assert_eq!(m.axes[Axis::ROWS].mapping.as_ref().unwrap().i2e, vec![3, 1, 2, 0]);
 
         m.swap_rows(0, 2);
 
         m.checkups()?;
-        assert_eq!(
-            m.axes[Axis::ROWS].mapping.as_ref().unwrap().e2i,
-            vec![3, 1, 0, 2]
-        );
-        assert_eq!(
-            m.axes[Axis::ROWS].mapping.as_ref().unwrap().i2e,
-            vec![2, 1, 3, 0]
-        );
+        assert_eq!(m.axes[Axis::ROWS].mapping.as_ref().unwrap().e2i, vec![3, 1, 0, 2]);
+        assert_eq!(m.axes[Axis::ROWS].mapping.as_ref().unwrap().i2e, vec![2, 1, 3, 0]);
         Ok(())
     }
 

@@ -1,22 +1,8 @@
 syntax = "proto3";
+package spice21;
+import "mos.proto";
+import "bsim4.proto";
 
-package spice21.proto;
-
-import "google/protobuf/any.proto";
-import "google/protobuf/api.proto";
-import "google/protobuf/duration.proto";
-import "google/protobuf/empty.proto";
-import "google/protobuf/field_mask.proto";
-import "google/protobuf/source_context.proto";
-import "google/protobuf/struct.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/type.proto";
-import "google/protobuf/wrappers.proto";
-
-
-message Node {
-    string name = 1;
-}
 
 message Resistor {
     string name = 1;
@@ -30,14 +16,6 @@ message Capacitor {
     string p = 2;
     string n = 3;
     double c = 4;
-}
-
-message Mos {
-    string name = 1;
-    string g = 2;
-    string d = 3;
-    string s = 4;
-    string b = 5;
 }
 
 message Isrc {
@@ -99,28 +77,26 @@ message Circuit {
     repeated Def defs = 3;
 }
 
+message Subckt {
+    // Not yet available 
+}
+message Lib {
+    // Not yet available 
+}
 message Def {
     oneof defines {
-        DiodeModel diodemodel = 1;
-    }
-}
-
-message Statement {
-    oneof s {
-        Instance inst = 1;
-        Def def = 2;
+        Subckt subckt = 1;
+        Lib lib = 2;
+        DiodeModel diodemodel = 3;
+        Bsim4Model bsim4model = 4;
+        Bsim4InstParams bsim4inst = 5;
+        Mos1Model mos1model = 6;
+        Mos1InstParams mos1inst = 7;
     }
 }
 
 message TranOptions {
     double tstop = 1;
     double tstep = 2;
-}
-
-message Sim {
-    Circuit ckt = 1;
-}
-
-message OpResult {
-    map<string, double> data = 2;
+    map <string, double> ic = 3;
 }
