@@ -501,7 +501,7 @@ pub(crate) struct TranState {
 }
 impl TranState {
     /// Numerical Integration
-    pub fn integrate(&self, dq: f64, dq_dv: f64, vguess: f64, ip: f64) -> (f64, f64, f64) {
+    pub fn integrate(&self, dq: f64, dq_dv: f64, vguess: f64, _ip: f64) -> (f64, f64, f64) {
         let dt = self.dt;
         match self.ni {
             NumericalIntegration::BE => {
@@ -512,10 +512,10 @@ impl TranState {
             }
             NumericalIntegration::TRAP => {
                 panic!("Trapezoidal Integration is Disabled!");
-                let g = 2.0 * dq_dv / dt;
-                let i = 2.0 * dq / dt - ip;
-                let rhs = i - g * vguess;
-                (g, i, rhs)
+                // let g = 2.0 * dq_dv / dt;
+                // let i = 2.0 * dq / dt - ip;
+                // let rhs = i - g * vguess;
+                // (g, i, rhs)
             }
         }
     }

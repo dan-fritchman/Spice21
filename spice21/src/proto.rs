@@ -3,10 +3,10 @@
 //!
 
 use crate::SpError;
-#[allow(unused_imports)] // These are used by the macro-expanded code
-use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
 use prost::Message;
+#[allow(unused_imports)] // These are used by the macro-expanded code
+use serde::{Deserialize, Serialize};
 
 // Include the prost-expanded proto-file content
 include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
@@ -27,12 +27,29 @@ mod tests {
     fn test_ckt_proto() -> TestResult {
         use crate::assert::assert;
         use circuit::s;
-        use instance::Comp::{C, D, I, M, R, V};
         use def::Defines;
+        use instance::Comp::{C, D, I, M, R, V};
 
         let c = Circuit {
             name: String::from("tbd"),
             comps: vec![
+                Instance {
+                    comp: Some(I(Isrc {
+                        name: s("ii"),
+                        p: s("ip"),
+                        n: s("in"),
+                        dc: 1e-12,
+                    })),
+                },
+                Instance {
+                    comp: Some(V(Vsrc {
+                        name: s("vv"),
+                        p: s("vp"),
+                        n: s("vn"),
+                        dc: 1e-12,
+                        acm: 0.0,
+                    })),
+                },
                 Instance {
                     comp: Some(C(Capacitor {
                         name: s("cccc"),
@@ -72,18 +89,14 @@ mod tests {
                     })),
                 },
             ],
-            defs: vec![
-                Def {
-                    defines: Some(Defines::Mos1model(
-                        Mos1Model::default()
-                    ))
-                }
-            ],
+            defs: vec![Def {
+                defines: Some(Defines::Mos1model(Mos1Model::default())),
+            }],
         };
 
-        use std::io::Cursor;
         use std::fs::File;
         use std::io::prelude::*;
+        use std::io::Cursor;
 
         // Prost/ Protobuf Serialization Round-Trip
         let mut buf = Vec::<u8>::new();
@@ -104,7 +117,6 @@ mod tests {
         // let s = serde_yaml::to_string(&c).unwrap();
         // let mut rfj = File::create("ckt.yaml").unwrap();
         // rfj.write_all(s.as_bytes()).unwrap();
-        
         Ok(())
     }
 }

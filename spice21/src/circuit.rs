@@ -10,13 +10,13 @@
 
 use std::collections::HashMap;
 
+use super::comps::bsim4::Bsim4Cache;
+use super::comps::mos::{MosPorts, MosType};
 use super::comps::{DiodeInstParams, DiodeModel};
-use super::comps::{Mos1InstanceParams, Mos1Model, MosType};
 use super::proto::def::Defines as DefProto;
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
-use crate::comps::bsim4::Bsim4Cache;
-use crate::comps::mos::MosPorts;
+
 use crate::{SpError, SpResult};
 
 /// Node Reference

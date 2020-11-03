@@ -371,19 +371,6 @@ pub(crate) struct Diode0 {
     pn: Option<Eindex>,
     np: Option<Eindex>,
 }
-
-impl Diode0 {
-    pub(crate) fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode0 {
-        Diode0 {
-            isat,
-            vt,
-            p,
-            n,
-            ..Default::default()
-        }
-    }
-}
-
 impl Component for Diode0 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.pp = make_matrix_elem(mat, self.p, self.p);

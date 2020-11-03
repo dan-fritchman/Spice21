@@ -5,7 +5,7 @@ mod tests {
 
     use crate::analysis::*;
     use crate::assert::*;
-    use crate::circuit::NodeRef::{Gnd, Num, Name};
+    use crate::circuit::NodeRef::{Gnd, Num};
     use crate::circuit::*;
     use crate::comps::*;
     use crate::spresult::*;
@@ -825,15 +825,13 @@ mod tests {
         // Simulate
         let soln = tran(ckt, opts)?;
         // Checks
-        to_file(&soln, "test_mos0_cmos_ro_tran.json"); // Writes new golden data
+        //to_file(&soln, "test_mos0_cmos_ro_tran.json"); // Writes new golden data
         let golden = load_golden("test_mos0_cmos_ro_tran.json");
         assert(&soln.map).isclose(golden, 1e-6)?;
         Ok(())
     }
     #[test]
     fn test_mos1_op() -> TestResult {
-        let model = Mos1Model::default();
-        let params = Mos1InstanceParams::default();
         let mut ckt = Ckt::from_comps(vec![
             Comp::Mos1(Mos1i {
                 name: s("m"),
@@ -848,17 +846,10 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
-        // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
-            mos_type: MosType::NMOS as i32,
-            ..Mos1Model::default()
-        };
-        ckt.models.mos1.models.insert("default".into(), nmos);
-        let params = Mos1InstParams::default();
-        ckt.models.mos1.insts.insert("default".into(), params);
-        
+        add_mos1_defaults(&mut ckt);
+        // Simulate
         let soln = dcop(ckt)?;
+        // Checks
         assert(soln[0]).eq(1.0)?;
         assert(soln[1]).lt(0.0)?;
         assert(soln[1]).gt(-1e-3)?;
@@ -867,8 +858,6 @@ mod tests {
 
     #[test]
     fn test_mos1_tran() -> TestResult {
-        let model = Mos1Model::default();
-        let params = Mos1InstanceParams::default();
         let mut ckt = Ckt::from_comps(vec![
             Comp::Mos1(Mos1i {
                 name: s("m"),
@@ -883,23 +872,15 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
-
-        // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
-            mos_type: MosType::NMOS as i32,
-            ..Mos1Model::default()
-        };
-        ckt.models.mos1.models.insert("default".into(), nmos);
-        let params = Mos1InstParams::default();
-        ckt.models.mos1.insts.insert("default".into(), params);
-
+        add_mos1_defaults(&mut ckt);
+        // Simulate
         let opts = TranOptions {
             tstep: 1e-9,
             tstop: 100e-9,
             ..Default::default()
         };
         let soln = tran(ckt, opts)?;
+        // Checks
         for k in 1..soln.len() {
             assert(soln[k][0]).eq(1.0)?;
             assert(soln[k][1]).lt(0.0)?;
@@ -907,7 +888,6 @@ mod tests {
         }
         Ok(())
     }
-
     /// Mos1 Inverter DCOP
     #[test]
     fn test_mos1_inv_dcop() -> TestResult {
@@ -947,12 +927,6 @@ mod tests {
     /// Mos1 CMOS Ring Oscillator Dc Op
     #[test]
     fn test_mos1_cmos_ro_dcop() -> TestResult {
-        let nmos = Mos1Model::default();
-        let pmos = Mos1Model {
-            mos_type: MosType::PMOS as i32,
-            ..Mos1Model::default()
-        };
-        let params = Mos1InstanceParams::default();
         let mut ckt = Ckt::from_comps(vec![
             Comp::R(1e-9, Num(0), Gnd), // "gmin"-ish
             Comp::Mos1(Mos1i {
@@ -1023,33 +997,20 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
-
-        // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
-            mos_type: MosType::NMOS as i32,
-            ..Mos1Model::default()
-        };
-        ckt.models.mos1.models.insert("nmos".into(), nmos);
-        let pmos = Mos1Model {
-            mos_type: MosType::PMOS as i32,
-            ..Mos1Model::default()
-        };
-        ckt.models.mos1.models.insert("pmos".into(), pmos);
-        let params = Mos1InstParams::default();
-        ckt.models.mos1.insts.insert("default".into(), params);
-
+        add_mos1_defaults(&mut ckt);
+        // Simulate
         let soln = dcop(ckt)?;
-        assert(soln[0]).eq(1.0)?;
-        for k in 1..3 {
-            assert(soln[k]).gt(0.45)?;
-            assert(soln[k]).lt(0.55)?;
+        // Checks
+        assert(soln.get("0")?).eq(1.0)?;
+        for k in ["1", "2", "3"].into_iter() {
+            assert(soln.get(*k)?).gt(0.45)?;
+            assert(soln.get(*k)?).lt(0.55)?;
         }
         Ok(())
     }
     /// Mos1 CMOS Ring Oscillator Tran
     #[test]
-    fn test_mos1_cmos_ro_tran() -> TestResult { 
+    fn test_mos1_cmos_ro_tran() -> TestResult {
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
             Comp::Mos1(Mos1i {
@@ -1127,10 +1088,10 @@ mod tests {
             ic: vec![(Num(1), 0.0)],
         };
         let soln = tran(ckt, opts)?;
-        // to_file(&soln, "test_mos1_cmos_ro_tran.json"); // Writes new golden data
+        //to_file(&soln, "test_mos1_cmos_ro_tran.json"); // Writes new golden data
         // Checks
         let golden = load_golden("test_mos1_cmos_ro_tran.json");
-        assert(&soln.map).isclose(golden, 1e-6);
+        assert(&soln.map).isclose(golden, 1e-6)?;
         Ok(())
     }
 
@@ -1191,10 +1152,10 @@ mod tests {
             ..Default::default()
         };
         let soln = tran(ckt, opts)?;
-        // to_file(&soln, "test_mos1_nmos_ro_tran.json"); // Writes new golden data
+        //to_file(&soln, "test_mos1_nmos_ro_tran.json"); // Writes new golden data
         // Checks
         let golden = load_golden("test_mos1_nmos_ro_tran.json");
-        assert(&soln.map).isclose(golden, 1e-6);
+        assert(&soln.map).isclose(golden, 1e-6)?;
         Ok(())
     }
 
@@ -1253,10 +1214,10 @@ mod tests {
             ic: vec![(Num(1), 0.0)],
         };
         let soln = tran(ckt, opts)?;
-        // to_file(&soln, "test_mos1_pmos_ro_tran.json"); // Writes new golden data
+        //to_file(&soln, "test_mos1_pmos_ro_tran.json"); // Writes new golden data
         // Checks
         let golden = load_golden("test_mos1_pmos_ro_tran.json");
-        assert(&soln.map).isclose(golden, 1e-6);
+        assert(&soln.map).isclose(golden, 1e-6)?;
         Ok(())
     }
 
@@ -1364,10 +1325,14 @@ mod tests {
         Ok(())
     }
     /// Test-helper to write results to JSON file
+    #[allow(dead_code)]
     fn to_file(soln: &TranResult, fname: &str) -> SpResult<()> {
-        use serde::ser::{SerializeSeq, Serializer};
         use std::fs::File;
         use std::io::prelude::*;
+
+        #[allow(unused_imports)] // Need these traits in scope 
+        use serde::ser::{SerializeSeq, Serializer};
+
         let mut rfj = File::create(fname).unwrap();
         let s = serde_json::to_string(&soln.map).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
@@ -1387,10 +1352,10 @@ mod tests {
         let golden: HashMap<String, Vec<f64>> = serde_json::from_reader(reader).unwrap();
         golden
     }
-    /// Helper. Modifies `ckt` adding Mos1 default instance-params, plus default NMOS and PMOS 
+    /// Helper. Modifies `ckt` adding Mos1 default instance-params, plus default NMOS and PMOS
     fn add_mos1_defaults(ckt: &mut Ckt) {
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
+        use crate::proto::{Mos1InstParams, Mos1Model};
+        let nmos = Mos1Model {
             mos_type: MosType::NMOS as i32,
             ..Mos1Model::default()
         };

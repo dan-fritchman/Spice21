@@ -318,7 +318,7 @@ struct Mos1OpPoint {
 /// Mos Level 1 Solver
 pub struct Mos1 {
     model: Mos1Model,
-    params: Mos1InstanceParams,
+    _params: Mos1InstanceParams,
     intparams: Mos1InternalParams,
     op: Mos1OpPoint,
     guess: Mos1OpPoint,
@@ -332,7 +332,7 @@ impl Mos1 {
         let intparams = Mos1::derive(&model, &params);
         Mos1 {
             model,
-            params,
+            _params: params,
             intparams,
             ports,
             op: Mos1OpPoint::default(),
@@ -387,7 +387,6 @@ impl Mos1 {
         // i.e. the polarities typically expressed for NMOS
         let p = self.model.mos_type.p();
         let reversed = p * (v.d - v.s) < 0.0;
-        
         // FIXME: add inter-step limiting
         let (vd, vs) = if reversed { (v.s, v.d) } else { (v.d, v.s) };
         let vgs = p * (v.g - vs);

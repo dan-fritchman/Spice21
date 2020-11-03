@@ -25,6 +25,7 @@ pub(crate) mod macros {
     ( $src_name:ident, $struct_desc:literal, [
         $( ($attr_name:ident, $attr_type:ty, $default:literal, $desc:literal) ),* $(,)?
     ]) => {
+        #[allow(dead_code)]
         #[doc=$struct_desc]
         #[derive(Clone, Copy)]
         pub struct $src_name {
@@ -32,6 +33,7 @@ pub(crate) mod macros {
                 pub $attr_name : $attr_type ),*
         }
         impl $src_name {
+            #[allow(dead_code)]
             fn getattr<S: Into<String>>(&self, key: S) -> Option<f64> {
                 let k: String = key.into();
                 match &k as &str {
