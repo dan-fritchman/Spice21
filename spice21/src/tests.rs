@@ -1324,6 +1324,140 @@ mod tests {
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
+
+    #[test]
+    fn test_ac1() -> TestResult {
+        let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
+        Ok(())
+    }
+
+    #[test]
+    fn test_ac2() -> TestResult {
+        use crate::circuit::Vs;
+        use Comp::{C, R, V};
+        let ckt = Ckt::from_comps(vec![
+            R(1e-3, Num(0), Num(1)),
+            C(1e-9, Num(1), Gnd),
+            V(Vs {
+                name: s("vi"),
+                vdc: 1.0,
+                acm: 1.0,
+                p: Num(0),
+                n: Gnd,
+            }),
+        ]);
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
+        Ok(())
+    }
+
+    #[test]
+    #[ignore] // FIXME: aint no Mos0 AC!
+    fn test_ac3() -> TestResult {
+        let ckt = Ckt::from_comps(vec![
+            Comp::R(1e-3, Num(0), Num(1)),
+            Comp::C(1e-9, Num(1), Gnd),
+            Comp::vdc("v1", 1.0, Num(0), Gnd),
+            Comp::Mos0(Mos0i {
+                name: s("m"),
+                mos_type: MosType::NMOS,
+                ports: MosPorts {
+                    g: Num(1),
+                    d: Num(0),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+        ]);
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
+        Ok(())
+    }
+
+    /// NMOS Common-Source Amp
+    #[test]
+    fn test_ac4() -> TestResult {
+
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::C(1e-9, n("d"), Gnd),
+            Comp::Mos1(Mos1i {
+                name: s("m"),
+                model: "default".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: n("g"),
+                    d: n("d"),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
+            Comp::V(Vs {
+                name: s("vg"),
+                vdc: 0.7,
+                acm: 1.0,
+                p: n("g"),
+                n: Gnd,
+            }),
+        ]);
+        
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("default".into(), nmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+        
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
+        Ok(())
+    }
+
+    /// Diode-Connected NMOS AC
+    #[test]
+    fn test_ac5() -> TestResult {
+        use crate::circuit::Vs;
+
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::V(Vs {
+                name: s("vd"),
+                vdc: 0.5,
+                acm: 1.0,
+                p: Num(0),
+                n: Gnd,
+            }),
+            Comp::Mos1(Mos1i {
+                name: s("m"),
+                model: "default".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(0),
+                    d: Num(0),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+        ]);
+
+        // Define our models & params
+        use crate::proto::{Mos1Model, Mos1InstParams};
+        let nmos = Mos1Model{
+            mos_type: MosType::NMOS as i32,
+            ..Mos1Model::default()
+        };
+        ckt.models.mos1.models.insert("default".into(), nmos);
+        let params = Mos1InstParams::default();
+        ckt.models.mos1.insts.insert("default".into(), params);
+        
+        ac(ckt, AcOptions::default())?;
+        // FIXME: checks on solution
+        Ok(())
+    }
     /// Test-helper to write results to JSON file
     #[allow(dead_code)]
     fn to_file(soln: &TranResult, fname: &str) -> SpResult<()> {

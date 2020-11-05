@@ -123,7 +123,7 @@ impl Solver<'_, f64> {
         }
     }
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<f64>> {
-        self.history = vec![]; // Reset our guess-history 
+        self.history = vec![]; // Reset our guess-history
         let mut dx = vec![0.0; self.vars.len()];
 
         for _k in 0..100 {
@@ -207,7 +207,7 @@ impl<'a> Solver<'a, Complex<f64>> {
         }
     }
     fn solve(&mut self, an: &AnalysisInfo) -> SpResult<Vec<Complex<f64>>> {
-        self.history = vec![]; // Reset our guess-history 
+        self.history = vec![]; // Reset our guess-history
         let mut dx = vec![Complex::zero(); self.vars.len()];
         let mut iters: Vec<Iteration<Complex<f64>>> = vec![];
 
@@ -373,16 +373,12 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                     Some(m) => m.clone(),
                     None => panic!(format!("Model not defined: {}", model)),
                 };
-                let params = match self.models.mos1.insts.get(&params){
+                let params = match self.models.mos1.insts.get(&params) {
                     Some(m) => m.clone(),
                     None => panic!(format!("Parameters not defined: {}", params)),
                 };
-                Mos1::new(
-                    Mos1Model::resolve(model),
-                    Mos1InstanceParams::resolve(params),
-                    ports.into(),
-                )
-                .into() // FIXME: Into/From
+                Mos1::new(Mos1Model::resolve(model), Mos1InstanceParams::resolve(params), ports.into()).into()
+                // FIXME: Into/From
             }
             Comp::Bsim4(b4i) => {
                 use crate::comps::bsim4::bsim4ports::Bsim4Ports;
@@ -602,44 +598,6 @@ impl<'a> Tran<'a> {
         let mut results = TranResult::new();
         results.signals(&self.solver.vars);
 
-        use std::sync::mpsc;
-        use std::thread;
-
-        enum IoWriterMessage {
-            STOP,
-            DATA(Vec<f64>),
-        }
-        enum IoWriterResponse {
-            OK,
-            RESULT(Vec<Vec<f64>>),
-        }
-        let (tx, rx) = mpsc::channel::<IoWriterMessage>();
-        let (tx2, rx2) = mpsc::channel::<IoWriterResponse>();
-
-        let t = thread::spawn(move || {
-            use serde::ser::{SerializeSeq, Serializer};
-            use std::fs::File;
-
-            let mut res: Vec<Vec<f64>> = vec![];
-
-            let f = File::create("data.json").unwrap(); // FIXME: name
-            let mut ser = serde_json::Serializer::new(f);
-            let mut seq = ser.serialize_seq(None).unwrap();
-
-            for msg in rx {
-                match msg {
-                    IoWriterMessage::DATA(d) => {
-                        seq.serialize_element(&d).unwrap();
-                        res.push(d);
-                    }
-                    IoWriterMessage::STOP => {
-                        seq.end().unwrap();
-                        tx2.send(IoWriterResponse::RESULT(res)).unwrap();
-                        return;
-                    }
-                };
-            }
-        });
         // Solve for our initial condition
         let tsoln = self.solver.solve(&AnalysisInfo::OP);
         let tdata = match tsoln {
@@ -650,7 +608,7 @@ impl<'a> Tran<'a> {
             }
         };
         results.push(self.state.t, &tdata);
-        tx.send(IoWriterMessage::DATA(tdata)).unwrap();
+
         // Update initial-condition sources and resistances
         for c in self.state.vic.iter() {
             self.solver.comps[*c].update(0.0);
@@ -674,26 +632,92 @@ impl<'a> Tran<'a> {
                 }
             };
             results.push(self.state.t, &tdata);
-            tx.send(IoWriterMessage::DATA(tdata)).unwrap();
 
             // self.state.ni = NumericalIntegration::TRAP; // FIXME!
             tpoint += 1;
             self.state.t += self.opts.tstep;
         }
         results.end();
-        tx.send(IoWriterMessage::STOP).unwrap();
-        for msg in rx2 {
+        Ok(results)
+    }
+}
+
+pub trait Result {
+    type Entry;
+    fn new() -> Self;
+    //  fn signals(&mut self, vars: &Variables<Entry>);
+    fn push(&mut self, x: f64, vals: &Self::Entry);
+    fn end(&mut self);
+    //  fn len(&self) -> usize;
+    //  fn get(&self, name: &str) -> SpResult<&Self::Entry>;
+}
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
+use std::thread::JoinHandle;
+
+enum IoWriterMessage {
+    STOP,
+    DATA(Vec<f64>),
+}
+enum IoWriterResponse {
+    OK,
+    RESULT(Vec<Vec<f64>>),
+}
+/// Threaded File Writer
+/// Temporarily somewhat abandoned
+struct ThreadStreamWriter {
+    tx: Sender<IoWriterMessage>,
+    rx2: Receiver<IoWriterResponse>,
+    thread: JoinHandle<()>,
+}
+impl ThreadStreamWriter {
+    fn join(mut self) -> std::thread::Result<()> {
+        self.thread.join()
+    }
+}
+impl Result for ThreadStreamWriter {
+    type Entry = Vec<f64>;
+    fn new() -> Self {
+        let (tx, rx) = channel::<IoWriterMessage>();
+        let (tx2, rx2) = channel::<IoWriterResponse>();
+
+        let thread = thread::spawn(move || {
+            use serde::ser::{SerializeSeq, Serializer};
+            use std::fs::File;
+
+            let mut res: Vec<Vec<f64>> = vec![];
+
+            let f = File::create("data.json").unwrap(); // FIXME: name
+            let mut ser = serde_json::Serializer::new(f);
+            let mut seq = ser.serialize_seq(None).unwrap();
+
+            for msg in rx {
+                match msg {
+                    IoWriterMessage::DATA(d) => {
+                        seq.serialize_element(&d).unwrap();
+                        res.push(d);
+                    }
+                    IoWriterMessage::STOP => {
+                        seq.end().unwrap();
+                        tx2.send(IoWriterResponse::RESULT(res)).unwrap();
+                        return;
+                    }
+                };
+            }
+        });
+        Self { tx, rx2, thread }
+    }
+    fn push(&mut self, _x: f64, vals: &Vec<f64>) {
+        self.tx.send(IoWriterMessage::DATA(vals.clone())).unwrap(); // FIXME: no copy
+    }
+    fn end(&mut self) {
+        self.tx.send(IoWriterMessage::STOP).unwrap();
+        for msg in self.rx2.iter() {
             match msg {
-                IoWriterResponse::OK => {
-                    continue;
-                }
-                IoWriterResponse::RESULT(_) => {
-                    t.join().unwrap();
-                    return Ok(results);
-                }
+                IoWriterResponse::RESULT(_) => break,
+                _ => continue,
             }
         }
-        Err(sperror("Tran Failure"))
     }
 }
 
@@ -740,7 +764,7 @@ impl TranResult {
         self.time.len()
     }
     /// Retrieve values of signal `name`
-    pub fn get(&self, name: &str) -> SpResult<&Vec<f64>>{
+    pub fn get(&self, name: &str) -> SpResult<&Vec<f64>> {
         match self.map.get(name) {
             Some(v) => Ok(v),
             None => Err(sperror(format!("Signal Not Found: {}", name))),
@@ -938,148 +962,4 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     // And return our results
     results.end();
     return Ok(results);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::circuit::*;
-    use crate::comps::mos::MosPorts;
-    use crate::comps::MosType;
-    use crate::spresult::TestResult;
-    use NodeRef::{Gnd, Num};
-
-    #[test]
-    fn test_ac1() -> TestResult {
-        let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
-        ac(ckt, AcOptions::default())?;
-        // FIXME: checks on solution
-        Ok(())
-    }
-
-    #[test]
-    fn test_ac2() -> TestResult {
-        use crate::circuit::Vs;
-        use Comp::{C, R, V};
-        let ckt = Ckt::from_comps(vec![
-            R(1e-3, Num(0), Num(1)),
-            C(1e-9, Num(1), Gnd),
-            V(Vs {
-                name: s("vi"),
-                vdc: 1.0,
-                acm: 1.0,
-                p: Num(0),
-                n: Gnd,
-            }),
-        ]);
-        ac(ckt, AcOptions::default())?;
-        // FIXME: checks on solution
-        Ok(())
-    }
-
-    #[test]
-    #[ignore] // FIXME: aint no Mos0 AC!
-    fn test_ac3() -> TestResult {
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(0), Num(1)),
-            Comp::C(1e-9, Num(1), Gnd),
-            Comp::vdc("v1", 1.0, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
-                name: s("m"),
-                mos_type: MosType::NMOS,
-                ports: MosPorts {
-                    g: Num(1),
-                    d: Num(0),
-                    s: Gnd,
-                    b: Gnd,
-                },
-            }),
-        ]);
-        ac(ckt, AcOptions::default())?;
-        // FIXME: checks on solution
-        Ok(())
-    }
-
-    /// NMOS Common-Source Amp
-    #[test]
-    fn test_ac4() -> TestResult {
-
-        let mut ckt = Ckt::from_comps(vec![
-            Comp::C(1e-9, n("d"), Gnd),
-            Comp::Mos1(Mos1i {
-                name: s("m"),
-                model: "default".into(),
-                params: "default".into(),
-                ports: MosPorts {
-                    g: n("g"),
-                    d: n("d"),
-                    s: Gnd,
-                    b: Gnd,
-                },
-            }),
-            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::V(Vs {
-                name: s("vg"),
-                vdc: 0.7,
-                acm: 1.0,
-                p: n("g"),
-                n: Gnd,
-            }),
-        ]);
-        
-        // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
-            mos_type: MosType::NMOS as i32,
-            ..Mos1Model::default()
-        };
-        ckt.models.mos1.models.insert("default".into(), nmos);
-        let params = Mos1InstParams::default();
-        ckt.models.mos1.insts.insert("default".into(), params);
-        
-        ac(ckt, AcOptions::default())?;
-        // FIXME: checks on solution
-        Ok(())
-    }
-
-    /// Diode-Connected NMOS AC
-    #[test]
-    fn test_ac5() -> TestResult {
-        use crate::circuit::Vs;
-
-        let mut ckt = Ckt::from_comps(vec![
-            Comp::V(Vs {
-                name: s("vd"),
-                vdc: 0.5,
-                acm: 1.0,
-                p: Num(0),
-                n: Gnd,
-            }),
-            Comp::Mos1(Mos1i {
-                name: s("m"),
-                model: "default".into(),
-                params: "default".into(),
-                ports: MosPorts {
-                    g: Num(0),
-                    d: Num(0),
-                    s: Gnd,
-                    b: Gnd,
-                },
-            }),
-        ]);
-
-        // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
-            mos_type: MosType::NMOS as i32,
-            ..Mos1Model::default()
-        };
-        ckt.models.mos1.models.insert("default".into(), nmos);
-        let params = Mos1InstParams::default();
-        ckt.models.mos1.insts.insert("default".into(), params);
-        
-        ac(ckt, AcOptions::default())?;
-        // FIXME: checks on solution
-        Ok(())
-    }
 }
