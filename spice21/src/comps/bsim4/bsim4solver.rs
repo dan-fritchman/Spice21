@@ -139,9 +139,17 @@ impl Bsim4 {
         // Save it for later
         self.guess = newop;
         // And return the corresponding matrix stamps
-        return self.stamp();
+        let stamps = self.stamp();
+        let mut sum = 0.0;
+        for s in stamps.g.iter() {
+            sum += s.1;
+        }
+        if sum != 0.0 {
+            println!("{}", format!("Invalid sum: {}", sum));
+        }
+        // assert!(sum == 0.0);
+        stamps
     }
-
     fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Bsim4OpPoint {
         //-> Bsim4OpPoint {
         // Start by declaring about 700 local float variables!
@@ -4938,50 +4946,6 @@ fn DEVpnjlim(vnew: f64, vold: f64, vt: f64, vcrit: f64) -> f64 {
 }
 
 impl Bsim4 {
-    // pub(crate) fn from<T: SpNum>(b4i: circuit::Bsim4i, models: mut ModelCache, solver: mut Solver<T>) -> Option<Self> {
-    //     // Debuggin via JSON dump!
-    //     // use serde::{Deserialize, Serialize};
-    //     // use std::fs::File;
-    //     // use std::io::prelude::*;
-
-    //     // let s = serde_json::to_string(&model.vals).unwrap();
-    //     // let mut rfj = File::create("model.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("model = {}", s);
-
-    //     // let s = serde_json::to_string(&model.derived).unwrap();
-    //     // let mut rfj = File::create("model_derived.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("derived = {}", s);
-
-    //     // let s = serde_json::to_string(&inst.intp).unwrap();
-    //     // let mut rfj = File::create("intp.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("intp = {}", s);
-
-    //     // let s = serde_json::to_string(&inst.size_params).unwrap();
-    //     // let mut rfj = File::create("size_params.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("size_params = {}", s);
-
-    //     // let s = serde_json::to_string(&ports).unwrap();
-    //     // let mut rfj = File::create("ports.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("ports = {}", s);
-
-    //     // FIXME: reference-ize these
-    //     Some(Self {
-    //         ports,
-    //         model: &model.vals,
-    //         model_derived: &model.derived,
-    //         size_params: &inst.size_params,
-    //         intp: &inst.intp,
-    //         op: Bsim4OpPoint::default(),
-    //         guess: Bsim4OpPoint::default(),
-    //         matps: Bsim4MatrixPointers::default(),
-    //     })
-    // }
-
     pub(crate) fn new(ports: Bsim4Ports<Option<VarIndex>>, model: Bsim4ModelEntry, inst: Bsim4InstEntry) -> Self {
         Self {
             ports,
@@ -5055,7 +5019,7 @@ mod tests {
             b: NodeRef::Gnd,
         };
         let mut ckt = Ckt::new();
-        ckt.models.bsim4.add_model("default", Bsim4ModelSpecs::new( MosType::NMOS));
+        ckt.models.bsim4.add_model("default", Bsim4ModelSpecs::new(MosType::NMOS));
         ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
 
         ckt.add(Bsim4i {

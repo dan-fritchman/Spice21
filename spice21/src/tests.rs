@@ -1292,6 +1292,40 @@ mod tests {
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
+    // Bsim4 PMOS-R Tran
+    #[test]
+    fn test_bsim4_pmos_rg_tran() -> TestResult {
+        let gl = 1e-6;
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Bsim4(Bsim4i {
+                name: s("p1"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: n("g"),
+                    d: Gnd,
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::R(gl, n("g"), Gnd),
+            Comp::C(1e-10, n("g"), Gnd),
+        ]);
+        add_bsim4_defaults(&mut ckt);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-11,
+            tstop: 1e-8,
+            ic: vec![(n("g"), -1.0)],
+        };
+        let soln = tran(ckt, opts)?;
+        to_file(&soln, "rg.json")?;
+        // Checks
+        let g = soln.get("g")?;
+        assert(g[0]).isclose(-1.0, 1e-3)?;
+        assert(g).last().isclose(0.0, 1e-3)?;
+        Ok(())
+    }
     /// Mos1 NMOS-R Tran
     #[test]
     fn test_mos1_nmos_rg_tran() -> TestResult {
@@ -1324,7 +1358,40 @@ mod tests {
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
-
+    /// Bsim4 NMOS-R Tran
+    #[test]
+    fn test_bsim4_nmos_rg_tran() -> TestResult {
+        let gl = 1e-6;
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Bsim4(Bsim4i {
+                name: s("p1"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: n("g"),
+                    d: Gnd,
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::R(gl, n("g"), Gnd),
+            Comp::C(1e-10, n("g"), Gnd),
+        ]);
+        add_bsim4_defaults(&mut ckt);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-12,
+            tstop: 1e-9,
+            ic: vec![(n("g"), 1.0)],
+        };
+        let soln = tran(ckt, opts)?;
+        to_file(&soln, "rg.json")?;
+        // Checks
+        let g = soln.get("g")?;
+        assert(g[0]).isclose(1.0, 1e-3)?;
+        assert(g).last().isclose(0.0, 1e-3)?;
+        Ok(())
+    }
     #[test]
     fn test_ac1() -> TestResult {
         let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
@@ -1379,7 +1446,6 @@ mod tests {
     /// NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
-
         let mut ckt = Ckt::from_comps(vec![
             Comp::C(1e-9, n("d"), Gnd),
             Comp::Mos1(Mos1i {
@@ -1402,17 +1468,15 @@ mod tests {
                 n: Gnd,
             }),
         ]);
-        
         // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
+        use crate::proto::{Mos1InstParams, Mos1Model};
+        let nmos = Mos1Model {
             mos_type: MosType::NMOS as i32,
             ..Mos1Model::default()
         };
         ckt.models.mos1.models.insert("default".into(), nmos);
         let params = Mos1InstParams::default();
         ckt.models.mos1.insts.insert("default".into(), params);
-        
         ac(ckt, AcOptions::default())?;
         // FIXME: checks on solution
         Ok(())
@@ -1445,15 +1509,14 @@ mod tests {
         ]);
 
         // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
+        use crate::proto::{Mos1InstParams, Mos1Model};
+        let nmos = Mos1Model {
             mos_type: MosType::NMOS as i32,
             ..Mos1Model::default()
         };
         ckt.models.mos1.models.insert("default".into(), nmos);
         let params = Mos1InstParams::default();
         ckt.models.mos1.insts.insert("default".into(), params);
-        
         ac(ckt, AcOptions::default())?;
         // FIXME: checks on solution
         Ok(())
@@ -1464,7 +1527,7 @@ mod tests {
         use std::fs::File;
         use std::io::prelude::*;
 
-        #[allow(unused_imports)] // Need these traits in scope 
+        #[allow(unused_imports)] // Need these traits in scope
         use serde::ser::{SerializeSeq, Serializer};
 
         let mut rfj = File::create(fname).unwrap();
@@ -1503,5 +1566,17 @@ mod tests {
         ckt.models.mos1.models.insert("pmos".into(), pmos);
         let params = Mos1InstParams::default();
         ckt.models.mos1.insts.insert("default".into(), params);
+    }
+    /// Helper. Modifies `ckt` adding Bsim4 default instance-params, plus default NMOS and PMOS
+    fn add_bsim4_defaults(ckt: &mut Ckt) {
+        use crate::comps::bsim4::{Bsim4InstSpecs, Bsim4ModelSpecs};
+        let nmos = Bsim4ModelSpecs::new(MosType::NMOS);
+        let default = nmos.clone();
+        ckt.models.bsim4.models.insert("default".into(), default);
+        ckt.models.bsim4.models.insert("nmos".into(), nmos);
+        let pmos = Bsim4ModelSpecs::new(MosType::PMOS);
+        ckt.models.bsim4.models.insert("pmos".into(), pmos);
+        let params = Bsim4InstSpecs::default();
+        ckt.models.bsim4.insts.insert("default".into(), params);
     }
 }
