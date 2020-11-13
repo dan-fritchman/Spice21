@@ -1379,7 +1379,6 @@ mod tests {
     /// NMOS Common-Source Amp
     #[test]
     fn test_ac4() -> TestResult {
-
         let mut ckt = Ckt::from_comps(vec![
             Comp::C(1e-9, n("d"), Gnd),
             Comp::Mos1(Mos1i {
@@ -1402,17 +1401,15 @@ mod tests {
                 n: Gnd,
             }),
         ]);
-        
         // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
+        use crate::proto::{Mos1InstParams, Mos1Model};
+        let nmos = Mos1Model {
             mos_type: MosType::NMOS as i32,
             ..Mos1Model::default()
         };
         ckt.models.mos1.models.insert("default".into(), nmos);
         let params = Mos1InstParams::default();
         ckt.models.mos1.insts.insert("default".into(), params);
-        
         ac(ckt, AcOptions::default())?;
         // FIXME: checks on solution
         Ok(())
@@ -1445,15 +1442,14 @@ mod tests {
         ]);
 
         // Define our models & params
-        use crate::proto::{Mos1Model, Mos1InstParams};
-        let nmos = Mos1Model{
+        use crate::proto::{Mos1InstParams, Mos1Model};
+        let nmos = Mos1Model {
             mos_type: MosType::NMOS as i32,
             ..Mos1Model::default()
         };
         ckt.models.mos1.models.insert("default".into(), nmos);
         let params = Mos1InstParams::default();
         ckt.models.mos1.insts.insert("default".into(), params);
-        
         ac(ckt, AcOptions::default())?;
         // FIXME: checks on solution
         Ok(())
@@ -1464,7 +1460,7 @@ mod tests {
         use std::fs::File;
         use std::io::prelude::*;
 
-        #[allow(unused_imports)] // Need these traits in scope 
+        #[allow(unused_imports)] // Need these traits in scope
         use serde::ser::{SerializeSeq, Serializer};
 
         let mut rfj = File::create(fname).unwrap();
