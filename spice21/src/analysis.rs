@@ -610,6 +610,7 @@ impl<'a> Tran<'a> {
         results.push(self.state.t, &tdata);
 
         // Update initial-condition sources and resistances
+        // FIXME: whether to change the voltages 
         for c in self.state.vic.iter() {
             self.solver.comps[*c].update(0.0);
         }
