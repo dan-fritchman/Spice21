@@ -13,11 +13,7 @@ impl Bsim4 {
 
         // Initially zero all capacitances and their impedances
         // Many complicated paths through the code below do not assure they are otherwise initialized.
-        let mut qgmid = 0.0;
-
-        let mut ceqqg = 0.0;
-        let mut ceqqb = 0.0;
-        let mut ceqqd = 0.0;
+        
         let mut ceqqjd = 0.0;
         let mut ceqqjs = 0.0;
         let mut cqcheq = 0.0;
@@ -47,7 +43,6 @@ impl Bsim4 {
         let mut gcdgmb = 0.0;
         let mut gcsgmb = 0.0;
         let mut gcbgmb = 0.0;
-        let mut ceqqgmid = 0.0;
         let mut gcdbdb = 0.0;
         let mut gcsbsb = 0.0;
 
@@ -71,14 +66,7 @@ impl Bsim4 {
         let mut dsxpart_dVb = 0.0;
         let mut dsxpart_dVs = 0.0;
 
-        let Bsim4OpPoint {
-            mut qbulk,
-            mut qgate,
-            mut qsrc,
-            mut qdrn,
-            ..
-        } = *newop; // FIXME: the story with mutating these
-        let Bsim4OpPoint { qgdo, qgso, qdef, .. } = *newop;
+        let Bsim4OpPoint { qdrn, qgdo, qgso, qdef, .. } = *newop;
         let Bsim4OpPoint { cgdo, cgso, .. } = *newop;
         let Bsim4OpPoint {
             vbs,
@@ -98,7 +86,6 @@ impl Bsim4 {
         let ag0 = 1.0 / tran_state.dt;
         if newop.mode > 0 {
             if self.model.trnqsmod == 0 {
-                qdrn -= qgdo;
                 if self.model.rgatemod == 3 {
                     gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                     gcgmdb = -cgdo * ag0;
@@ -116,13 +103,9 @@ impl Bsim4 {
 
                     gcdgb = newop.cdgb * ag0;
                     gcsgb = -(newop.cggb + newop.cbgb + newop.cdgb) * ag0;
-                    gcbgb = newop.cbgb * ag0;
-
-                    let qgmb = self.size_params.cgbo * vgmb;
-                    qgmid = qgdo + qgso + qgmb;
-                    qbulk -= qgmb;
-                    qsrc = -(qgate + qgmid + qbulk + qdrn);
-                } else { // Default rgatemod==0
+                    gcbgb = newop.cbgb * ag0; 
+                } else {
+                    // Default rgatemod==0
                     gcggb = (newop.cggb + cgdo + cgso + self.size_params.cgbo) * ag0;
                     gcgdb = (newop.cgdb - cgdo) * ag0;
                     gcgsb = (newop.cgsb - cgso) * ag0;
@@ -134,12 +117,7 @@ impl Bsim4 {
 
                     gcdgmb = 0.0;
                     gcsgmb = 0.0;
-                    gcbgmb = 0.0;
-
-                    let qgb = self.size_params.cgbo * vgb;
-                    qgate += qgdo + qgso + qgb;
-                    qbulk -= qgb;
-                    qsrc = -(qgate + qbulk + qdrn);
+                    gcbgmb = 0.0; 
                 }
                 gcddb = (newop.cddb + newop.capbd + cgdo) * ag0;
                 gcdsb = newop.cdsb * ag0;
@@ -147,7 +125,8 @@ impl Bsim4 {
                 gcsdb = -(newop.cgdb + newop.cbdb + newop.cddb) * ag0;
                 gcssb = (newop.capbs + cgso - (newop.cgsb + newop.cbsb + newop.cdsb)) * ag0;
 
-                if self.model.rbodymod == 0 { // Default model 
+                if self.model.rbodymod == 0 {
+                    // Default model
                     gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
                     gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
                     gcbdb = (newop.cbdb - newop.capbd) * ag0;
@@ -248,14 +227,7 @@ impl Bsim4 {
                     gcggb = 0.0;
                     gcgdb = 0.0;
                     gcgsb = 0.0;
-                    gcgbb = 0.0;
-
-                    let qgmb = self.size_params.cgbo * vgmb;
-                    qgmid = qgdo + qgso + qgmb;
-                    qgate = 0.0;
-                    qbulk = -qgmb;
-                    qdrn = -qgdo;
-                    qsrc = -(qgmid + qbulk + qdrn);
+                    gcgbb = 0.0; 
                 } else {
                     gcggb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                     gcgdb = -cgdo * ag0;
@@ -267,13 +239,7 @@ impl Bsim4 {
                     gcbgb = gcgbb;
                     gcdgmb = 0.0;
                     gcsgmb = 0.0;
-                    gcbgmb = 0.0;
-
-                    let qgb = self.size_params.cgbo * vgb;
-                    qgate = qgdo + qgso + qgb;
-                    qbulk = -qgb;
-                    qdrn = -qgdo;
-                    qsrc = -(qgate + qbulk + qdrn);
+                    gcbgmb = 0.0; 
                 }
 
                 gcddb = (newop.capbd + cgdo) * ag0;
@@ -300,7 +266,6 @@ impl Bsim4 {
             }
         } else {
             if self.model.trnqsmod == 0 {
-                qsrc = qdrn - qgso;
                 if self.model.rgatemod == 3 {
                     gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                     gcgmdb = -cgdo * ag0;
@@ -318,12 +283,7 @@ impl Bsim4 {
 
                     gcdgb = -(newop.cggb + newop.cbgb + newop.cdgb) * ag0;
                     gcsgb = newop.cdgb * ag0;
-                    gcbgb = newop.cbgb * ag0;
-
-                    let qgmb = self.size_params.cgbo * vgmb;
-                    qgmid = qgdo + qgso + qgmb;
-                    qbulk -= qgmb;
-                    qdrn = -(qgate + qgmid + qbulk + qsrc);
+                    gcbgb = newop.cbgb * ag0; 
                 } else {
                     gcggb = (newop.cggb + cgdo + cgso + self.size_params.cgbo) * ag0;
                     gcgdb = (newop.cgsb - cgdo) * ag0;
@@ -336,12 +296,7 @@ impl Bsim4 {
 
                     gcdgmb = 0.0;
                     gcsgmb = 0.0;
-                    gcbgmb = 0.0;
-
-                    let qgb = self.size_params.cgbo * vgb;
-                    qgate += qgdo + qgso + qgb;
-                    qbulk -= qgb;
-                    qdrn = -(qgate + qbulk + qsrc);
+                    gcbgmb = 0.0; 
                 }
                 gcddb = (newop.capbd + cgdo - (newop.cgsb + newop.cbsb + newop.cdsb)) * ag0;
                 gcdsb = -(newop.cgdb + newop.cbdb + newop.cddb) * ag0;
@@ -448,14 +403,7 @@ impl Bsim4 {
                     gcggb = 0.0;
                     gcgdb = 0.0;
                     gcgsb = 0.0;
-                    gcgbb = 0.0;
-
-                    let qgmb = self.size_params.cgbo * vgmb;
-                    qgmid = qgdo + qgso + qgmb;
-                    qgate = 0.0;
-                    qbulk = -qgmb;
-                    qdrn = -qgdo;
-                    qsrc = -qgso;
+                    gcgbb = 0.0; 
                 } else {
                     gcggb = (cgdo + cgso + self.size_params.cgbo) * ag0;
                     gcgdb = -cgdo * ag0;
@@ -467,13 +415,7 @@ impl Bsim4 {
                     gcbgb = gcgbb;
                     gcdgmb = 0.0;
                     gcsgmb = 0.0;
-                    gcbgmb = 0.0;
-
-                    let qgb = self.size_params.cgbo * vgb;
-                    qgate = qgdo + qgso + qgb;
-                    qbulk = -qgb;
-                    qdrn = -qgdo;
-                    qsrc = -qgso;
+                    gcbgmb = 0.0; 
                 }
 
                 gcddb = (newop.capbd + cgdo) * ag0;
@@ -497,68 +439,48 @@ impl Bsim4 {
                 }
                 gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
             }
-        }
+        } 
 
-        newop.qg = qgate;
-        newop.qd = qdrn - newop.qbd;
-        newop.qs = qsrc - newop.qbs;
+        // We borrow the BSIM4 reference implementation's practice here,
+        // of only using numerical integration to calculate `i = dq/dt`,
+        // Ignoring the impedance and RHS terms it calculates.
+        let (_g, i, _r) = tran_state.integrate(newop.qb - self.op.qb, 0.0, 0.0, self.op.cqb);
+        newop.cqb = i;
+        let (_g, i, _r) = tran_state.integrate(newop.qg - self.op.qg, 0.0, 0.0, self.op.cqg);
+        newop.cqg = i;
+        let (_g, i, _r) = tran_state.integrate(newop.qd - self.op.qd, 0.0, 0.0, self.op.cqd);
+        newop.cqd = i;
+        if self.model.trnqsmod != 0 {
+            newop.qcdump = qdef * nqs_scaling_factor;
+            let (_g, i, _r) = tran_state.integrate(newop.qcdump - self.op.qcdump, 0.0, 0.0, self.op.cqcdump);
+            newop.cqcdump = i;
+        }
         if self.model.rgatemod == 3 {
-            newop.qgmid = qgmid;
+            let (_g, i, _r) = tran_state.integrate(newop.qgmid - self.op.qgmid, 0.0, 0.0, self.op.cqgmid);
+            newop.cqgmid = i;
         }
-
         if self.model.rbodymod != 0 {
-            newop.qb = qbulk + newop.qbd + newop.qbs;
-        } else {
-            newop.qb = qbulk;
+            let (_g, i, _r) = tran_state.integrate(newop.qbs - self.op.qbs, 0.0, 0.0, self.op.cqbs);
+            newop.cqbs = i;
+            let (_g, i, _r) = tran_state.integrate(newop.qbd - self.op.qbd, 0.0, 0.0, self.op.cqbd);
+            newop.cqbd = i;
         }
-        // FIXME! Something got very lost in translation here
-        // if let AnalysisInfo::TRAN(_, state) = an {
-        //     // Transient, Do Numerical Integration
-        //     if self.model.trnqsmod != 0 {
-        //         newop.qcdump = qdef * nqs_scaling_factor;
-        //         let (_g, i, _r) = state.integrate(newop.qcdump - self.op.qcdump, 0.0, 0.0, self.op.cqcdump);
-        //         newop.cqcdump = i;
-        //     }
 
-        //     let (_g, i, _r) = state.integrate(newop.qb - self.op.qb, 0.0, 0.0, self.op.cqb);
-        //     newop.cqb = i;
-        //     let (_g, i, _r) = state.integrate(newop.qg - self.op.qg, 0.0, 0.0, self.op.cqg);
-        //     newop.cqg = i;
-        //     let (_g, i, _r) = state.integrate(newop.qd - self.op.qd, 0.0, 0.0, self.op.cqd);
-        //     newop.cqd = i;
-
-        //     if self.model.rgatemod == 3 {
-        //         let (_g, i, _r) = state.integrate(newop.qgmid - self.op.qgmid, 0.0, 0.0, self.op.cqgmid);
-        //         newop.cqgmid = i;
-        //     }
-
-        //     if self.model.rbodymod != 0 {
-        //         let (_g, i, _r) = state.integrate(newop.qbs - self.op.qbs, 0.0, 0.0, self.op.cqbs);
-        //         newop.cqbs = i;
-        //         let (_g, i, _r) = state.integrate(newop.qbd - self.op.qbd, 0.0, 0.0, self.op.cqbd);
-        //         newop.cqbd = i;
-        //     }
-        // }
-
-        /* Calculate equivalent charge current */
-
+        // Calculate equivalent RHS current
         let cqgate = newop.cqg;
         let cqbody = newop.cqb;
         let cqdrn = newop.cqd;
 
-        ceqqg = cqgate - gcggb * vgb + gcgdb * vbd + gcgsb * vbs;
-        ceqqd = cqdrn - gcdgb * vgb - gcdgmb * vgmb + (gcddb + gcdbdb) * vbd - gcdbdb * vbd_jct + gcdsb * vbs;
-        ceqqb = cqbody - gcbgb * vgb - gcbgmb * vgmb + gcbdb * vbd + gcbsb * vbs;
+        let mut ceqqg = cqgate - gcggb * vgb + gcgdb * vbd + gcgsb * vbs;
+        let mut ceqqd = cqdrn - gcdgb * vgb - gcdgmb * vgmb + (gcddb + gcdbdb) * vbd - gcdbdb * vbd_jct + gcdsb * vbs;
+        let mut ceqqb = cqbody - gcbgb * vgb - gcbgmb * vgmb + gcbdb * vbd + gcbsb * vbs;
 
-        newop.ceqqgmid = if self.model.rgatemod == 3 {
-            newop.cqgmid + gcgmdb * vbd + gcgmsb * vbs - gcgmgmb * vgmb
-        } else { // Default rgatemod==0
-            0.0
-        };
-
+        if self.model.rgatemod == 3 {
+            newop.ceqqgmid = newop.cqgmid + gcgmdb * vbd + gcgmsb * vbs - gcgmgmb * vgmb;
+        }
         if self.model.rbodymod != 0 {
-            ceqqjs = newop.cqbs + gcsbsb * vbs_jct;
-            ceqqjd = newop.cqbd + gcdbdb * vbd_jct;
+            newop.ceqqjs = newop.cqbs + gcsbsb * vbs_jct;
+            newop.ceqqjd = newop.cqbd + gcdbdb * vbd_jct;
         }
 
         if self.model.trnqsmod != 0 {
@@ -589,8 +511,6 @@ impl Bsim4 {
         newop.ceqqg = ceqqg;
         newop.ceqqd = ceqqd;
         newop.ceqqb = ceqqb;
-        newop.ceqqjs = ceqqjs;
-        newop.ceqqjd = ceqqjd;
         newop.gcgbb = gcgbb;
         newop.gcsbb = gcsbb;
         newop.gcssb = gcssb;

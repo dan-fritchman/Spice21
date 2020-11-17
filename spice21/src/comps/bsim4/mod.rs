@@ -23,6 +23,7 @@ pub mod bsim4ports;
 pub mod bsim4solver;
 
 pub use cache::*;
+pub use bsim4ports::*;
 pub use model::*;
 pub use inst::*;
 pub use bsim4solver::*;

@@ -308,7 +308,7 @@ impl Bsim4 {
             ..
         } = newop;
 
-        if self.model.p() > 0.0 {
+        if self.model.p() < 0.0 {
             ceqqg = -ceqqg;
             ceqqd = -ceqqd;
             ceqqb = -ceqqb;
@@ -318,12 +318,10 @@ impl Bsim4 {
                 cqdef = -cqdef;
                 cqcheq = -cqcheq;
             }
-
             if self.model.rbodymod != 0 {
                 ceqqjs = -ceqqjs;
                 ceqqjd = -ceqqjd;
             }
-
             if self.model.rgatemod == 3 {
                 ceqqgmid = -ceqqgmid;
             }
