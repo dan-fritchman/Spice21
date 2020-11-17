@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 pub mod cache;
 pub mod model;
 pub mod inst;
+pub mod tran;
+pub mod stamp;
+
+#[cfg(test)]
+mod tests;
 
 pub mod bsim4defs;
 pub mod bsim4derive;
@@ -18,6 +23,7 @@ pub mod bsim4ports;
 pub mod bsim4solver;
 
 pub use cache::*;
+pub use bsim4ports::*;
 pub use model::*;
 pub use inst::*;
 pub use bsim4solver::*;
@@ -254,6 +260,8 @@ pub(crate) struct Bsim4OpPoint {
     pub(crate) vsbs: f64,
     pub(crate) vges: f64,
     pub(crate) vgms: f64,
+    pub(crate) vgmb: f64,
+    pub(crate) vgb: f64,
     pub(crate) vses: f64,
     pub(crate) vdes: f64,
 

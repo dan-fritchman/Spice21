@@ -1094,6 +1094,92 @@ mod tests {
         assert(&soln.map).isclose(golden, 1e-6)?;
         Ok(())
     }
+    /// Bsim4 CMOS Ring Oscillator Tran
+    #[test]
+    fn test_bsim4_cmos_ro_tran() -> TestResult {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
+            Comp::Bsim4(Bsim4i {
+                name: s("p1"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(3),
+                    d: Num(1),
+                    s: n("vdd"),
+                    b: n("vdd"),
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("n1"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(3),
+                    d: Num(1),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("p2"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(1),
+                    d: Num(2),
+                    s: n("vdd"),
+                    b: n("vdd"),
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("n2"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(1),
+                    d: Num(2),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("p3"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(2),
+                    d: Num(3),
+                    s: n("vdd"),
+                    b: n("vdd"),
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("n3"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(2),
+                    d: Num(3),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+        ]);
+        add_bsim4_defaults(&mut ckt);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-10,
+            tstop: 3e-7,
+            ic: vec![(Num(1), 0.0)],
+        };
+        let soln = tran(ckt, opts)?;
+        // to_file(&soln, "test_bsim4_cmos_ro_tran.json"); // Writes new golden data
+        // Checks
+        let golden = load_golden("test_bsim4_cmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6)?;
+        Ok(())
+    }
 
     // Mos1 NMOS-R Oscillator Tran
     #[test]
@@ -1221,6 +1307,68 @@ mod tests {
         Ok(())
     }
 
+    // Bsim4 PMOS-R Oscillator Tran
+    #[test]
+    fn test_bsim4_pmos_ro_tran() -> TestResult {
+        let cl = 1e-16;
+        let gl = 1e-6;
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
+            Comp::Bsim4(Bsim4i {
+                name: s("p1"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(3),
+                    d: Num(1),
+                    s: n("vdd"),
+                    b: n("vdd"),
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("p2"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(1),
+                    d: Num(2),
+                    s: n("vdd"),
+                    b: n("vdd"),
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("p3"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(2),
+                    d: Num(3),
+                    s: n("vdd"),
+                    b: n("vdd"),
+                },
+            }),
+            Comp::R(gl, Num(1), Gnd),
+            Comp::R(gl, Num(2), Gnd),
+            Comp::R(gl, Num(3), Gnd),
+            Comp::C(cl, Num(1), Gnd),
+            Comp::C(cl, Num(2), Gnd),
+            Comp::C(cl, Num(3), Gnd),
+        ]);
+        add_bsim4_defaults(&mut ckt);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-11,
+            tstop: 1e-8,
+            ic: vec![(Num(1), 0.0)],
+        };
+        let soln = tran(ckt, opts)?;
+        // to_file(&soln, "test_bsim4_pmos_ro_tran.json"); // Writes new golden data
+        // Checks
+        let golden = load_golden("test_bsim4_pmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6)?;
+        Ok(())
+    }
+
     /// Mos1 PMOS-R Amp, Tran Initial Condition Decay
     #[test]
     fn test_mos1_pmos_rload_tran() -> TestResult {
@@ -1292,6 +1440,40 @@ mod tests {
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
+    // Bsim4 PMOS-R Tran
+    #[test]
+    fn test_bsim4_pmos_rg_tran() -> TestResult {
+        let gl = 1e-5;
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Bsim4(Bsim4i {
+                name: s("p1"),
+                model: "pmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: n("g"),
+                    d: Gnd,
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::R(gl, n("g"), Gnd),
+            Comp::C(1e-18, n("g"), Gnd),
+        ]);
+        add_bsim4_defaults(&mut ckt);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-10,
+            tstop: 1e-7,
+            ic: vec![(n("g"), -1.0)],
+        };
+        let soln = tran(ckt, opts)?;
+        // to_file(&soln, "rg.json")?;
+        // Checks
+        let g = soln.get("g")?;
+        assert(g[0]).isclose(-1.0, 1e-3)?;
+        assert(g).last().isclose(0.0, 1e-3)?;
+        Ok(())
+    }
     /// Mos1 NMOS-R Tran
     #[test]
     fn test_mos1_nmos_rg_tran() -> TestResult {
@@ -1324,7 +1506,40 @@ mod tests {
         assert(g).last().isclose(0.0, 1e-3)?;
         Ok(())
     }
-
+    /// Bsim4 NMOS-R Tran
+    #[test]
+    fn test_bsim4_nmos_rg_tran() -> TestResult {
+        let gl = 1e-5;
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Bsim4(Bsim4i {
+                name: s("p1"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: n("g"),
+                    d: Gnd,
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::R(gl, n("g"), Gnd),
+            // Comp::C(1e-15, n("g"), Gnd),
+        ]);
+        add_bsim4_defaults(&mut ckt);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-10,
+            tstop: 1e-7,
+            ic: vec![(n("g"), 1.0)],
+        };
+        let soln = tran(ckt, opts)?;
+        // to_file(&soln, "rg.json")?;
+        // Checks
+        let g = soln.get("g")?;
+        assert(g[0]).isclose(1.0, 1e-3)?;
+        assert(g).last().isclose(0.0, 1e-3)?;
+        Ok(())
+    }
     #[test]
     fn test_ac1() -> TestResult {
         let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
@@ -1454,6 +1669,69 @@ mod tests {
         // FIXME: checks on solution
         Ok(())
     }
+
+    // Bsim4 NMOS-R Oscillator Tran
+    #[test]
+    fn test_bsim4_nmos_ro_tran() -> TestResult {
+        let gl = 1e-6;
+        let cl = 1e-18;
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::vdc("v1", 1.0, n("vdd"), Gnd),
+            Comp::Bsim4(Bsim4i {
+                name: s("n1"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(3),
+                    d: Num(1),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("n2"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(1),
+                    d: Num(2),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::Bsim4(Bsim4i {
+                name: s("n3"),
+                model: "nmos".into(),
+                params: "default".into(),
+                ports: MosPorts {
+                    g: Num(2),
+                    d: Num(3),
+                    s: Gnd,
+                    b: Gnd,
+                },
+            }),
+            Comp::R(gl, Num(1), n("vdd")),
+            Comp::R(gl, Num(2), n("vdd")),
+            Comp::R(gl, Num(3), n("vdd")),
+            Comp::C(cl, Num(1), n("vdd")),
+            Comp::C(cl, Num(2), n("vdd")),
+            Comp::C(cl, Num(3), n("vdd")),
+        ]);
+        // Simulate
+        let opts = TranOptions {
+            tstep: 1e-9,
+            tstop: 1e-6,
+            ic: vec![(Num(1), 0.0)],
+        };
+        add_bsim4_defaults(&mut ckt);
+        let soln = tran(ckt, opts)?;
+        // to_file(&soln, "test_bsim4_nmos_ro_tran.json"); // Writes new golden data
+        // Checks
+        let golden = load_golden("test_bsim4_nmos_ro_tran.json");
+        assert(&soln.map).isclose(golden, 1e-6)?;
+        Ok(())
+    }
+
     /// Test-helper to write results to JSON file
     #[allow(dead_code)]
     fn to_file(soln: &TranResult, fname: &str) -> SpResult<()> {
@@ -1499,5 +1777,17 @@ mod tests {
         ckt.models.mos1.models.insert("pmos".into(), pmos);
         let params = Mos1InstParams::default();
         ckt.models.mos1.insts.insert("default".into(), params);
+    }
+    /// Helper. Modifies `ckt` adding Bsim4 default instance-params, plus default NMOS and PMOS
+    fn add_bsim4_defaults(ckt: &mut Ckt) {
+        use crate::comps::bsim4::{Bsim4InstSpecs, Bsim4ModelSpecs};
+        let nmos = Bsim4ModelSpecs::new(MosType::NMOS);
+        let default = nmos.clone();
+        ckt.models.bsim4.models.insert("default".into(), default);
+        ckt.models.bsim4.models.insert("nmos".into(), nmos);
+        let pmos = Bsim4ModelSpecs::new(MosType::PMOS);
+        ckt.models.bsim4.models.insert("pmos".into(), pmos);
+        let params = Bsim4InstSpecs::default();
+        ckt.models.bsim4.insts.insert("default".into(), params);
     }
 }
