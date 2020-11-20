@@ -309,23 +309,26 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
     fn add_comp(&mut self, comp: Comp) {
         // Convert `comp` to a corresponding `ComponentSolver`
         let c: ComponentSolver = match comp {
-            Comp::R(g, p, n) => {
+            Comp::R(r) => {
+                let circuit::Ri {g, p, n, ..} = r;
                 use crate::comps::Resistor;
                 let pvar = self.node_var(p.clone());
                 let nvar = self.node_var(n.clone());
                 Resistor::new(g, pvar, nvar).into()
             }
-            Comp::C(c, p, n) => {
+            Comp::C(c) => {
+                let circuit::Ci {c, p, n, ..} = c;
                 use crate::comps::Capacitor;
                 let pvar = self.node_var(p.clone());
                 let nvar = self.node_var(n.clone());
                 Capacitor::new(c, pvar, nvar).into()
             }
-            Comp::I(i, p, n) => {
+            Comp::I(i) => {
+                let circuit::Ii { dc, p, n, .. } = i;
                 use crate::comps::Isrc;
                 let pvar = self.node_var(p.clone());
                 let nvar = self.node_var(n.clone());
-                Isrc::new(i, pvar, nvar).into()
+                Isrc::new(dc, pvar, nvar).into()
             }
             Comp::D(d) => {
                 use crate::comps::Diode;
@@ -339,68 +342,53 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 let n = self.node_var(vc.n.clone());
                 Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
             }
-            Comp::Mos0(m) => {
+            Comp::Mos(m) => {
                 use crate::comps::mos::MosPorts;
-                use crate::comps::Mos0;
-
-                let circuit::Mos0i { mos_type, ports, .. } = m;
-
-                //let dp = self.vars.add(VarKind::V);
-                //let sp = self.vars.add(VarKind::V);
                 let ports: MosPorts<Option<VarIndex>> = [
-                    self.node_var(ports.d.clone()),
-                    self.node_var(ports.g.clone()),
-                    self.node_var(ports.s.clone()),
-                    self.node_var(ports.b.clone()),
+                    self.node_var(m.ports.d.clone()),
+                    self.node_var(m.ports.g.clone()),
+                    self.node_var(m.ports.s.clone()),
+                    self.node_var(m.ports.b.clone()),
                 ]
                 .into();
-                Mos0::new(ports.into(), mos_type).into()
-            }
-            Comp::Mos1(m) => {
-                use crate::comps::mos::MosPorts;
-                use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
-
-                let circuit::Mos1i { model, params, ports, .. } = m;
-
-                let ports: MosPorts<Option<VarIndex>> = [
-                    self.node_var(ports.d.clone()),
-                    self.node_var(ports.g.clone()),
-                    self.node_var(ports.s.clone()),
-                    self.node_var(ports.b.clone()),
-                ]
-                .into();
-                let model = match self.models.mos1.models.get(&model) {
-                    Some(m) => m.clone(),
-                    None => panic!(format!("Model not defined: {}", model)),
+                // Determine solver-type from defined models
+                let c: ComponentSolver = if let Some(model) = self.models.bsim4.models.get(&m.model) {
+                    use crate::comps::bsim4::bsim4ports::Bsim4Ports;
+                    use crate::comps::bsim4::Bsim4;
+                    let (model, inst) = self.models.bsim4.get(&m.model, &m.params).unwrap();
+                    let ports = Bsim4Ports::from(m.name, &ports, &model.vals, &inst.intp, self);
+                    Bsim4::new(ports, model, inst).into()
+                } else if let Some(model) = self.models.mos1.models.get(&m.model) {
+                    use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
+                    let params = match self.models.mos1.insts.get(&m.params) {
+                        Some(m) => m.clone(),
+                        None => panic!(format!("Parameters not defined: {}", m.params)),
+                    };
+                    Mos1::new(Mos1Model::resolve(model.clone()), Mos1InstanceParams::resolve(params), ports.into()).into()
+                } else if let Some(mos_type) = self.models.mos0.get(&m.model) {
+                    // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
+                    use crate::comps::Mos0;
+                    Mos0::new(ports.into(), mos_type.clone()).into()
+                } else {
+                    panic!(format!("Model not defined: {}", m.model));
                 };
-                let params = match self.models.mos1.insts.get(&params) {
-                    Some(m) => m.clone(),
-                    None => panic!(format!("Parameters not defined: {}", params)),
-                };
-                Mos1::new(Mos1Model::resolve(model), Mos1InstanceParams::resolve(params), ports.into()).into()
-                // FIXME: Into/From
+                c
             }
-            Comp::Bsim4(b4i) => {
-                use crate::comps::bsim4::bsim4ports::Bsim4Ports;
-                use crate::comps::bsim4::Bsim4;
-                use crate::comps::mos::MosPorts;
-
-                let circuit::Bsim4i { name, ports, model, params } = b4i;
-
-                // let iname = params.name.clone();// FIXME: elsewhere
-                // self.models.bsim4.add_inst(params); // FIXME: elsewhere
-                let (model, inst) = self.models.bsim4.get(&model, &params).unwrap();
-
-                let ports: MosPorts<Option<VarIndex>> = [
-                    self.node_var(ports.d.clone()),
-                    self.node_var(ports.g.clone()),
-                    self.node_var(ports.s.clone()),
-                    self.node_var(ports.b.clone()),
-                ]
-                .into();
-                let ports = Bsim4Ports::from(name, &ports, &model.vals, &inst.intp, self);
-                Bsim4::new(ports, model, inst).into()
-            }
+            // Comp::Mos0(m) => {
+            //     // Mos0 is a special case, since it has no parameters or model 
+            //     use crate::comps::mos::MosPorts;
+            //     use crate::comps::Mos0;
+            //     let circuit::Mos0i { mos_type, ports, .. } = m;
+            //     let ports: MosPorts<Option<VarIndex>> = [
+            //         self.node_var(ports.d.clone()),
+            //         self.node_var(ports.g.clone()),
+            //         self.node_var(ports.s.clone()),
+            //         self.node_var(ports.b.clone()),
+            //     ]
+            //     .into();
+            //     Mos0::new(ports.into(), mos_type).into()
+            // }
+            _ => panic!("!!!!")
         };
 
         // And add to our Component vector
@@ -610,7 +598,7 @@ impl<'a> Tran<'a> {
         results.push(self.state.t, &tdata);
 
         // Update initial-condition sources and resistances
-        // FIXME: whether to change the voltages 
+        // FIXME: whether to change the voltages
         for c in self.state.vic.iter() {
             self.solver.comps[*c].update(0.0);
         }

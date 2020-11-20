@@ -8,6 +8,7 @@
 //! * (b) Directly for testing or in Rust use-cases
 //!
 
+use enum_dispatch::enum_dispatch;
 use std::collections::HashMap;
 
 use super::comps::bsim4::Bsim4Cache;
@@ -58,20 +59,51 @@ pub struct Vs {
     pub p: NodeRef,
     pub n: NodeRef,
 }
-
-impl From<Bsim4i> for Comp {
-    fn from(x: Bsim4i) -> Self {
-        Comp::Bsim4(x)
-    }
-}
-
 impl From<Vs> for Comp {
     fn from(x: Vs) -> Self {
         Comp::V(x)
     }
 }
+/// Current Source
+pub struct Ii {
+    pub name: String,
+    pub dc: f64,
+    pub acm: f64,
+    pub p: NodeRef,
+    pub n: NodeRef,
+}
+impl From<Ii> for Comp {
+    fn from(x: Ii) -> Self {
+        Comp::I(x)
+    }
+}
+/// Resistance (really conductance)
+pub struct Ri {
+    pub name: String,
+    pub g: f64,
+    pub p: NodeRef,
+    pub n: NodeRef,
+}
+impl From<Ri> for Comp {
+    fn from(x: Ri) -> Self {
+        Comp::R(x)
+    }
+}
+/// Capacitor
+pub struct Ci {
+    pub name: String,
+    pub c: f64,
+    pub p: NodeRef,
+    pub n: NodeRef,
+}
+impl From<Ci> for Comp {
+    fn from(x: Ci) -> Self {
+        Comp::C(x)
+    }
+}
 
-/// Diode
+
+/// Diode Instance
 pub struct Ds {
     pub name: String,
     pub model: DiodeModel,
@@ -92,35 +124,30 @@ impl Ds {
     }
 }
 
+/// Mos Instance
+pub struct Mosi {
+    pub(crate) name: String,             // Instance Name
+    pub(crate) model: String,            // Model Name
+    pub(crate) params: String,           // Instance Param-Set Name
+    pub(crate) ports: MosPorts<NodeRef>, // Port Connections
+}
+/// "Level Zero" MOS Instance
 pub struct Mos0i {
     pub(crate) name: String,
     pub(crate) mos_type: MosType,
     pub(crate) ports: MosPorts<NodeRef>,
 }
-pub struct Mos1i {
-    pub(crate) name: String,
-    pub(crate) ports: MosPorts<NodeRef>,
-    pub(crate) model: String,
-    pub(crate) params: String,
-}
-pub struct Bsim4i {
-    pub(crate) name: String,
-    pub(crate) ports: MosPorts<NodeRef>,
-    pub(crate) model: String,
-    pub(crate) params: String,
-}
-
 /// Component Enum.
 /// Circuits are mostly a list of these variants.
+// FIXME: #[enum_dispatch]
 pub enum Comp {
     V(Vs),
-    I(f64, NodeRef, NodeRef),
-    R(f64, NodeRef, NodeRef),
-    C(f64, NodeRef, NodeRef),
+    I(Ii),
+    R(Ri),
+    C(Ci),
     D(Ds),
+    Mos(Mosi),
     Mos0(Mos0i),
-    Mos1(Mos1i),
-    Bsim4(Bsim4i),
 }
 
 impl Comp {
@@ -134,11 +161,63 @@ impl Comp {
             n,
         })
     }
-    // Convert from protobuf-generated classes
-    pub fn from(c: CompProto, models: &ModelCache) -> Self {
+    pub fn idc<S: Into<String>>(name: S, dc: f64, p: NodeRef, n: NodeRef) -> Comp {
+        Comp::I(Ii {
+            name: name.into(),
+            dc,
+            acm: 0.0,
+            p,
+            n,
+        })
+    }
+    pub fn r<S: Into<String>>(name: S, g: f64, p: NodeRef, n: NodeRef) -> Comp {
+        Comp::R(Ri {
+            name: name.into(),
+            g,
+            p,
+            n,
+        })
+    }
+    pub fn c<S: Into<String>>(name: S, c: f64, p: NodeRef, n: NodeRef) -> Comp {
+        Comp::C(Ci {
+            name: name.into(),
+            c,
+            p,
+            n,
+        })
+    }
+    /// Convert from protobuf-generated classes
+    // FIXME: remove the unused
+    pub fn from(c: CompProto) -> Self {
         match c {
-            CompProto::I(i) => Comp::I(i.dc, n(i.p), n(i.n)),
-            CompProto::R(r) => Comp::R(r.g, n(r.p), n(r.n)),
+            CompProto::I(i) => {
+                let x = Ii {
+                    name: i.name.into(),
+                    p: n(i.p),
+                    n: n(i.n),
+                    dc: i.dc,
+                    acm: 0.0, // FIXME: no value on proto yet
+                };
+                Comp::I(x)
+            }
+            CompProto::R(r) => {
+                let x = Ri {
+                    name: r.name.into(),
+                    p: n(r.p),
+                    n: n(r.n),
+                    g: r.g
+                };
+                Comp::R(x)
+            }
+            CompProto::C(c) => {
+                let x = Ci {
+                    name: c.name.into(),
+                    p: n(c.p),
+                    n: n(c.n),
+                    c: c.c 
+                };
+                Comp::C(x)
+            }
             CompProto::D(d) => {
                 let d1 = Ds::new(d.name, n(d.p), n(d.n));
                 Comp::D(d1)
@@ -153,7 +232,6 @@ impl Comp {
                 };
                 Comp::V(vs)
             }
-            CompProto::C(c) => Comp::C(c.c, n(c.p), n(c.n)),
             CompProto::M(m) => {
                 let ports: MosPorts<NodeRef> = match m.ports {
                     Some(p) => MosPorts {
@@ -169,27 +247,22 @@ impl Comp {
                         b: Gnd,
                     }, // FIXME: whether to default or not
                 };
-                // Mos instances break out to their solver-types here
-                if let Some(_model) = models.bsim4.models.get(&m.model) {
-                    Comp::Bsim4(Bsim4i {
-                        name: m.name,
-                        model: m.model.clone(),
-                        params: m.params.clone(),
-                        ports,
-                    })
-                } else {
-                    Comp::Mos1(Mos1i {
-                        name: m.name,
-                        model: m.model.clone(),
-                        params: m.params.clone(),
-                        ports,
-                    })
-                }
+                Comp::Mos(Mosi {
+                    name: m.name,
+                    model: m.model.clone(),
+                    params: m.params.clone(),
+                    ports,
+                })
             }
         }
     }
 }
 
+impl From<Mosi> for Comp {
+    fn from(m: Mosi) -> Self {
+        Comp::Mos(m)
+    }
+}
 impl From<Ds> for Comp {
     fn from(d: Ds) -> Self {
         Comp::D(d)
@@ -204,12 +277,14 @@ pub struct Mos1Defs {
     pub(crate) insts: HashMap<String, Mos1InstSpecs>,
 }
 pub struct ModelCache {
+    pub(crate) mos0: HashMap<String, MosType>,
     pub(crate) mos1: Mos1Defs,
     pub(crate) bsim4: Bsim4Cache,
 }
 impl ModelCache {
     pub(crate) fn new() -> Self {
         Self {
+            mos0: HashMap::new(),
             mos1: Mos1Defs::default(),
             bsim4: Bsim4Cache::new(),
         }
@@ -270,7 +345,7 @@ impl Ckt {
         let mut cs: Vec<Comp> = vec![];
         for opt in comps.into_iter() {
             if let Some(c) = opt.comp {
-                cs.push(Comp::from(c, &models));
+                cs.push(Comp::from(c));
             } else {
                 return Err(SpError::new("Invalid Component"));
             }
@@ -317,7 +392,10 @@ mod tests {
     #[test]
     fn test_ckt_parse() -> TestResult {
         let ckt = Ckt {
-            comps: vec![Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd), Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)],
+            comps: vec![
+                Comp::idc("i1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
+                Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            ],
             models: ModelCache::new(),
         };
         assert(ckt.comps.len()).eq(2)?;

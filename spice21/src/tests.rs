@@ -14,8 +14,8 @@ mod tests {
     #[test]
     fn test_ckt_parse() -> TestResult {
         Ckt::from_comps(vec![
-            Comp::I(1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
-            Comp::R(1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
+            Comp::idc("i1", 1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
+            Comp::r("r1", 1e-3, NodeRef::Name(s("0")), NodeRef::Gnd),
         ]);
         Ok(())
     }
@@ -37,8 +37,8 @@ mod tests {
     #[test]
     fn test_dcop2() -> TestResult {
         let ckt = Ckt::from_comps(vec![
-            Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::idc("i1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -49,9 +49,9 @@ mod tests {
     #[test]
     fn test_dcop3() -> TestResult {
         let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            Comp::R(1e-3, NodeRef::Num(1), NodeRef::Num(0)),
-            Comp::I(1e-3, NodeRef::Num(1), NodeRef::Gnd),
+            Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::r("r1", 1e-3, NodeRef::Num(1), NodeRef::Num(0)),
+            Comp::idc("i1", 1e-3, NodeRef::Num(1), NodeRef::Gnd),
         ]);
 
         let soln = dcop(ckt)?;
@@ -67,8 +67,8 @@ mod tests {
         use NodeRef::Gnd;
         let ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            R(2e-3, n("vdd"), n("div")),
-            R(2e-3, n("div"), Gnd),
+            Comp::r("r1", 2e-3, n("vdd"), n("div")),
+            Comp::r("r2", 2e-3, n("div"), Gnd),
         ]);
         let soln = dcop(ckt)?;
         assert(soln.values).eq(vec![-1e-3, 1.0, 0.5])?;
@@ -81,7 +81,6 @@ mod tests {
     fn test_dcop5() -> TestResult {
         // I - R - Diode
         use crate::circuit::{Ds, Vs};
-        use Comp::I;
         use NodeRef::Gnd;
 
         // Voltage-biased Diode
@@ -105,7 +104,7 @@ mod tests {
         // Current-biased Diode, with the measured current
         let mut ckt = Ckt::new();
         ckt.add(Ds::new("dd", n("p"), Gnd));
-        ckt.add(I(i, n("p"), Gnd));
+        ckt.add(Comp::idc("i1", i, n("p"), Gnd));
 
         // Check the voltage matches our initial v-bias
         let soln = dcop(ckt)?;
@@ -118,10 +117,11 @@ mod tests {
     fn test_dcop6() -> TestResult {
         // NMOS Char
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
@@ -132,6 +132,7 @@ mod tests {
             Comp::vdc("v1", 1.0, NodeRef::Num(0), NodeRef::Gnd),
             Comp::vdc("v1", 1.0, NodeRef::Num(1), NodeRef::Gnd),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], 1.0);
@@ -145,10 +146,11 @@ mod tests {
     fn test_dcop7() -> TestResult {
         // PMOS Char
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
@@ -159,6 +161,7 @@ mod tests {
             Comp::vdc("v1", -1.0, NodeRef::Num(0), NodeRef::Gnd),
             Comp::vdc("v1", -1.0, NodeRef::Num(1), NodeRef::Gnd),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], -1.0);
@@ -172,11 +175,12 @@ mod tests {
     fn test_dcop8() -> TestResult {
         // Diode NMOS
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::I(5e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", 5e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -184,8 +188,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-12, Num(0), Gnd), // "gmin"
+            Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert!((soln[0] - 0.697).abs() < 1e-3);
@@ -196,11 +201,12 @@ mod tests {
     fn test_diode_nmos_tran() -> TestResult {
         // Diode NMOS Tran
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::I(5e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", 5e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -208,8 +214,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-12, Num(0), Gnd), // "gmin"
+            Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
         let opts = TranOptions {
             tstep: 1e-12,
             tstop: 100e-12,
@@ -226,11 +233,12 @@ mod tests {
     fn test_dcop8b() -> TestResult {
         // Diode NMOS, S/D Swapped
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::I(5e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", 5e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
@@ -238,8 +246,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-12, Num(0), Gnd), // "gmin"
+            Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert!((soln[0] - 0.697).abs() < 1e-3);
@@ -250,11 +259,12 @@ mod tests {
     fn test_diode_pmos_dcop() -> TestResult {
         // Diode PMOS
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::I(-5e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", -5e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -262,8 +272,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-12, Num(0), Gnd), // "gmin"
+            Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert!((soln[0] + 0.697).abs() < 1e-3);
@@ -274,11 +285,12 @@ mod tests {
     fn test_diode_pmos_tran() -> TestResult {
         // Diode PMOS Tran
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::I(-5e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", -5e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -286,8 +298,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-12, Num(0), Gnd), // "gmin"
+            Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let opts = TranOptions {
             tstep: 1e-12,
@@ -304,12 +317,12 @@ mod tests {
     #[test]
     fn test_dcop8d() -> TestResult {
         // Diode PMOS, S/D Swapped
-        use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::I(-5e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", -5e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
@@ -317,8 +330,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-12, Num(0), Gnd), // "gmin"
+            Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert!((soln[0] + 0.697).abs() < 1e-3);
@@ -329,11 +343,12 @@ mod tests {
     fn test_dcop9() -> TestResult {
         // NMOS-R, "Grounded"
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -342,6 +357,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
@@ -352,11 +368,12 @@ mod tests {
     fn test_dcop9b() -> TestResult {
         // NMOS-R, "Grounded", S/D Swapped
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
@@ -365,6 +382,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
@@ -375,11 +393,12 @@ mod tests {
     #[test]
     fn test_dcop9c() -> TestResult {
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(0),
@@ -388,6 +407,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
@@ -398,11 +418,12 @@ mod tests {
     #[test]
     fn test_dcop9d() -> TestResult {
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Gnd,
@@ -411,6 +432,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], 0.0);
@@ -420,12 +442,13 @@ mod tests {
     /// NMOS-R Inverter
     #[test]
     fn test_dcop10() -> TestResult {
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, n("vdd"), n("d")),
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, n("vdd"), n("d")),
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: n("vdd"),
                     d: n("d"),
@@ -434,6 +457,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], 1.0);
@@ -445,12 +469,13 @@ mod tests {
     /// PMOS-R Inverter
     #[test]
     fn test_dcop10b() -> TestResult {
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, n("g"), n("d")),
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, n("g"), n("d")),
             Comp::vdc("v1", -1.0, n("g"), Gnd),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: n("g"),
                     d: n("d"),
@@ -459,6 +484,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert_eq!(soln[0], -1.0);
@@ -472,12 +498,13 @@ mod tests {
         use MosType::{NMOS, PMOS};
         use NodeRef::Gnd;
 
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::R(1e-9, n("d"), Gnd), // "gmin"
-            Comp::Mos0(Mos0i {
+            Comp::r("r1", 1e-9, n("d"), Gnd), // "gmin"
+            Comp::Mos(Mosi {
                 name: s("p"),
-                mos_type: PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: n("vdd"),
                     d: n("d"),
@@ -485,9 +512,10 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n"),
-                mos_type: NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: n("vdd"),
                     d: n("d"),
@@ -496,6 +524,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert(soln.values).eq(vec![0.0, 1.0, 0.0])?;
@@ -507,10 +536,11 @@ mod tests {
         use MosType::{NMOS, PMOS};
         use NodeRef::Gnd;
 
-        let ckt = Ckt::from_comps(vec![
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::Mos(Mosi {
                 name: s("p"),
-                mos_type: PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Gnd,
                     d: n("d"),
@@ -518,9 +548,10 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n"),
-                mos_type: NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Gnd,
                     d: n("d"),
@@ -529,8 +560,9 @@ mod tests {
                 },
             }),
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::R(1e-9, n("d"), n("vdd")), // "gmin"
+            Comp::r("r1", 1e-9, n("d"), n("vdd")), // "gmin"
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert(soln.values).eq(vec![1.0, 1.0, 0.0])?;
@@ -540,15 +572,16 @@ mod tests {
     #[test]
     fn test_dcop12() -> TestResult {
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-9, Num(0), Gnd),
-            Comp::R(1e-9, Num(1), Gnd),
-            Comp::R(1e-9, Num(2), Gnd),
-            Comp::R(1e-9, Num(3), Gnd),
-            Comp::R(1e-9, Num(4), Gnd),
-            Comp::Mos0(Mos0i {
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-9, Num(0), Gnd),
+            Comp::r("r1", 1e-9, Num(1), Gnd),
+            Comp::r("r1", 1e-9, Num(2), Gnd),
+            Comp::r("r1", 1e-9, Num(3), Gnd),
+            Comp::r("r1", 1e-9, Num(4), Gnd),
+            Comp::Mos(Mosi {
                 name: s("p1"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
@@ -556,9 +589,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n1"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(0),
                     d: Num(1),
@@ -566,9 +600,10 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("p2"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -576,9 +611,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n2"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -586,9 +622,10 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("p3"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -596,9 +633,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n3"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -606,9 +644,10 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("p4"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(4),
@@ -616,9 +655,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n4"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(4),
@@ -628,6 +668,7 @@ mod tests {
             }),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
+        add_mos0_defaults(&mut ckt);
 
         let soln = dcop(ckt)?;
         assert(soln[0]).eq(1.0)?;
@@ -645,8 +686,8 @@ mod tests {
         use NodeRef::{Gnd, Num};
 
         let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(1), Num(0)),
-            Comp::C(1e-9, Num(1), Gnd),
+            Comp::r("r1", 1e-3, Num(1), Num(0)),
+            Comp::c("c1", 1e-9, Num(1), Gnd),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
         ]);
 
@@ -659,8 +700,8 @@ mod tests {
     #[test]
     fn test_dcop13b() -> TestResult {
         let ckt = Ckt::from_comps(vec![
-            Comp::C(1e-9, n("i"), n("o")),
-            Comp::R(1e-3, n("o"), Gnd),
+            Comp::c("c1", 1e-9, n("i"), n("o")),
+            Comp::r("r1", 1e-3, n("o"), Gnd),
             Comp::vdc("v1", 1.0, n("i"), Gnd),
         ]);
 
@@ -675,8 +716,8 @@ mod tests {
         // Circuit
         let ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("inp"), Gnd),
-            Comp::R(1e-3, n("inp"), n("out")),
-            Comp::C(1e-9, n("out"), Gnd),
+            Comp::r("r1", 1e-3, n("inp"), n("out")),
+            Comp::c("c1", 1e-9, n("out"), Gnd),
         ]);
         // Simulate
         let opts = TranOptions {
@@ -700,7 +741,7 @@ mod tests {
     #[ignore]
     fn test_tran2() -> TestResult {
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![Comp::I(1e-3, Num(0), Gnd), Comp::C(4e-12, Num(0), Gnd)]);
+        let ckt = Ckt::from_comps(vec![Comp::idc("i1", 1e-3, Num(0), Gnd), Comp::c("c1", 4e-12, Num(0), Gnd)]);
 
         let opts = TranOptions {
             tstep: 1e-18,
@@ -726,7 +767,7 @@ mod tests {
     #[ignore] // FIXME: failing values to be debugged
     fn test_tran2b() -> TestResult {
         use NodeRef::{Gnd, Num};
-        let ckt = Ckt::from_comps(vec![Comp::I(1e-6, Num(0), Gnd), Comp::C(100e-9, Num(0), Gnd)]);
+        let ckt = Ckt::from_comps(vec![Comp::idc("i1", 1e-6, Num(0), Gnd), Comp::c("c1", 100e-9, Num(0), Gnd)]);
 
         let opts = TranOptions {
             tstep: 1e-21,
@@ -757,12 +798,13 @@ mod tests {
             ic: vec![(Num(1), 0.0)],
         };
         let c = 2.5e-50; // Yeah especially this part
-        let ckt = Ckt::from_comps(vec![
+        let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, Num(0), Gnd),
-            Comp::R(1e-3, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+            Comp::r("r1", 1e-3, Num(0), Gnd),
+            Comp::Mos(Mosi {
                 name: s("p1"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
@@ -770,9 +812,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n1"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(3),
                     d: Num(1),
@@ -780,11 +823,12 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-9, Num(1), Gnd),
-            Comp::C(c, Num(1), Gnd),
-            Comp::Mos0(Mos0i {
+            Comp::r("r1", 1e-9, Num(1), Gnd),
+            Comp::c("c1", c, Num(1), Gnd),
+            Comp::Mos(Mosi {
                 name: s("p2"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -792,9 +836,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n2"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(2),
@@ -802,11 +847,12 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-9, Num(2), Gnd),
-            Comp::C(c, Num(2), Gnd),
-            Comp::Mos0(Mos0i {
+            Comp::r("r1", 1e-9, Num(2), Gnd),
+            Comp::c("c1", c, Num(2), Gnd),
+            Comp::Mos(Mosi {
                 name: s("p3"),
-                mos_type: MosType::PMOS,
+                model: "pmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -814,9 +860,10 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("n3"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(2),
                     d: Num(3),
@@ -824,9 +871,10 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-9, Num(3), Gnd),
-            Comp::C(c, Num(3), Gnd),
+            Comp::r("r1", 1e-9, Num(3), Gnd),
+            Comp::c("c1", c, Num(3), Gnd),
         ]);
+        add_mos0_defaults(&mut ckt);
         // Simulate
         let soln = tran(ckt, opts)?;
         // Checks
@@ -838,7 +886,7 @@ mod tests {
     #[test]
     fn test_mos1_op() -> TestResult {
         let mut ckt = Ckt::from_comps(vec![
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("m"),
                 model: "default".into(),
                 params: "default".into(),
@@ -864,7 +912,7 @@ mod tests {
     #[test]
     fn test_mos1_tran() -> TestResult {
         let mut ckt = Ckt::from_comps(vec![
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("m"),
                 model: "default".into(),
                 params: "default".into(),
@@ -898,7 +946,7 @@ mod tests {
     fn test_mos1_inv_dcop() -> TestResult {
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, Num(0), Gnd),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -909,7 +957,7 @@ mod tests {
                     b: Num(0),
                 },
             }),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("n"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -920,7 +968,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(1e-4, Num(1), Gnd),
+            Comp::r("r1", 1e-4, Num(1), Gnd),
         ]);
         // Define our models & params
         add_mos1_defaults(&mut ckt);
@@ -953,8 +1001,8 @@ mod tests {
     #[test]
     fn test_mos1_cmos_ro_dcop() -> TestResult {
         let mut ckt = cmos_ro3(); // Shared Circuit
-        add_mos1_defaults(&mut ckt); // Add Mos1 Models & Params 
-        // Simulate
+        add_mos1_defaults(&mut ckt); // Add Mos1 Models & Params
+                                     // Simulate
         let soln = dcop(ckt)?;
         // Checks
         assert(soln.get("vdd")?).eq(1.0)?;
@@ -968,8 +1016,8 @@ mod tests {
     #[test]
     fn test_mos1_cmos_ro_tran() -> TestResult {
         let mut ckt = cmos_ro3(); // Shared Circuit
-        add_mos1_defaults(&mut ckt); // Add Mos1 Models & Params 
-        // Simulate
+        add_mos1_defaults(&mut ckt); // Add Mos1 Models & Params
+                                     // Simulate
         let opts = TranOptions {
             tstep: 1e-11,
             tstop: 1e-8,
@@ -987,7 +1035,7 @@ mod tests {
     fn test_bsim4_cmos_ro_tran() -> TestResult {
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -998,7 +1046,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("n1"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1009,7 +1057,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p2"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1020,7 +1068,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("n2"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1031,7 +1079,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p3"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1042,7 +1090,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("n3"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1055,7 +1103,7 @@ mod tests {
             }),
         ]);
         add_bsim4_defaults(&mut ckt); // Add Bsim4 Models & Params
-        // Simulate
+                                      // Simulate
         let opts = TranOptions {
             tstep: 1e-10,
             tstop: 3e-7,
@@ -1075,7 +1123,7 @@ mod tests {
         let gl = 1e-6;
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("n1"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1086,7 +1134,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("n2"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1097,7 +1145,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("n3"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1108,9 +1156,9 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(gl, Num(1), n("vdd")),
-            Comp::R(gl, Num(2), n("vdd")),
-            Comp::R(gl, Num(3), n("vdd")),
+            Comp::r("r1", gl, Num(1), n("vdd")),
+            Comp::r("r1", gl, Num(2), n("vdd")),
+            Comp::r("r1", gl, Num(3), n("vdd")),
         ]);
         // Simulate
         let opts = TranOptions {
@@ -1140,7 +1188,7 @@ mod tests {
         let gl = 1e-6;
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1151,7 +1199,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p2"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1162,7 +1210,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p3"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1173,12 +1221,12 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::R(gl, Num(1), Gnd),
-            Comp::R(gl, Num(2), Gnd),
-            Comp::R(gl, Num(3), Gnd),
-            Comp::C(cl, Num(1), Gnd),
-            Comp::C(cl, Num(2), Gnd),
-            Comp::C(cl, Num(3), Gnd),
+            Comp::r("r1", gl, Num(1), Gnd),
+            Comp::r("r1", gl, Num(2), Gnd),
+            Comp::r("r1", gl, Num(3), Gnd),
+            Comp::c("c1", cl, Num(1), Gnd),
+            Comp::c("c1", cl, Num(2), Gnd),
+            Comp::c("c1", cl, Num(3), Gnd),
         ]);
         add_mos1_defaults(&mut ckt);
         // Simulate
@@ -1202,7 +1250,7 @@ mod tests {
         let gl = 1e-6;
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1213,7 +1261,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p2"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1224,7 +1272,7 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p3"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1235,12 +1283,12 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::R(gl, Num(1), Gnd),
-            Comp::R(gl, Num(2), Gnd),
-            Comp::R(gl, Num(3), Gnd),
-            Comp::C(cl, Num(1), Gnd),
-            Comp::C(cl, Num(2), Gnd),
-            Comp::C(cl, Num(3), Gnd),
+            Comp::r("r1", gl, Num(1), Gnd),
+            Comp::r("r1", gl, Num(2), Gnd),
+            Comp::r("r1", gl, Num(3), Gnd),
+            Comp::c("c1", cl, Num(1), Gnd),
+            Comp::c("c1", cl, Num(2), Gnd),
+            Comp::c("c1", cl, Num(3), Gnd),
         ]);
         add_bsim4_defaults(&mut ckt);
         // Simulate
@@ -1263,7 +1311,7 @@ mod tests {
         let gl = 1e-6;
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1274,8 +1322,8 @@ mod tests {
                     b: n("vdd"),
                 },
             }),
-            Comp::R(gl, n("inp"), n("vdd")),
-            Comp::R(gl, n("out"), Gnd),
+            Comp::r("r1", gl, n("inp"), n("vdd")),
+            Comp::r("r1", gl, n("out"), Gnd),
         ]);
         add_mos1_defaults(&mut ckt);
         // Simulate
@@ -1301,7 +1349,7 @@ mod tests {
     fn test_mos1_pmos_rg_tran() -> TestResult {
         let gl = 1e-6;
         let mut ckt = Ckt::from_comps(vec![
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1312,7 +1360,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(gl, n("g"), Gnd),
+            Comp::r("r1", gl, n("g"), Gnd),
         ]);
         add_mos1_defaults(&mut ckt);
         // Simulate
@@ -1333,7 +1381,7 @@ mod tests {
     fn test_bsim4_pmos_rg_tran() -> TestResult {
         let gl = 1e-5;
         let mut ckt = Ckt::from_comps(vec![
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "pmos".into(),
                 params: "default".into(),
@@ -1344,8 +1392,8 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(gl, n("g"), Gnd),
-            Comp::C(1e-18, n("g"), Gnd),
+            Comp::r("r1", gl, n("g"), Gnd),
+            Comp::c("c1", 1e-18, n("g"), Gnd),
         ]);
         add_bsim4_defaults(&mut ckt);
         // Simulate
@@ -1367,7 +1415,7 @@ mod tests {
     fn test_mos1_nmos_rg_tran() -> TestResult {
         let gl = 1e-6;
         let mut ckt = Ckt::from_comps(vec![
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1378,7 +1426,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(gl, n("g"), Gnd),
+            Comp::r("r1", gl, n("g"), Gnd),
         ]);
         add_mos1_defaults(&mut ckt);
         // Simulate
@@ -1399,7 +1447,7 @@ mod tests {
     fn test_bsim4_nmos_rg_tran() -> TestResult {
         let gl = 1e-5;
         let mut ckt = Ckt::from_comps(vec![
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("p1"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1410,8 +1458,8 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(gl, n("g"), Gnd),
-            // Comp::C(1e-15, n("g"), Gnd),
+            Comp::r("r1", gl, n("g"), Gnd),
+            // Comp::c("c1", 1e-15, n("g"), Gnd),
         ]);
         add_bsim4_defaults(&mut ckt);
         // Simulate
@@ -1430,7 +1478,7 @@ mod tests {
     }
     #[test]
     fn test_ac1() -> TestResult {
-        let ckt = Ckt::from_comps(vec![Comp::R(1.0, Num(0), Gnd)]);
+        let ckt = Ckt::from_comps(vec![Comp::r("r1", 1.0, Num(0), Gnd)]);
         ac(ckt, AcOptions::default())?;
         // FIXME: checks on solution
         Ok(())
@@ -1439,11 +1487,10 @@ mod tests {
     #[test]
     fn test_ac2() -> TestResult {
         use crate::circuit::Vs;
-        use Comp::{C, R, V};
         let ckt = Ckt::from_comps(vec![
-            R(1e-3, Num(0), Num(1)),
-            C(1e-9, Num(1), Gnd),
-            V(Vs {
+            Comp::r("r1", 1e-3, Num(0), Num(1)),
+            Comp::c("c1", 1e-9, Num(1), Gnd),
+            Comp::V(Vs {
                 name: s("vi"),
                 vdc: 1.0,
                 acm: 1.0,
@@ -1459,13 +1506,14 @@ mod tests {
     #[test]
     #[ignore] // FIXME: aint no Mos0 AC!
     fn test_ac3() -> TestResult {
-        let ckt = Ckt::from_comps(vec![
-            Comp::R(1e-3, Num(0), Num(1)),
-            Comp::C(1e-9, Num(1), Gnd),
+        let mut ckt = Ckt::from_comps(vec![
+            Comp::r("r1", 1e-3, Num(0), Num(1)),
+            Comp::c("c1", 1e-9, Num(1), Gnd),
             Comp::vdc("v1", 1.0, Num(0), Gnd),
-            Comp::Mos0(Mos0i {
+            Comp::Mos(Mosi {
                 name: s("m"),
-                mos_type: MosType::NMOS,
+                model: "nmos".into(),
+                params: "".into(),
                 ports: MosPorts {
                     g: Num(1),
                     d: Num(0),
@@ -1474,6 +1522,7 @@ mod tests {
                 },
             }),
         ]);
+        add_mos0_defaults(&mut ckt);
         ac(ckt, AcOptions::default())?;
         // FIXME: checks on solution
         Ok(())
@@ -1483,8 +1532,8 @@ mod tests {
     #[test]
     fn test_ac4() -> TestResult {
         let mut ckt = Ckt::from_comps(vec![
-            Comp::C(1e-9, n("d"), Gnd),
-            Comp::Mos1(Mos1i {
+            Comp::c("c1", 1e-9, n("d"), Gnd),
+            Comp::Mos(Mosi {
                 name: s("m"),
                 model: "default".into(),
                 params: "default".into(),
@@ -1531,7 +1580,7 @@ mod tests {
                 p: Num(0),
                 n: Gnd,
             }),
-            Comp::Mos1(Mos1i {
+            Comp::Mos(Mosi {
                 name: s("m"),
                 model: "default".into(),
                 params: "default".into(),
@@ -1565,7 +1614,7 @@ mod tests {
         let cl = 1e-18;
         let mut ckt = Ckt::from_comps(vec![
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("n1"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1576,7 +1625,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("n2"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1587,7 +1636,7 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::Bsim4(Bsim4i {
+            Comp::Mos(Mosi {
                 name: s("n3"),
                 model: "nmos".into(),
                 params: "default".into(),
@@ -1598,12 +1647,12 @@ mod tests {
                     b: Gnd,
                 },
             }),
-            Comp::R(gl, Num(1), n("vdd")),
-            Comp::R(gl, Num(2), n("vdd")),
-            Comp::R(gl, Num(3), n("vdd")),
-            Comp::C(cl, Num(1), n("vdd")),
-            Comp::C(cl, Num(2), n("vdd")),
-            Comp::C(cl, Num(3), n("vdd")),
+            Comp::r("r1", gl, Num(1), n("vdd")),
+            Comp::r("r1", gl, Num(2), n("vdd")),
+            Comp::r("r1", gl, Num(3), n("vdd")),
+            Comp::c("c1", cl, Num(1), n("vdd")),
+            Comp::c("c1", cl, Num(2), n("vdd")),
+            Comp::c("c1", cl, Num(3), n("vdd")),
         ]);
         // Simulate
         let opts = TranOptions {
@@ -1647,6 +1696,12 @@ mod tests {
         let reader = BufReader::new(file);
         let golden: HashMap<String, Vec<f64>> = serde_json::from_reader(reader).unwrap();
         golden
+    }
+    /// Helper. Modifies `ckt` adding Mos0 defaults
+    fn add_mos0_defaults(ckt: &mut Ckt) {
+        ckt.models.mos0.insert("default".into(), MosType::NMOS);
+        ckt.models.mos0.insert("nmos".into(), MosType::NMOS);
+        ckt.models.mos0.insert("pmos".into(), MosType::PMOS);
     }
     /// Helper. Modifies `ckt` adding Mos1 default instance-params, plus default NMOS and PMOS
     fn add_mos1_defaults(ckt: &mut Ckt) {
