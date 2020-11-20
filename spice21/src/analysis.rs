@@ -374,21 +374,6 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
                 };
                 c
             }
-            // Comp::Mos0(m) => {
-            //     // Mos0 is a special case, since it has no parameters or model 
-            //     use crate::comps::mos::MosPorts;
-            //     use crate::comps::Mos0;
-            //     let circuit::Mos0i { mos_type, ports, .. } = m;
-            //     let ports: MosPorts<Option<VarIndex>> = [
-            //         self.node_var(ports.d.clone()),
-            //         self.node_var(ports.g.clone()),
-            //         self.node_var(ports.s.clone()),
-            //         self.node_var(ports.b.clone()),
-            //     ]
-            //     .into();
-            //     Mos0::new(ports.into(), mos_type).into()
-            // }
-            _ => panic!("!!!!")
         };
 
         // And add to our Component vector

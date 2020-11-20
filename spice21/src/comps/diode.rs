@@ -4,7 +4,7 @@
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
-use crate::circuit::Ds;
+use crate::circuit::Di;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
@@ -192,9 +192,9 @@ pub struct Diode {
 
 impl Diode {
     /// Create a new Diode solver from a Circuit (parser) Diode
-    pub(crate) fn from<T: SpNum>(d: Ds, solver: &mut Solver<T>) -> Diode {
+    pub(crate) fn from<T: SpNum>(d: Di, solver: &mut Solver<T>) -> Diode {
         // Destruct the key parser-diode attributes
-        let Ds { mut name, model, inst, p, n } = d;
+        let Di { mut name, model, inst, p, n } = d;
         // Create or retrive the solver node-variables
         let p = solver.node_var(p);
         let n = solver.node_var(n);

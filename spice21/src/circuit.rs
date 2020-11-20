@@ -8,7 +8,7 @@
 //! * (b) Directly for testing or in Rust use-cases
 //!
 
-use enum_dispatch::enum_dispatch;
+// FIXME: use enum_dispatch::enum_dispatch;
 use std::collections::HashMap;
 
 use super::comps::bsim4::Bsim4Cache;
@@ -52,15 +52,15 @@ pub(crate) fn s<S: Into<String>>(from: S) -> String {
 }
 
 /// Voltage Source
-pub struct Vs {
+pub struct Vi {
     pub name: String,
     pub vdc: f64,
     pub acm: f64,
     pub p: NodeRef,
     pub n: NodeRef,
 }
-impl From<Vs> for Comp {
-    fn from(x: Vs) -> Self {
+impl From<Vi> for Comp {
+    fn from(x: Vi) -> Self {
         Comp::V(x)
     }
 }
@@ -104,7 +104,7 @@ impl From<Ci> for Comp {
 
 
 /// Diode Instance
-pub struct Ds {
+pub struct Di {
     pub name: String,
     pub model: DiodeModel,
     pub inst: DiodeInstParams,
@@ -112,7 +112,7 @@ pub struct Ds {
     pub n: NodeRef,
 }
 
-impl Ds {
+impl Di {
     pub fn new<S: Into<String>>(name: S, p: NodeRef, n: NodeRef) -> Self {
         Self {
             p,
@@ -131,29 +131,22 @@ pub struct Mosi {
     pub(crate) params: String,           // Instance Param-Set Name
     pub(crate) ports: MosPorts<NodeRef>, // Port Connections
 }
-/// "Level Zero" MOS Instance
-pub struct Mos0i {
-    pub(crate) name: String,
-    pub(crate) mos_type: MosType,
-    pub(crate) ports: MosPorts<NodeRef>,
-}
 /// Component Enum.
 /// Circuits are mostly a list of these variants.
 // FIXME: #[enum_dispatch]
 pub enum Comp {
-    V(Vs),
+    V(Vi),
     I(Ii),
     R(Ri),
     C(Ci),
-    D(Ds),
+    D(Di),
     Mos(Mosi),
-    Mos0(Mos0i),
 }
 
 impl Comp {
     /// Replacement for deprecated original `V` enum variant
     pub fn vdc<S: Into<String>>(name: S, vdc: f64, p: NodeRef, n: NodeRef) -> Comp {
-        Comp::V(Vs {
+        Comp::V(Vi {
             name: name.into(),
             vdc,
             acm: 0.0,
@@ -219,11 +212,11 @@ impl Comp {
                 Comp::C(x)
             }
             CompProto::D(d) => {
-                let d1 = Ds::new(d.name, n(d.p), n(d.n));
+                let d1 = Di::new(d.name, n(d.p), n(d.n));
                 Comp::D(d1)
             }
             CompProto::V(v) => {
-                let vs = Vs {
+                let vs = Vi {
                     name: v.name,
                     p: n(v.p),
                     n: n(v.n),
@@ -263,8 +256,8 @@ impl From<Mosi> for Comp {
         Comp::Mos(m)
     }
 }
-impl From<Ds> for Comp {
-    fn from(d: Ds) -> Self {
+impl From<Di> for Comp {
+    fn from(d: Di) -> Self {
         Comp::D(d)
     }
 }
@@ -363,7 +356,7 @@ impl Ckt {
         Self::from(ckt_proto)
     }
     /// Add anything convertible into `Comp`,
-    /// typically the enum-associated structs `Vsrc` et al.
+    /// typically the enum-associated structs `Vi` et al.
     pub fn add<C: Into<Comp>>(&mut self, comp: C) {
         self.comps.push(comp.into());
     }

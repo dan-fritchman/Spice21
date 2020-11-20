@@ -80,14 +80,14 @@ mod tests {
     #[test]
     fn test_dcop5() -> TestResult {
         // I - R - Diode
-        use crate::circuit::{Ds, Vs};
+        use crate::circuit::{Di, Vi};
         use NodeRef::Gnd;
 
         // Voltage-biased Diode
         let v = 0.70;
         let mut ckt = Ckt::new();
-        ckt.add(Ds::new("dd", n("p"), Gnd));
-        ckt.add(Vs {
+        ckt.add(Di::new("dd", n("p"), Gnd));
+        ckt.add(Vi {
             name: s("vin"),
             p: n("p"),
             n: Gnd,
@@ -103,7 +103,7 @@ mod tests {
 
         // Current-biased Diode, with the measured current
         let mut ckt = Ckt::new();
-        ckt.add(Ds::new("dd", n("p"), Gnd));
+        ckt.add(Di::new("dd", n("p"), Gnd));
         ckt.add(Comp::idc("i1", i, n("p"), Gnd));
 
         // Check the voltage matches our initial v-bias
@@ -1486,11 +1486,11 @@ mod tests {
 
     #[test]
     fn test_ac2() -> TestResult {
-        use crate::circuit::Vs;
+        use crate::circuit::Vi;
         let ckt = Ckt::from_comps(vec![
             Comp::r("r1", 1e-3, Num(0), Num(1)),
             Comp::c("c1", 1e-9, Num(1), Gnd),
-            Comp::V(Vs {
+            Comp::V(Vi {
                 name: s("vi"),
                 vdc: 1.0,
                 acm: 1.0,
@@ -1545,7 +1545,7 @@ mod tests {
                 },
             }),
             Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-            Comp::V(Vs {
+            Comp::V(Vi {
                 name: s("vg"),
                 vdc: 0.7,
                 acm: 1.0,
@@ -1570,10 +1570,10 @@ mod tests {
     /// Diode-Connected NMOS AC
     #[test]
     fn test_ac5() -> TestResult {
-        use crate::circuit::Vs;
+        use crate::circuit::Vi;
 
         let mut ckt = Ckt::from_comps(vec![
-            Comp::V(Vs {
+            Comp::V(Vi {
                 name: s("vd"),
                 vdc: 0.5,
                 acm: 1.0,
