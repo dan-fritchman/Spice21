@@ -2,16 +2,15 @@
 //! BSIM4 MOSFET Implementation
 //!
 
-#![allow(nonstandard_style,	warnings, unused)] // FIXME: work through these 
+#![allow(nonstandard_style, warnings, unused)] // FIXME: work through these
 
 use serde::{Deserialize, Serialize};
 
-
 pub mod cache;
-pub mod model;
 pub mod inst;
-pub mod tran;
+pub mod model;
 pub mod stamp;
+pub mod tran;
 
 #[cfg(test)]
 mod tests;
@@ -22,16 +21,14 @@ pub mod bsim4inst;
 pub mod bsim4ports;
 pub mod bsim4solver;
 
-pub use cache::*;
 pub use bsim4ports::*;
-pub use model::*;
-pub use inst::*;
 pub use bsim4solver::*;
+pub use cache::*;
+pub use inst::*;
+pub use model::*;
 
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
-
-
 
 // FIXME: get from circuit/ analysis
 pub(crate) const gmin: f64 = 1e-12;
@@ -46,7 +43,6 @@ pub(crate) const DELTA_1: f64 = 0.02;
 pub(crate) const DELTA_2: f64 = 0.02;
 pub(crate) const DELTA_3: f64 = 0.02;
 pub(crate) const DELTA_4: f64 = 0.02;
-
 
 // Some helper math
 // C-style call syntax, e.g. `min(a,b)` instead of `a.min(b)`

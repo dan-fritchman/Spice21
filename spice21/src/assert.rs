@@ -123,7 +123,7 @@ mod tests {
     impl Assert<&HashMap<String, Vec<f64>>> {
         pub fn isclose(&self, other: HashMap<String, Vec<f64>>, tol: f64) -> TestResult {
             if !keys_match(self.val, &other) {
-                return raise("HashMap keys do not match");
+                return raise(format!("HashMap keys do not match: {:?} vs {:?}", self.val.keys(), other.keys()));
             }
             for key in self.val.keys() {
                 let s = self.val.get(key).unwrap();

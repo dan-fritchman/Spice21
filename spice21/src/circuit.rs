@@ -271,6 +271,8 @@ impl Ckt {
         for opt in comps.into_iter() {
             if let Some(c) = opt.comp {
                 cs.push(Comp::from(c, &models));
+            } else {
+                return Err(SpError::new("Invalid Component"));
             }
         }
         Ok(Self { comps: cs, models })
@@ -290,19 +292,78 @@ impl Ckt {
     pub fn add<C: Into<Comp>>(&mut self, comp: C) {
         self.comps.push(comp.into());
     }
+    /// Convert from YAML string  
+    pub fn from_yaml(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = serde_yaml::from_str(&dedent(y)).unwrap();
+        Self::from(proto)
+    }
+    /// Convert from TOML string  
+    pub fn from_toml(y: &str) -> SpResult<Self> {
+        // use serde_yaml;
+        use textwrap::dedent;
+
+        let proto: CircuitProto = toml::from_str(&dedent(y)).unwrap();
+        Self::from(proto)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert::assert;
     use crate::spresult::TestResult;
 
     #[test]
     fn test_ckt_parse() -> TestResult {
-        Ckt {
+        let ckt = Ckt {
             comps: vec![Comp::I(1e-3, NodeRef::Num(0), NodeRef::Gnd), Comp::R(1e-3, NodeRef::Num(0), NodeRef::Gnd)],
             models: ModelCache::new(),
         };
+        assert(ckt.comps.len()).eq(2)?;
+        Ok(())
+    }
+    #[test]
+    fn test_from_yaml() -> TestResult {
+        use serde::{Deserialize, Serialize};
+        #[derive(Serialize, Deserialize)]
+        struct E {
+            f: String,
+            h: String,
+        }
+        #[derive(Serialize, Deserialize)]
+        struct A {
+            a: String,
+            c: String,
+            e: E,
+        }
+        let y: E = serde_yaml::from_str("{f: good, h: great}").unwrap();
+        let y: A = serde_yaml::from_str("{ a: b, c: d, e: {f: good, h: great } }").unwrap();
+        let ckt = Ckt::from_yaml(
+            r#"
+            name: tbd
+            defs: []
+            comps:
+              - {type: R, name: r1, p: a, n: "", g: 0.001 }
+              - {type: C, name: r2, p: a, n: "", c: 0.001 }
+              - {type: M, name: mq, params: noparams, model: nomodel, ports: {d: b, g: a, s: c, b: d} }
+                "#,
+        )?;
+        assert(ckt.comps.len()).eq(3)?;
+        Ok(())
+    }
+    #[test]
+    fn test_from_toml() -> TestResult {
+        let ckt = Ckt::from_toml(
+            r#"
+            name = "tbd"
+            defs = []
+            comps = [
+              {type="R", name= "r1", p= "a", n= "", g= 0.001 },
+              {type="C", name= "r2", p= "a", n= "", c= 0.001 }
+            ]"#,
+        )?;
+        assert(ckt.comps.len()).eq(2)?;
         Ok(())
     }
 }

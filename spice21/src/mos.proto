@@ -14,9 +14,9 @@ message MosPorts {
 
 message Mos {
   string name = 1; // Instance Name 
-  MosPorts ports = 2; // Port connections
+  string model = 2; // Model Name
   string params = 3; // Instance parameter-set name
-  string model = 4; // Model Name
+  MosPorts ports = 4; // Port connections
 }
 
 message Mos1InstParams { // Level One Model Instance Parameters

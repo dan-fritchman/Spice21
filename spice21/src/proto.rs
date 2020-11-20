@@ -78,14 +78,14 @@ mod tests {
                 Instance {
                     comp: Some(M(Mos {
                         name: s("mq"),
+                        model: s("nomodel"),
+                        params: s("noparams"),
                         ports: Some(MosPorts {
                             g: s("a"),
                             d: s("b"),
                             s: s("c"),
                             b: s("d"),
                         }),
-                        model: s("nomodel"),
-                        params: s("noparams"),
                     })),
                 },
             ],
@@ -94,29 +94,42 @@ mod tests {
             }],
         };
 
-        use std::fs::File;
+        use std::fs::{File, create_dir_all};
         use std::io::prelude::*;
         use std::io::Cursor;
+
+        // Make sure we have a `scratch/` directory
+        create_dir_all("scratch").unwrap();
 
         // Prost/ Protobuf Serialization Round-Trip
         let mut buf = Vec::<u8>::new();
         buf.reserve(c.encoded_len());
         c.encode(&mut buf).unwrap();
-        // let mut file = File::create("ckt.bin").unwrap();
-        // file.write_all(&buf).unwrap();
+        let mut file = File::create("scratch/ckt.bin").unwrap();
+        file.write_all(&buf).unwrap();
         let d = Circuit::decode(&mut Cursor::new(buf)).unwrap();
         assert(&c.name).eq(&d.name)?;
 
-        // Serde-JSON Serialization Round-Trip
+        // Serde-JSON Round-Trip
         let s = serde_json::to_string(&c).unwrap();
-        let mut rfj = File::create("ckt.json").unwrap();
+        let mut rfj = File::create("scratch/ckt.json").unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = serde_json::from_str(&s).unwrap();
         assert(&c.name).eq(&d.name)?;
+
         // Serde-YAML Round-Trip
-        // let s = serde_yaml::to_string(&c).unwrap();
-        // let mut rfj = File::create("ckt.yaml").unwrap();
-        // rfj.write_all(s.as_bytes()).unwrap();
+        let s = serde_yaml::to_string(&c).unwrap();
+        let mut rfj = File::create("scratch/ckt.yaml").unwrap();
+        rfj.write_all(s.as_bytes()).unwrap();
+        let d: Circuit = serde_yaml::from_str(&s).unwrap();
+        assert(&c.name).eq(&d.name)?;
+
+        // Serde-TOML Round-Trip
+        let s = toml::to_string(&c).unwrap();
+        let mut rfj = File::create("scratch/ckt.toml").unwrap();
+        rfj.write_all(s.as_bytes()).unwrap();
+        let d: Circuit = toml::from_str(&s).unwrap();
+
         Ok(())
     }
 }
