@@ -33,14 +33,13 @@ attr!(
         // (cond, f64, 0.0, "Ohmic conductance"),
     ]
 );
-
 impl DiodeModel {
     /// Boolean indication of non-zero terminal resistance
     /// Used to determine whether to add an internal node
-    fn has_rs(&self) -> bool {
+    pub(crate) fn has_rs(&self) -> bool {
         self.rs != 0.0
     }
-    fn has_bv(&self) -> bool {
+    pub(crate) fn has_bv(&self) -> bool {
         self.bv != 0.0
     }
 }
@@ -108,7 +107,7 @@ pub struct DiodeIntParams {
 
 impl DiodeIntParams {
     /// Derive Diode internal parameters from model, instance, and circuit options.
-    fn derive(model: &DiodeModel, inst: &DiodeInstParams, opts: &Options) -> Self {
+    pub(crate) fn derive(model: &DiodeModel, inst: &DiodeInstParams, opts: &Options) -> Self {
         let tnom = model.tnom;
         let temp = if let Some(t) = inst.temp { t } else { opts.temp };
         let area = if let Some(a) = inst.area { a } else { 1.0 };
@@ -192,30 +191,9 @@ pub struct Diode {
 
 impl Diode {
     /// Create a new Diode solver from a Circuit (parser) Diode
-    pub(crate) fn from<T: SpNum>(d: Di, solver: &mut Solver<T>) -> Diode {
-        // Destruct the key parser-diode attributes
-        let Di { mut name, model, inst, p, n } = d;
-        // Create or retrive the solver node-variables
-        let p = solver.node_var(p);
-        let n = solver.node_var(n);
-        // Internal resistance node addition
-        let r = if d.model.has_rs() {
-            name.push_str("_r");
-            Some(solver.vars.add(name, VarKind::V))
-        } else {
-            p
-        };
-        // Derive internal params
-        let intp = DiodeIntParams::derive(&model, &inst, &solver.opts);
-        // And create our solver
-        return Diode {
-            ports: DiodePorts { p, n, r },
-            model,
-            inst,
-            intp,
-            ..Default::default()
-        };
-    }
+    // pub(crate) fn from<T: SpNum>(d: Di, solver: &mut Solver<T>) -> Diode {
+        
+    // }
     /// Voltage limiting
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
         let vnew = vd;

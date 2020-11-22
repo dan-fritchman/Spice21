@@ -11,6 +11,8 @@
 use enum_dispatch::enum_dispatch;
 use std::collections::HashMap;
 
+use crate::{SpError, SpResult};
+
 use super::comps::bsim4::Bsim4Cache;
 use super::comps::mos::{MosPorts, MosType};
 use super::comps::{DiodeInstParams, DiodeModel};
@@ -18,7 +20,9 @@ use super::proto::def::Defines as DefProto;
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 
-use crate::{SpError, SpResult};
+// Re-exports
+pub use super::proto::Module as ModuleDef;
+pub use super::proto::ModuleInstance as ModuleI;
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -122,6 +126,7 @@ pub enum Comp {
     C(Ci),
     D(Di),
     Mos(Mosi),
+    Module(ModuleI),
 }
 // The empty `CompTrait` allows the `enum_dispatch` macros to generate `From` and `Into`
 // between the Comp enum and each of its variants.
@@ -221,6 +226,7 @@ impl Comp {
                     ports,
                 })
             }
+            CompProto::X(x) => Comp::Module(x),
         }
     }
 }
@@ -232,14 +238,16 @@ pub struct Mos1Defs {
     pub(crate) models: HashMap<String, Mos1ModelSpecs>,
     pub(crate) insts: HashMap<String, Mos1InstSpecs>,
 }
-pub struct ModelCache {
+pub struct Defs {
+    pub(crate) modules: HashMap<String, ModuleDef>,
     pub(crate) mos0: HashMap<String, MosType>,
     pub(crate) mos1: Mos1Defs,
     pub(crate) bsim4: Bsim4Cache,
 }
-impl ModelCache {
+impl Defs {
     pub(crate) fn new() -> Self {
         Self {
+            modules: HashMap::new(),
             mos0: HashMap::new(),
             mos1: Mos1Defs::default(),
             bsim4: Bsim4Cache::new(),
@@ -249,64 +257,73 @@ impl ModelCache {
 
 /// Primary Circuit Structure
 pub struct Ckt {
+    pub name: String,
+    pub signals: Vec<String>,
     pub comps: Vec<Comp>,
-    pub models: ModelCache,
+    pub defs: Defs,
 }
-
 impl Ckt {
     /// Create a new, empty Circuit
     pub fn new() -> Self {
         Self {
-            comps: vec![],
-            models: ModelCache::new(),
+            name: String::from(""),
+            signals: Vec::new(),
+            comps: Vec::new(),
+            defs: Defs::new(),
         }
     }
+    /// Create a Circuit from a vector of Components
     pub fn from_comps(comps: Vec<Comp>) -> Self {
         Self {
+            name: String::from(""),
+            signals: Vec::new(),
             comps: comps,
-            models: ModelCache::new(),
+            defs: Defs::new(),
         }
     }
     /// Create from a protobuf-generated circuit
     pub fn from(c: CircuitProto) -> SpResult<Self> {
-        let CircuitProto { comps, defs, .. } = c;
-        let mut models = ModelCache::new();
+        let CircuitProto {
+            name,
+            comps: cs_,
+            defs: ds_,
+            signals,
+        } = c;
+        let mut defs = Defs::new();
 
         // Step through all definitions
-        for def in defs.into_iter() {
+        for def in ds_.into_iter() {
             match def.defines.unwrap() {
                 DefProto::Bsim4inst(x) => {
-                    models.bsim4.add_inst(x);
+                    defs.bsim4.add_inst(x);
                 }
                 DefProto::Bsim4model(x) => {
                     use crate::comps::bsim4::Bsim4ModelSpecs;
                     let specs = Bsim4ModelSpecs::from(&x);
-                    models.bsim4.add_model(&x.name, specs);
+                    defs.bsim4.add_model(&x.name, specs);
                 }
                 DefProto::Mos1model(x) => {
-                    models.mos1.models.insert(x.name.clone(), x);
+                    defs.mos1.models.insert(x.name.clone(), x);
                 }
                 DefProto::Mos1inst(x) => {
-                    models.mos1.insts.insert(x.name.clone(), x);
+                    defs.mos1.insts.insert(x.name.clone(), x);
                 }
-                // DefProto::Subckt(_x),
-                // DefProto::Lib(_x),
-                // DefProto::Diodemodel(_x),
-                _ => {
-                    return Err(SpError::new("Unsupported Definition"));
+                DefProto::Module(x) => {
+                    defs.modules.insert(x.name.clone(), x);
                 }
+                _ => return Err(SpError::new("Unsupported Definition")),
             }
         }
         // And step through all instances
-        let mut cs: Vec<Comp> = vec![];
-        for opt in comps.into_iter() {
+        let mut comps: Vec<Comp> = vec![];
+        for opt in cs_.into_iter() {
             if let Some(c) = opt.comp {
-                cs.push(Comp::from(c));
+                comps.push(Comp::from(c));
             } else {
                 return Err(SpError::new("Invalid Component"));
             }
         }
-        Ok(Self { comps: cs, models })
+        Ok(Self { comps, defs, name, signals })
     }
     /// Decode from bytes, via proto definitions
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
@@ -351,13 +368,10 @@ mod tests {
 
     #[test]
     fn test_ckt_parse() -> TestResult {
-        let ckt = Ckt {
-            comps: vec![
-                Comp::idc("i1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
-                Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
-            ],
-            models: ModelCache::new(),
-        };
+        let ckt = Ckt::from_comps(vec![
+            Comp::idc("i1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
+            Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
+        ]);
         assert(ckt.comps.len()).eq(2)?;
         Ok(())
     }

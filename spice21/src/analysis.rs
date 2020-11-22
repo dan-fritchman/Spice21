@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::circuit;
-use crate::circuit::{Ckt, Comp, NodeRef};
+use crate::circuit::{Ckt, NodeRef};
 use crate::comps::{Component, ComponentSolver};
 use crate::sparse21::{Eindex, Matrix};
 use crate::{sperror, SpNum, SpResult};
@@ -40,7 +40,6 @@ pub(crate) struct Variables<NumT> {
     values: Vec<NumT>,
     names: Vec<String>,
 }
-
 impl<NumT: SpNum> Variables<NumT> {
     pub fn new() -> Self {
         Variables {
@@ -60,10 +59,49 @@ impl<NumT: SpNum> Variables<NumT> {
     }
     /// Add a new Variable with attributes `name` and `kind`.
     pub fn add(&mut self, name: String, kind: VarKind) -> VarIndex {
+        // FIXME: check if present
         self.kinds.push(kind);
         self.names.push(name);
         self.values.push(NumT::zero());
         return VarIndex(self.kinds.len() - 1);
+    }
+    /// Add a new Voltage Variable with name `name`.
+    pub fn addv(&mut self, name: String) -> VarIndex {
+        self.add(name, VarKind::V)
+    }
+    /// Add a new Current Variable with name `name`.
+    pub fn addi(&mut self, name: String) -> VarIndex {
+        self.add(name, VarKind::I)
+    }
+    /// Find a variable named `name`. Returns `VarIndex` if found, `None` if not present.
+    pub fn find<S: Into<String>>(&self, name: S) -> Option<VarIndex> {
+        let n = name.into().clone();
+        match self.names.iter().position(|x| *x == n) {
+            Some(i) => Some(VarIndex(i)),
+            None => None,
+        }
+    }
+    /// Retrieve the Variable corresponding to Node `node`,
+    /// creating it if necessary.
+    pub fn find_or_create(&mut self, node: NodeRef) -> Option<VarIndex> {
+        match node {
+            NodeRef::Gnd => None,
+            NodeRef::Name(name) => {
+                // FIXME: shouldn't have to clone all the names here
+                match self.names.iter().cloned().position(|x| x == name) {
+                    Some(i) => Some(VarIndex(i)),
+                    None => Some(self.add(name.clone(), VarKind::V)),
+                }
+            }
+            NodeRef::Num(num) => {
+                let name = num.to_string();
+                // FIXME: shouldn't have to clone all the names here
+                match self.names.iter().cloned().position(|x| x == name) {
+                    Some(i) => Some(VarIndex(i)),
+                    None => Some(self.add(name.clone(), VarKind::V)),
+                }
+            }
+        }
     }
     /// Retrieve a Variable value.
     /// `None` represents "ground" and always has value zero.
@@ -73,7 +111,7 @@ impl<NumT: SpNum> Variables<NumT> {
             Some(ii) => self.values[ii.0],
         }
     }
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.kinds.len()
     }
 }
@@ -98,7 +136,7 @@ pub(crate) struct Solver<'a, NumT: SpNum> {
     pub(crate) mat: Matrix<NumT>,
     pub(crate) rhs: Vec<NumT>,
     pub(crate) history: Vec<Vec<NumT>>,
-    pub(crate) models: circuit::ModelCache,
+    pub(crate) defs: circuit::Defs,
     pub(crate) opts: Options,
 }
 
@@ -178,7 +216,7 @@ impl<'a> Solver<'a, Complex<f64>> {
             mat: Matrix::new(),
             rhs: vec![],
             history: vec![],
-            models: re.models,
+            defs: re.defs,
             opts: re.opts,
         };
 
@@ -262,122 +300,25 @@ impl<'a> Solver<'a, Complex<f64>> {
 impl<'a, NumT: SpNum> Solver<'a, NumT> {
     /// Create a new Solver, translate `Ckt` Components into its `ComponentSolvers`.
     pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
-        let Ckt { comps, models } = ckt;
-        let mut op = Solver {
-            comps: vec![],
-            vars: Variables::new(),
-            mat: Matrix::new(),
-            rhs: vec![],
-            history: vec![],
-            models,
+        // Elaborate the circuit
+        use crate::elab::{elaborate, Elaborator};
+        let e = elaborate(ckt);
+        let Elaborator { defs, mut comps, vars, .. } = e;
+        // Create our matrix and its elements 
+        let mut mat = Matrix::new();
+        for comp in comps.iter_mut() {
+            comp.create_matrix_elems(&mut mat);
+        }
+        // And return a Solver with the combination
+        Solver {
+            comps,
+            vars,
+            mat, 
+            rhs: Vec::new(),
+            history: Vec::new(),
+            defs,
             opts,
-        };
-
-        // Convert each circuit-parser component into a corresponding component-solver
-        for comp in comps.into_iter() {
-            op.add_comp(comp);
         }
-        // Create the corresponding matrix-elements
-        for comp in op.comps.iter_mut() {
-            comp.create_matrix_elems(&mut op.mat);
-        }
-        return op;
-    }
-    /// Retrieve the Variable corresponding to Node `node`,
-    /// creating it if necessary.
-    pub fn node_var(&mut self, node: NodeRef) -> Option<VarIndex> {
-        match node {
-            NodeRef::Gnd => None,
-            NodeRef::Name(name) => {
-                // FIXME: shouldn't have to clone all the names here
-                match self.vars.names.iter().cloned().position(|x| x == name) {
-                    Some(i) => Some(VarIndex(i)),
-                    None => Some(self.vars.add(name.clone(), VarKind::V)),
-                }
-            }
-            NodeRef::Num(num) => {
-                let name = num.to_string();
-                // FIXME: shouldn't have to clone all the names here
-                match self.vars.names.iter().cloned().position(|x| x == name) {
-                    Some(i) => Some(VarIndex(i)),
-                    None => Some(self.vars.add(name.clone(), VarKind::V)),
-                }
-            }
-        }
-    }
-    /// Add parser Component `comp`, and any related Variables
-    fn add_comp(&mut self, comp: Comp) {
-        // Convert `comp` to a corresponding `ComponentSolver`
-        let c: ComponentSolver = match comp {
-            Comp::R(r) => {
-                let circuit::Ri {g, p, n, ..} = r;
-                use crate::comps::Resistor;
-                let pvar = self.node_var(p.clone());
-                let nvar = self.node_var(n.clone());
-                Resistor::new(g, pvar, nvar).into()
-            }
-            Comp::C(c) => {
-                let circuit::Ci {c, p, n, ..} = c;
-                use crate::comps::Capacitor;
-                let pvar = self.node_var(p.clone());
-                let nvar = self.node_var(n.clone());
-                Capacitor::new(c, pvar, nvar).into()
-            }
-            Comp::I(i) => {
-                let circuit::Ii { dc, p, n, .. } = i;
-                use crate::comps::Isrc;
-                let pvar = self.node_var(p.clone());
-                let nvar = self.node_var(n.clone());
-                Isrc::new(dc, pvar, nvar).into()
-            }
-            Comp::D(d) => {
-                use crate::comps::Diode;
-                Diode::from(d, self).into()
-            }
-            Comp::V(vs) => {
-                use crate::comps::Vsrc;
-                let ivar = self.vars.add(vs.name.clone(), VarKind::I);
-                let vc = vs;
-                let p = self.node_var(vc.p.clone());
-                let n = self.node_var(vc.n.clone());
-                Vsrc::new(vc.vdc, vc.acm, p, n, ivar).into()
-            }
-            Comp::Mos(m) => {
-                use crate::comps::mos::MosPorts;
-                let ports: MosPorts<Option<VarIndex>> = [
-                    self.node_var(m.ports.d.clone()),
-                    self.node_var(m.ports.g.clone()),
-                    self.node_var(m.ports.s.clone()),
-                    self.node_var(m.ports.b.clone()),
-                ]
-                .into();
-                // Determine solver-type from defined models
-                let c: ComponentSolver = if let Some(model) = self.models.bsim4.models.get(&m.model) {
-                    use crate::comps::bsim4::bsim4ports::Bsim4Ports;
-                    use crate::comps::bsim4::Bsim4;
-                    let (model, inst) = self.models.bsim4.get(&m.model, &m.params).unwrap();
-                    let ports = Bsim4Ports::from(m.name, &ports, &model.vals, &inst.intp, self);
-                    Bsim4::new(ports, model, inst).into()
-                } else if let Some(model) = self.models.mos1.models.get(&m.model) {
-                    use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
-                    let params = match self.models.mos1.insts.get(&m.params) {
-                        Some(m) => m.clone(),
-                        None => panic!(format!("Parameters not defined: {}", m.params)),
-                    };
-                    Mos1::new(Mos1Model::resolve(model.clone()), Mos1InstanceParams::resolve(params), ports.into()).into()
-                } else if let Some(mos_type) = self.models.mos0.get(&m.model) {
-                    // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
-                    use crate::comps::Mos0;
-                    Mos0::new(ports.into(), mos_type.clone()).into()
-                } else {
-                    panic!(format!("Model not defined: {}", m.model));
-                };
-                c
-            }
-        };
-
-        // And add to our Component vector
-        self.comps.push(c);
     }
     fn converged(&self, dx: &Vec<NumT>, res: &Vec<NumT>) -> bool {
         // Inter-step Newton convergence
@@ -557,7 +498,7 @@ impl<'a> Tran<'a> {
         let fnode = self.solver.vars.add("vfnode".to_string(), VarKind::V); // FIXME: names
         let ivar = self.solver.vars.add("ifsrc".to_string(), VarKind::I); // FIXME: names
 
-        let mut r = Resistor::new(1.0, Some(fnode), self.solver.node_var(n));
+        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n));
         r.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);

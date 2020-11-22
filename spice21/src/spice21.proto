@@ -51,7 +51,7 @@ message DiodeModel {
     double rs = 15;
     double cj0 = 16;
 }
-
+// Diode Instance 
 message Diode {
     string name = 1;
     string p = 2;
@@ -59,7 +59,9 @@ message Diode {
     double area = 4;
     double temp = 5;
 }
-
+// Instance Enumeration 
+// Includes variants for all simulator-defined primitives, 
+// plus custom-defined Modules. 
 message Instance {
     oneof comp {
         Resistor r = 1;
@@ -68,25 +70,32 @@ message Instance {
         Isrc i = 4;
         Vsrc v = 5;
         Diode d = 6;
+        ModuleInstance x = 7;
     }
 }
-
-message Circuit {
-    string name = 1;
-    repeated Instance comps = 2;
-    repeated Def defs = 3;
+// Module Definition 
+message Module {
+    string name = 1; // Module Name 
+    repeated string ports = 2; // Port Names 
+    repeated string signals = 4; // Internal Signals
+    repeated Instance comps = 5; // Component Instances
+    map <string, double> params = 9; // Parameters and Default Values
 }
-
-message Subckt {
-    // Not yet available 
+// Module Instance
+message ModuleInstance {
+    string name = 1; // Instance Name
+    string module = 2; // Module Name 
+    map <string, string> ports = 3; // Port Connections 
+    map <string, double> params = 4; // Parameter Values
 }
-message Lib {
-    // Not yet available 
-}
+// Definition Enum
+// Includes all variants of things to define, including:
+// * Module Definitions 
+// * Models 
+// * Instance Parameter-Sets
 message Def {
     oneof defines {
-        Subckt subckt = 1;
-        Lib lib = 2;
+        Module module = 1;
         DiodeModel diodemodel = 3;
         Bsim4Model bsim4model = 4;
         Bsim4InstParams bsim4inst = 5;
@@ -94,9 +103,18 @@ message Def {
         Mos1InstParams mos1inst = 7;
     }
 }
+// Circuit 
+// A "top-level" combination of definitions and component instances
+message Circuit {
+    string name = 1; // Circuit Name 
+    repeated string signals = 2; // Signal Names
+    repeated Def defs = 3; // Definitions 
+    repeated Instance comps = 4; // Component Instances 
+}
 
+// Transient Analysis Options 
 message TranOptions {
-    double tstop = 1;
-    double tstep = 2;
-    map <string, double> ic = 3;
+    double tstop = 1; // Stop Time 
+    double tstep = 2; // Time-Step 
+    map <string, double> ic = 3; // Initial Conditions. Mapping in the form of {node: value}
 }

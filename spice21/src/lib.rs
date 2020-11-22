@@ -130,6 +130,7 @@ pub(crate) mod macros {
 
 // Modules
 pub mod analysis;
+pub mod elab;
 pub mod circuit;
 pub mod comps;
 pub mod proto;
@@ -147,4 +148,6 @@ pub(crate) use spnum::*;
 // Private modules
 mod assert;
 mod spnum;
+
+#[cfg(test)]
 mod tests;

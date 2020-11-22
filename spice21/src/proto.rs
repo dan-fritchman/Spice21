@@ -2,39 +2,49 @@
 //! # Spice21 Protobuf Definitions
 //!
 
-use crate::SpError;
 #[allow(unused_imports)]
 use prost::Message;
 #[allow(unused_imports)] // These are used by the macro-expanded code
 use serde::{Deserialize, Serialize};
 
-// Include the prost-expanded proto-file content
-include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
-
-/// Error Conversion
+// Error Conversion
+use crate::SpError;
 impl From<prost::DecodeError> for SpError {
     fn from(_e: prost::DecodeError) -> Self {
         SpError::new("Error Decoding Circuit Binary")
     }
 }
 
+// Include the prost-expanded proto-file content
+include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
+
 #[cfg(test)]
 mod tests {
+    use super::def::Defines;
+    use super::instance::Comp;
     use super::*;
+    use crate::assert::assert;
+    use crate::circuit::s;
     use crate::*;
+    use std::collections::HashMap;
 
+    /// Proto-defined struct creation, and round-tripping via alternate serializations
     #[test]
     fn test_ckt_proto() -> TestResult {
-        use crate::assert::assert;
-        use circuit::s;
-        use def::Defines;
-        use instance::Comp::{C, D, I, M, R, V};
+        let mut p: HashMap<String, f64> = HashMap::new();
+        p.insert("p1".into(), 1.0);
+        let mut conns: HashMap<String, String> = HashMap::new();
+        conns.insert("a".into(), "a1".into());
+        conns.insert("b".into(), "b1".into());
+        conns.insert("c".into(), "c1".into());
+        conns.insert("d".into(), "d1".into());
 
         let c = Circuit {
-            name: String::from("tbd"),
+            name: s("tbd"),
+            signals: vec!["a".into(), "b".into()],
             comps: vec![
                 Instance {
-                    comp: Some(I(Isrc {
+                    comp: Some(Comp::I(Isrc {
                         name: s("ii"),
                         p: s("ip"),
                         n: s("in"),
@@ -42,7 +52,7 @@ mod tests {
                     })),
                 },
                 Instance {
-                    comp: Some(V(Vsrc {
+                    comp: Some(Comp::V(Vsrc {
                         name: s("vv"),
                         p: s("vp"),
                         n: s("vn"),
@@ -51,7 +61,7 @@ mod tests {
                     })),
                 },
                 Instance {
-                    comp: Some(C(Capacitor {
+                    comp: Some(Comp::C(Capacitor {
                         name: s("cccc"),
                         p: s("ac"),
                         n: s("bc"),
@@ -59,7 +69,7 @@ mod tests {
                     })),
                 },
                 Instance {
-                    comp: Some(R(Resistor {
+                    comp: Some(Comp::R(Resistor {
                         name: s("dtbd"),
                         p: s("a"),
                         n: s("b"),
@@ -67,7 +77,7 @@ mod tests {
                     })),
                 },
                 Instance {
-                    comp: Some(D(Diode {
+                    comp: Some(Comp::D(Diode {
                         name: s("dtbd"),
                         p: s("a"),
                         n: s("b"),
@@ -76,7 +86,7 @@ mod tests {
                     })),
                 },
                 Instance {
-                    comp: Some(M(Mos {
+                    comp: Some(Comp::M(Mos {
                         name: s("mq"),
                         model: s("nomodel"),
                         params: s("noparams"),
@@ -88,13 +98,88 @@ mod tests {
                         }),
                     })),
                 },
+                Instance {
+                    comp: Some(Comp::X(ModuleInstance {
+                        name: s("xxx"),
+                        module: s("good_luck"),
+                        params: p.clone(),
+                        ports: conns.clone(),
+                    })),
+                },
             ],
-            defs: vec![Def {
-                defines: Some(Defines::Mos1model(Mos1Model::default())),
-            }],
+            defs: vec![
+                Def {
+                    defines: Some(Defines::Mos1model(Mos1Model::default())),
+                },
+                Def {
+                    defines: Some(Defines::Module(Module {
+                        name: "good_luck".into(),
+                        ports: vec!["a".into(), "b".into(), "c".into(), "d".into()],
+                        params: p.clone(),
+                        signals: vec!["i1".into(), "i2".into()],
+                        comps: vec![
+                            Instance {
+                                comp: Some(Comp::I(Isrc {
+                                    name: s("ii"),
+                                    p: s("ip"),
+                                    n: s("in"),
+                                    dc: 1e-12,
+                                })),
+                            },
+                            Instance {
+                                comp: Some(Comp::V(Vsrc {
+                                    name: s("vv"),
+                                    p: s("vp"),
+                                    n: s("vn"),
+                                    dc: 1e-12,
+                                    acm: 0.0,
+                                })),
+                            },
+                            Instance {
+                                comp: Some(Comp::C(Capacitor {
+                                    name: s("cccc"),
+                                    p: s("ac"),
+                                    n: s("bc"),
+                                    c: 1e-12,
+                                })),
+                            },
+                            Instance {
+                                comp: Some(Comp::R(Resistor {
+                                    name: s("dtbd"),
+                                    p: s("a"),
+                                    n: s("b"),
+                                    g: 1e-3,
+                                })),
+                            },
+                            Instance {
+                                comp: Some(Comp::D(Diode {
+                                    name: s("dtbd"),
+                                    p: s("a"),
+                                    n: s("b"),
+                                    area: 1.0,
+                                    temp: 300.0,
+                                })),
+                            },
+                            Instance {
+                                comp: Some(Comp::M(Mos {
+                                    name: s("mq"),
+                                    model: s("nomodel"),
+                                    params: s("noparams"),
+                                    ports: Some(MosPorts {
+                                        g: s("a"),
+                                        d: s("b"),
+                                        s: s("c"),
+                                        b: s("d"),
+                                    }),
+                                })),
+                            },
+                        ],
+                    })),
+                },
+            ],
         };
 
-        use std::fs::{File, create_dir_all};
+        use std::fs::{create_dir_all, File};
         use std::io::prelude::*;
         use std::io::Cursor;
 

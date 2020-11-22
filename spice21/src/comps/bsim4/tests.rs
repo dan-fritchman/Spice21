@@ -68,8 +68,8 @@ fn test_bsim4_nmos_dcop1() -> TestResult {
         b: NodeRef::Gnd,
     };
     let mut ckt = Ckt::new();
-    ckt.models.bsim4.add_model("default", Bsim4ModelSpecs::new(MosType::NMOS));
-    ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
+    ckt.defs.bsim4.add_model("default", Bsim4ModelSpecs::new(MosType::NMOS));
+    ckt.defs.bsim4.add_inst(Bsim4InstSpecs::default());
 
     ckt.add(Mosi {
         name: "bsim4".to_string(),
@@ -97,8 +97,8 @@ fn test_bsim4_pmos_dcop1() -> TestResult {
     use NodeRef::Gnd;
 
     let mut ckt = Ckt::new();
-    ckt.models.bsim4.add_model("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
-    ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
+    ckt.defs.bsim4.add_model("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
+    ckt.defs.bsim4.add_inst(Bsim4InstSpecs::default());
 
     ckt.add(Mosi {
         name: "bsim4".to_string(),
@@ -126,9 +126,9 @@ fn test_bsim4_inv_dcop() -> TestResult {
     use NodeRef::Gnd;
 
     let mut ckt = Ckt::new();
-    ckt.models.bsim4.add_model("nmos", Bsim4ModelSpecs::new(MosType::NMOS));
-    ckt.models.bsim4.add_model("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
-    ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
+    ckt.defs.bsim4.add_model("nmos", Bsim4ModelSpecs::new(MosType::NMOS));
+    ckt.defs.bsim4.add_model("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
+    ckt.defs.bsim4.add_inst(Bsim4InstSpecs::default());
 
     ckt.add(Mosi {
         name: "p".to_string(),
@@ -168,9 +168,9 @@ fn test_bsim4_tran1() -> TestResult {
     use NodeRef::Gnd;
 
     let mut ckt = Ckt::new();
-    ckt.models.bsim4.add_model("nmos", Bsim4ModelSpecs::new(MosType::NMOS));
-    ckt.models.bsim4.add_model("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
-    ckt.models.bsim4.add_inst(Bsim4InstSpecs::default());
+    ckt.defs.bsim4.add_model("nmos", Bsim4ModelSpecs::new(MosType::NMOS));
+    ckt.defs.bsim4.add_model("pmos", Bsim4ModelSpecs::new(MosType::PMOS));
+    ckt.defs.bsim4.add_inst(Bsim4InstSpecs::default());
 
     ckt.add(Mosi {
         name: "p".to_string(),
