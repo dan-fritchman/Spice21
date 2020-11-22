@@ -1,0 +1,19 @@
+[package]
+name = "spice21js"
+version = "0.1.4"
+authors = ["Dan Fritchman <dan@fritch.mn>"]
+license = "BSD-3-Clause"
+build = "build.rs"
+edition = "2018"
+exclude = ["artifacts.json", "index.node"]
+
+[lib]
+name = "spice21js"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+neon-build = "0.5.2"
+
+[dependencies]
+neon = "0.5.2"
+spice21 = {version = "0.1.4", path = "../../spice21"}
