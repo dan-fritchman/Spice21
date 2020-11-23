@@ -3,8 +3,8 @@ name: spice21py
 on: [push, pull_request]
 
 jobs:
-  pytest:
-    name: pytest (${{ matrix.python-version }}, ${{ matrix.os }})
+  example-1:
+    name: Ex1 (${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -19,6 +19,8 @@ jobs:
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
+      - name: checkout
+        uses: actions/checkout@v1 
       - name: proto-deps
         run: |
           sudo apt install -y protobuf-compiler
@@ -38,6 +40,7 @@ jobs:
       - name: test
         working-directory: ./spice21py 
         run: pytest 
+      
       # - uses: actions/upload-artifact@v1
       #   name: upload-wheel
       #   with:
