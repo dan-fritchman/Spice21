@@ -1,14 +1,21 @@
-import spice21py
-from spice21py import circuit, Resistor, Capacitor, Isrc, Vsrc, Diode
+# import spice21py
+from .. import circuit, Resistor, Capacitor, Isrc, Vsrc, Diode
 
 
 def test_health():
-    """ Test the core library is "there". """
-    from spice21py import health
+    """ Test the core library is "there". 
+    Also check whether the module-system's `spice21py` """
+    from .. import health as health1
+    from spice21py import health as health2
 
-    a = health()
+    a = health1()
     assert a == "alive"
-    print(f"spice21py core is {a} from {spice21py}")
+
+    if health1 is not health2:
+        import warnings
+        import spice21py
+
+        warnings.warn(f"Spice21py under test is not installed version {spice21py}")
 
 
 def test_dcop1():
@@ -119,72 +126,32 @@ def test_bsim4_ckt():
     # FIXME: checks
 
 
-def test_bsim4_ro():
-    from .. import circuit 
-    from .. import Bsim4Model, Bsim4InstParams, Mos, MosType, TranOptions, Capacitor
+def inverter(name: str, inp: str, out: str) -> list:
+    from .. import Mos, Capacitor
 
-    def inverter(name: str, inp: str, out: str) -> list:
-        p = Mos(name=f"{name}p", model="pmos", params="default")
-        p.ports.g = inp
-        p.ports.d = out
-        p.ports.s = "vdd"
-        p.ports.b = "vdd"
-        n = Mos(name=f"{name}n", model="nmos", params="default")
-        n.ports.g = inp
-        n.ports.d = out
-        n.ports.s = "vss"
-        n.ports.b = "vss"
-        c = Capacitor(name=f"{name}c", p=out, n="vss", c=1e-12)
-        return [p, n, c]
-
-    nstg = 3
-    insts = []
-    for k in range(nstg):
-        insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
-
-    ckt = circuit(
-        Bsim4Model(name="nmos", mos_type=MosType.NMOS),
-        Bsim4Model(name="pmos", mos_type="PMOS"),
-        Bsim4InstParams(name="default"),
-        Vsrc(name="vvdd", p="vdd", n="vss", dc=1.0),
-        Vsrc(name="vvss", p="vss", dc=0),
-        Vsrc(name="vvfb", p="ring0", n=f"ring{nstg}", dc=0),
-        *insts,
-    )
-    opts = TranOptions(tstop=1e-7, tstep=1e-12)
-    opts.ic['ring0'] = 0.0
-
-    from .. import tran
-
-    res = tran(ckt, opts)
-    assert isinstance(res, dict)
-    # FIXME: checks
+    p = Mos(name=f"{name}p", model="pmos", params="default")
+    p.ports.g = inp
+    p.ports.d = out
+    p.ports.s = "vdd"
+    p.ports.b = "vdd"
+    n = Mos(name=f"{name}n", model="nmos", params="default")
+    n.ports.g = inp
+    n.ports.d = out
+    n.ports.s = "vss"
+    n.ports.b = "vss"
+    c = Capacitor(name=f"{name}c", p=out, n="vss", c=1e-18)
+    return [p, n, c]
 
 
 def test_mos1_ro():
-    from .. import circuit 
+    from .. import circuit, tran
     from .. import Mos, MosType, TranOptions, Capacitor
     from ..protos import Mos1Model, Mos1InstParams
-
-    def inverter(name: str, inp: str, out: str) -> list:
-        p = Mos(name=f"{name}p", model="pmos", params="default")
-        p.ports.g = inp
-        p.ports.d = out
-        p.ports.s = "vdd"
-        p.ports.b = "vdd"
-        n = Mos(name=f"{name}n", model="nmos", params="default")
-        n.ports.g = inp
-        n.ports.d = out
-        n.ports.s = "vss"
-        n.ports.b = "vss"
-        c = Capacitor(name=f"{name}c", p=out, n="vss", c=1e-12)
-        return [p, n, c]
 
     nstg = 3
     insts = []
     for k in range(nstg):
         insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
-
     ckt = circuit(
         Mos1Model(name="nmos", mos_type=MosType.NMOS),
         Mos1Model(name="pmos", mos_type="PMOS"),
@@ -194,11 +161,32 @@ def test_mos1_ro():
         Vsrc(name="vvfb", p="ring0", n=f"ring{nstg}", dc=0),
         *insts,
     )
-    opts = TranOptions(tstop=1e-7, tstep=1e-12)
-    opts.ic['ring0'] = 0.0
+    opts = TranOptions(tstop=1e-8, tstep=1e-11)
+    opts.ic["ring0"] = 0.0
+    res = tran(ckt, opts)
+    assert isinstance(res, dict)
+    # FIXME: checks
 
-    from .. import tran
 
+def test_bsim4_ro():
+    from .. import circuit, tran
+    from .. import Bsim4Model, Bsim4InstParams, Mos, MosType, TranOptions, Capacitor
+
+    nstg = 3
+    insts = []
+    for k in range(nstg):
+        insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
+    ckt = circuit(
+        Bsim4Model(name="nmos", mos_type=MosType.NMOS),
+        Bsim4Model(name="pmos", mos_type="PMOS"),
+        Bsim4InstParams(name="default"),
+        Vsrc(name="vvdd", p="vdd", n="vss", dc=1.0),
+        Vsrc(name="vvss", p="vss", dc=0),
+        Vsrc(name="vvfb", p="ring0", n=f"ring{nstg}", dc=0),
+        *insts,
+    )
+    opts = TranOptions(tstop=3e-7, tstep=1e-10)
+    opts.ic["ring0"] = 0.0
     res = tran(ckt, opts)
     assert isinstance(res, dict)
     # FIXME: checks

@@ -70,7 +70,6 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
         } else {
             TranOptions::default()
         };
-        println!("OPTS: {:?}", opts);
         let res = tran(ckt, opts).map_err(TempError::from)?;
         Ok(res.map)
     }
