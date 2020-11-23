@@ -15,5 +15,9 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: '14.x'
-      - run: yarn install
-      - run: yarn test
+      - name: install
+        working-directory: ./spice21js 
+        run: yarn install
+      - name: test
+        working-directory: ./spice21js 
+        run: yarn test
