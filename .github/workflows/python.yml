@@ -22,23 +22,22 @@ jobs:
       - name: Conda info
         run: conda info
       - name: Conda list
-        shell: pwsh
         run: conda list
       - name: checkout
         uses: actions/checkout@v1
-      - name: Setup Rust environment
-        uses: actions-rs/toolchain@v1
-        with:
-            profile: minimal
-            toolchain: stable
-            override: true
-      - name: Setup Python environment
-        uses: actions/setup-python@v1.1.1
-        with:
-          python-version: 3.7
-      - name: Run cargo test
-        working-directory: ./spice21
-        run: cargo test
+      # - name: Setup Rust environment
+      #   uses: actions-rs/toolchain@v1
+      #   with:
+      #       profile: minimal
+      #       toolchain: stable
+      #       override: true
+      # - name: Setup Python environment
+      #   uses: actions/setup-python@v1.1.1
+      #   with:
+      #     python-version: 3.7
+      # - name: Run cargo test
+      #   working-directory: ./spice21
+      #   run: cargo test
       - name: proto-deps
         run: |
           sudo apt install -y protobuf-compiler
