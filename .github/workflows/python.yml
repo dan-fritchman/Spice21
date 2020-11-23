@@ -1,10 +1,10 @@
 
 name: spice21py
-on: [push]
+on: [push, pull_request]
 
 jobs:
-  example-1:
-    name: Ex1 (${{ matrix.python-version }}, ${{ matrix.os }})
+  pytest:
+    name: pytest (${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -12,32 +12,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "macos-latest"]
+        os: ["ubuntu-latest"]
         python-version: ["3.8", "3.7"]
     steps:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
-      - name: Conda info
-        run: conda info
-      - name: Conda list
-        run: conda list
-      - name: checkout
-        uses: actions/checkout@v1
-      # - name: Setup Rust environment
-      #   uses: actions-rs/toolchain@v1
-      #   with:
-      #       profile: minimal
-      #       toolchain: stable
-      #       override: true
-      # - name: Setup Python environment
-      #   uses: actions/setup-python@v1.1.1
-      #   with:
-      #     python-version: 3.7
-      # - name: Run cargo test
-      #   working-directory: ./spice21
-      #   run: cargo test
       - name: proto-deps
         run: |
           sudo apt install -y protobuf-compiler
@@ -54,22 +35,12 @@ jobs:
       - name: build 
         working-directory: ./spice21py 
         run: maturin develop
-      # - name: pip-install-wheel
-      #   # continue-on-error: true  # FIXME: remove
-      #   working-directory: ./spice21py 
-      #   run: pip install target/wheels/*cp37*.whl 
       - name: test
         working-directory: ./spice21py 
-        run: pytest ##--pyargs spice21py
-      
+        run: pytest 
       # - uses: actions/upload-artifact@v1
       #   name: upload-wheel
       #   with:
       #     name: wheel-${{ matrix.platform }}
       #     path: target/wheels/
-      # - name: pip-install-wheel
-      #   run: |
-      #     pip debug --verbose
-      #     pip install target/wheels/example_rust_py*.whl
-
         
