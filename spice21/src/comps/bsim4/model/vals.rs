@@ -1,14 +1,8 @@
-use super::bsim4defs::*;
-use super::log;
+
+use super::{Bsim4ModelVals, Bsim4ModelSpecs};
+use super::super::log;
 use crate::comps::consts::*;
 use crate::comps::mos::MosType::{NMOS, PMOS};
-
-impl Bsim4ModelVals {
-    /// Polarity function
-    pub(crate) fn p(&self) -> f64 {
-        self.mos_type.p()
-    }
-}
 
 /// Resolve input-provided model-specs into their values,
 /// incorporating defaults and limiting constraints.
@@ -17,102 +11,101 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
 
     let tnom = 300.15; // FIXME: from ckt->CKTnomTemp
 
-    // MosType NMOS vs PMOS
     vals.mos_type = if let Some(val) = specs.mos_type { val } else { NMOS };
 
     // Model Modes
-    vals.mobmod = if let Some(val) = specs.mobmod { val } else { 0 };
+    vals.mobmod = if let Some(val) = specs.mobmod { val as usize } else { 0 };
     if vals.mobmod > 6 {
         vals.mobmod = 0;
         println!("Warning: mobmod has been set to its default value: 0.\n");
     }
-    vals.diomod = if let Some(val) = specs.diomod { val } else { 1 };
+    vals.diomod = if let Some(val) = specs.diomod { val as usize } else { 1 };
     if vals.diomod > 2 {
         vals.diomod = 1;
         println!("Warning: diomod has been set to its default value: 1.\n");
     }
-    vals.capmod = if let Some(val) = specs.capmod { val } else { 2 };
+    vals.capmod = if let Some(val) = specs.capmod { val as usize } else { 2 };
     if vals.capmod > 2 {
         vals.capmod = 2;
         println!("Warning: capmod has been set to its default value: 2.\n");
     }
-    vals.rdsmod = if let Some(val) = specs.rdsmod { val } else { 0 };
+    vals.rdsmod = if let Some(val) = specs.rdsmod { val as usize } else { 0 };
     if vals.rdsmod > 1 {
         vals.rdsmod = 0;
         println!("Warning: rdsmod has been set to its default value: 0.\n");
     }
-    vals.rbodymod = if let Some(val) = specs.rbodymod { val } else { 0 };
+    vals.rbodymod = if let Some(val) = specs.rbodymod { val as usize } else { 0 };
     if vals.rbodymod > 2 {
         vals.rbodymod = 0;
         println!("Warning: rbodymod has been set to its default value: 0.\n");
     }
-    vals.rgatemod = if let Some(val) = specs.rgatemod { val } else { 0 };
+    vals.rgatemod = if let Some(val) = specs.rgatemod { val as usize } else { 0 };
     if vals.rgatemod > 3 {
         vals.rgatemod = 0;
         println!("Warning: rgatemod has been set to its default value: 0.\n");
     }
-    vals.permod = if let Some(val) = specs.permod { val } else { 1 };
+    vals.permod = if let Some(val) = specs.permod { val as usize } else { 1 };
     if vals.permod > 1 {
         vals.permod = 1;
         println!("Warning: permod has been set to its default value: 1.\n");
     }
-    vals.fnoimod = if let Some(val) = specs.fnoimod { val } else { 1 };
+    vals.fnoimod = if let Some(val) = specs.fnoimod { val as usize } else { 1 };
     if vals.fnoimod > 1 {
         vals.fnoimod = 1;
         println!("Warning: fnoimod has been set to its default value: 1.\n");
     }
-    vals.tnoimod = if let Some(val) = specs.tnoimod { val } else { 0 };
+    vals.tnoimod = if let Some(val) = specs.tnoimod { val as usize } else { 0 };
     if vals.tnoimod > 2 {
         vals.tnoimod = 0;
         println!("Warning: tnoimod has been set to its default value: 0.\n");
     }
-    vals.trnqsmod = if let Some(val) = specs.trnqsmod { val } else { 0 };
+    vals.trnqsmod = if let Some(val) = specs.trnqsmod { val as usize } else { 0 };
     if vals.trnqsmod > 1 {
         vals.trnqsmod = 0;
         println!("Warning: trnqsmod has been set to its default value: 0.\n");
     }
-    vals.acnqsmod = if let Some(val) = specs.acnqsmod { val } else { 0 };
+    vals.acnqsmod = if let Some(val) = specs.acnqsmod { val as usize } else { 0 };
     if vals.acnqsmod > 1 {
         vals.acnqsmod = 0;
         println!("Warning: acnqsmod has been set to its default value: 0.\n");
     }
-    vals.mtrlmod = if let Some(val) = specs.mtrlmod { val } else { 0 };
+    vals.mtrlmod = if let Some(val) = specs.mtrlmod { val as usize } else { 0 };
     if vals.mtrlmod > 1 {
         vals.mtrlmod = 0;
         println!("Warning: mtrlmod has been set to its default value: 0.\n");
     }
-    vals.mtrlcompatmod = if let Some(val) = specs.mtrlcompatmod { val } else { 0 };
+    vals.mtrlcompatmod = if let Some(val) = specs.mtrlcompatmod { val as usize } else { 0 };
     if vals.mtrlcompatmod > 1 {
         vals.mtrlcompatmod = 0;
         println!("Warning: mtrlcompatmod has been set to its default value: 0.\n");
     }
-    vals.igcmod = if let Some(val) = specs.igcmod { val } else { 0 };
+    vals.igcmod = if let Some(val) = specs.igcmod { val as usize } else { 0 };
     if vals.igcmod > 2 {
         vals.igcmod = 0;
         println!("Warning: igcmod has been set to its default value: 0.\n");
     }
-    vals.igbmod = if let Some(val) = specs.igbmod { val } else { 0 };
+    vals.igbmod = if let Some(val) = specs.igbmod { val as usize } else { 0 };
     if vals.igbmod > 1 {
         vals.igbmod = 0;
         println!("Warning: igbmod has been set to its default value: 0.\n");
     }
-    vals.tempmod = if let Some(val) = specs.tempmod { val } else { 0 };
+    vals.tempmod = if let Some(val) = specs.tempmod { val as usize } else { 0 };
     if vals.tempmod > 3 {
         vals.tempmod = 0;
         println!("Warning: tempmod has been set to its default value: 0.\n");
     }
-    vals.wpemod = if let Some(val) = specs.wpemod { val } else { 0 };
+    vals.wpemod = if let Some(val) = specs.wpemod { val as usize } else { 0 };
     if vals.wpemod > 1 {
         vals.wpemod = 0;
         println!("Warning: wpemod has been set to its default value: 0.\n");
     }
 
     // FIXME: range check these
-    vals.gidlmod = if let Some(val) = specs.gidlmod { val } else { 0 };
-    vals.geomod = if let Some(val) = specs.geomod { val } else { 0 };
-    vals.cvchargemod = if let Some(val) = specs.cvchargemod { val } else { 0 };
-    vals.binunit = if let Some(val) = specs.binunit { val } else { 1 };
-    vals.paramchk = if let Some(val) = specs.paramchk { val } else { 1 };
+    vals.gidlmod = if let Some(val) = specs.gidlmod { val as usize } else { 0 };
+    vals.geomod = if let Some(val) = specs.geomod { val as usize } else { 0 };
+    vals.cvchargemod = if let Some(val) = specs.cvchargemod { val as usize } else { 0 };
+    vals.binunit = if let Some(val) = specs.binunit { val as usize } else { 1 };
+    vals.paramchk = if let Some(val) = specs.paramchk { val as usize } else { 1 };
 
     // Beginning primary double-valued params
     vals.version = if let Some(val) = specs.version { val } else { 4.80 };
@@ -510,7 +503,6 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.tpbsw = if let Some(val) = specs.tpbsw { val } else { 0.0 };
     vals.tcjswg = if let Some(val) = specs.tcjswg { val } else { 0.0 };
     vals.tpbswg = if let Some(val) = specs.tpbswg { val } else { 0.0 };
-
     /* Length dependence */
     vals.lcdsc = if let Some(val) = specs.lcdsc { val } else { 0.0 };
     vals.lcdscb = if let Some(val) = specs.lcdscb { val } else { 0.0 };
@@ -1031,18 +1023,19 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.pmoin = if let Some(val) = specs.pmoin { val } else { 0.0 };
     vals.pnoff = if let Some(val) = specs.pnoff { val } else { 0.0 };
     vals.pvoffcv = if let Some(val) = specs.pvoffcv { val } else { 0.0 };
-    vals.gamma1 = if let Some(val) = specs.gamma1 { val } else { 0.0 };
     vals.lgamma1 = if let Some(val) = specs.lgamma1 { val } else { 0.0 };
     vals.wgamma1 = if let Some(val) = specs.wgamma1 { val } else { 0.0 };
     vals.pgamma1 = if let Some(val) = specs.pgamma1 { val } else { 0.0 };
-    vals.gamma2 = if let Some(val) = specs.gamma2 { val } else { 0.0 };
     vals.lgamma2 = if let Some(val) = specs.lgamma2 { val } else { 0.0 };
     vals.wgamma2 = if let Some(val) = specs.wgamma2 { val } else { 0.0 };
     vals.pgamma2 = if let Some(val) = specs.pgamma2 { val } else { 0.0 };
-    vals.vbx = if let Some(val) = specs.vbx { val } else { 0.0 };
     vals.lvbx = if let Some(val) = specs.lvbx { val } else { 0.0 };
     vals.wvbx = if let Some(val) = specs.wvbx { val } else { 0.0 };
     vals.pvbx = if let Some(val) = specs.pvbx { val } else { 0.0 };
+
+    vals.vbx = if let Some(val) = specs.vbx { val } else { 0.0 };
+    vals.gamma1 = if let Some(val) = specs.gamma1 { val } else { 0.0 };
+    vals.gamma2 = if let Some(val) = specs.gamma2 { val } else { 0.0 };
 
     vals.tnom = if let Some(val) = specs.tnom { val } else { tnom };
     vals.lint = if let Some(val) = specs.lint { val } else { 0.0 };

@@ -2,25 +2,33 @@
 //! BSIM4 MOSFET Implementation
 //!
 
-#![allow(nonstandard_style,	warnings, unused)] // FIXME: work through these 
+#![allow(nonstandard_style, warnings, unused)] // FIXME: work through these
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+
+pub mod cache;
+pub mod inst;
+pub mod model;
+pub mod stamp;
+pub mod tran;
+
+#[cfg(test)]
+mod tests;
 
 pub mod bsim4defs;
 pub mod bsim4derive;
 pub mod bsim4inst;
-pub mod bsim4modelvals;
 pub mod bsim4ports;
 pub mod bsim4solver;
 
-pub use bsim4defs::*;
+pub use bsim4ports::*;
 pub use bsim4solver::*;
+pub use cache::*;
+pub use inst::*;
+pub use model::*;
 
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
-
-
 
 // FIXME: get from circuit/ analysis
 pub(crate) const gmin: f64 = 1e-12;
@@ -35,69 +43,6 @@ pub(crate) const DELTA_1: f64 = 0.02;
 pub(crate) const DELTA_2: f64 = 0.02;
 pub(crate) const DELTA_3: f64 = 0.02;
 pub(crate) const DELTA_4: f64 = 0.02;
-
-#[derive(Clone)]
-pub(crate) struct Bsim4ModelEntry {
-    pub(crate) specs: Bsim4ModelSpecs,
-    pub(crate) vals: Bsim4ModelVals,
-    pub(crate) derived: Bsim4ModelDerivedParams,
-    pub(crate) insts: Vec<Bsim4InstEntry>,
-}
-
-impl Bsim4ModelEntry {
-    fn new(specs: Bsim4ModelSpecs) -> Self {
-        use bsim4derive::derive;
-        use bsim4modelvals::resolve;
-
-        let vals = resolve(&specs);
-        let derived = derive(&vals);
-        Self {
-            specs,
-            vals,
-            derived,
-            insts: vec![],
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct Bsim4InstEntry {
-    pub(crate) specs: Bsim4InstSpecs,
-    pub(crate) intp: Bsim4InternalParams,
-    pub(crate) size_params: Bsim4SizeDepParams,
-}
-
-impl Bsim4InstEntry {
-    fn new(specs: Bsim4InstSpecs, model: &Bsim4ModelEntry) -> Self {
-        use bsim4inst::from;
-        let (intp, size_params) = from(&model.vals, &model.derived, &specs);
-        Self { specs, intp, size_params }
-    }
-}
-
-pub(crate) struct Bsim4ModelCache(HashMap<String, Bsim4ModelEntry>);
-
-impl Bsim4ModelCache {
-    pub(crate) fn new() -> Self {
-        Self(HashMap::new())
-    }
-    pub(crate) fn add<S: Into<String>>(&mut self, name: S, specs: Bsim4ModelSpecs) {
-        let entry = Bsim4ModelEntry::new(specs);
-        self.0.insert(name.into(), entry);
-    }
-    pub(crate) fn model(&mut self, model_name: &String) -> Option<&mut Bsim4ModelEntry> {
-        self.0.get_mut(model_name)
-    }
-    pub(crate) fn inst(&mut self, model_name: &String, specs: Bsim4InstSpecs) -> Option<(Bsim4ModelEntry, Bsim4InstEntry)> {
-        // FIXME: actually check whether these things are already in the cache!
-        let model: &mut Bsim4ModelEntry = self.0.get_mut(model_name)?;
-        let inst = Bsim4InstEntry::new(specs, &model);
-        model.insts.push(inst.clone());
-        // FIXME: stop cloning, return references or pointers 
-        // Some((&*model, &model.insts[model.insts.len() - 1]))
-        Some((model.clone(), inst))
-    }
-}
 
 // Some helper math
 // C-style call syntax, e.g. `min(a,b)` instead of `a.min(b)`
@@ -311,6 +256,8 @@ pub(crate) struct Bsim4OpPoint {
     pub(crate) vsbs: f64,
     pub(crate) vges: f64,
     pub(crate) vgms: f64,
+    pub(crate) vgmb: f64,
+    pub(crate) vgb: f64,
     pub(crate) vses: f64,
     pub(crate) vdes: f64,
 

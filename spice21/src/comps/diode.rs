@@ -4,7 +4,7 @@
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
-use crate::circuit::Ds;
+use crate::circuit::Di;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
@@ -33,14 +33,13 @@ attr!(
         // (cond, f64, 0.0, "Ohmic conductance"),
     ]
 );
-
 impl DiodeModel {
     /// Boolean indication of non-zero terminal resistance
     /// Used to determine whether to add an internal node
-    fn has_rs(&self) -> bool {
+    pub(crate) fn has_rs(&self) -> bool {
         self.rs != 0.0
     }
-    fn has_bv(&self) -> bool {
+    pub(crate) fn has_bv(&self) -> bool {
         self.bv != 0.0
     }
 }
@@ -108,7 +107,7 @@ pub struct DiodeIntParams {
 
 impl DiodeIntParams {
     /// Derive Diode internal parameters from model, instance, and circuit options.
-    fn derive(model: &DiodeModel, inst: &DiodeInstParams, opts: &Options) -> Self {
+    pub(crate) fn derive(model: &DiodeModel, inst: &DiodeInstParams, opts: &Options) -> Self {
         let tnom = model.tnom;
         let temp = if let Some(t) = inst.temp { t } else { opts.temp };
         let area = if let Some(a) = inst.area { a } else { 1.0 };
@@ -149,7 +148,7 @@ impl DiodeIntParams {
             // SPICE models this as `ibv` being constant across temperature, and `bv` changing to meet it.
             // We skip any convergence check here, and just get as close as we can in N iterations.
             let ibv = model.ibv;
-            for i in 0..25 {
+            for _i in 0..25 {
                 bv = model.bv - vt * (ibv / isat + 1.0 - bv / vt).ln();
             }
         }
@@ -192,39 +191,9 @@ pub struct Diode {
 
 impl Diode {
     /// Create a new Diode solver from a Circuit (parser) Diode
-    pub(crate) fn from<T: SpNum>(d: Ds, solver: &mut Solver<T>) -> Diode {
-        // Destruct the key parser-diode attributes
-        let Ds { mut name, model, inst, p, n } = d;
-        // Create or retrive the solver node-variables
-        let p = solver.node_var(p);
-        let n = solver.node_var(n);
-        // Internal resistance node addition
-        let r = if d.model.has_rs() {
-            name.push_str("_r");
-            Some(solver.vars.add(name, VarKind::V))
-        } else {
-            p
-        };
-        // Derive internal params
-        let intp = DiodeIntParams::derive(&model, &inst, &solver.opts);
-        // And create our solver
-        return Diode {
-            ports: DiodePorts { p, n, r },
-            model,
-            inst,
-            intp,
-            ..Default::default()
-        };
-    }
-    /// Create a new Diode
-    pub(crate) fn new(ports: DiodePorts, model: DiodeModel, inst: DiodeInstParams) -> Diode {
-        Diode {
-            ports,
-            model,
-            inst,
-            ..Default::default()
-        }
-    }
+    // pub(crate) fn from<T: SpNum>(d: Di, solver: &mut Solver<T>) -> Diode {
+        
+    // }
     /// Voltage limiting
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
         let vnew = vd;
@@ -380,19 +349,6 @@ pub(crate) struct Diode0 {
     pn: Option<Eindex>,
     np: Option<Eindex>,
 }
-
-impl Diode0 {
-    pub(crate) fn new(isat: f64, vt: f64, p: Option<VarIndex>, n: Option<VarIndex>) -> Diode0 {
-        Diode0 {
-            isat,
-            vt,
-            p,
-            n,
-            ..Default::default()
-        }
-    }
-}
-
 impl Component for Diode0 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.pp = make_matrix_elem(mat, self.p, self.p);
@@ -400,7 +356,7 @@ impl Component for Diode0 {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
         let vp = guess.get(self.p);
         let vn = guess.get(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);

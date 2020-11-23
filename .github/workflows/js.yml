@@ -1,0 +1,23 @@
+
+name: spice21js
+on: [push, pull_request]
+
+jobs:
+  spice21js:
+    name: spice21js (${{ matrix.os }})
+    runs-on: ${{ matrix.os }} 
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '14.x'
+      - name: test
+        working-directory: ./spice21js 
+        run: | 
+          yarn install
+          yarn protoc 
+          yarn test

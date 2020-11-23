@@ -1,8 +1,9 @@
-use super::bsim4defs::*;
+
 use super::bsim4ports::Bsim4Ports;
+use super::model::Bsim4ModelVals;
 use super::*;
 
-use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
+use crate::analysis::{AnalysisInfo, Stamps, TranState, VarIndex, Variables};
 use crate::comps::consts::*;
 use crate::comps::mos::MosType;
 use crate::comps::Component;
@@ -12,15 +13,15 @@ use crate::SpNum;
 /// BSIM4 MOSFET Solver
 // #[derive(Default)]
 pub struct Bsim4 {
-    ports: Bsim4Ports<Option<VarIndex>>,
-    // inst: Bsim4InstSpecs, // Think we need these? nope
-    model: Bsim4ModelVals,                  // FIXME: reference
-    model_derived: Bsim4ModelDerivedParams, // FIXME: reference
-    size_params: Bsim4SizeDepParams,        // FIXME: reference
-    intp: Bsim4InternalParams,              // FIXME: reference
-    guess: Bsim4OpPoint,
-    op: Bsim4OpPoint,
-    matps: Bsim4MatrixPointers,
+    pub(crate) ports: Bsim4Ports<Option<VarIndex>>,
+    //pub(crate)  inst: Bsim4InstSpecs, // Think we need these? nope
+    pub(crate) model: Bsim4ModelVals,                  // FIXME: reference
+    pub(crate) model_derived: Bsim4ModelDerivedParams, // FIXME: reference
+    pub(crate) size_params: Bsim4SizeDepParams,        // FIXME: reference
+    pub(crate) intp: Bsim4InternalParams,              // FIXME: reference
+    pub(crate) guess: Bsim4OpPoint,
+    pub(crate) op: Bsim4OpPoint,
+    pub(crate) matps: Bsim4MatrixPointers,
 }
 
 impl Bsim4 {
@@ -114,7 +115,7 @@ impl Bsim4 {
     }
 
     /// Gather the voltages on each of our node-variables from `Variables` `guess`.
-    fn vs(&self, guess: &Variables<f64>) -> Bsim4Ports<f64> {
+    pub(crate) fn vs(&self, guess: &Variables<f64>) -> Bsim4Ports<f64> {
         Bsim4Ports {
             dNode: guess.get(self.ports.dNode),
             dNodePrime: guess.get(self.ports.dNodePrime),
@@ -130,7 +131,7 @@ impl Bsim4 {
             qNode: guess.get(self.ports.qNode),
         }
     }
-    fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    pub(crate) fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         // Grab our port voltages/ values
         let portvs = self.vs(guess);
         // Calculate an operating point from them
@@ -138,10 +139,10 @@ impl Bsim4 {
         // Save it for later
         self.guess = newop;
         // And return the corresponding matrix stamps
-        return self.stamp();
+        let stamps = self.stamp();
+        stamps
     }
-
-    fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Bsim4OpPoint {
+    pub(crate) fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Bsim4OpPoint {
         //-> Bsim4OpPoint {
         // Start by declaring about 700 local float variables!
 
@@ -348,10 +349,7 @@ impl Bsim4 {
         let mut Cdd: f64;
         let mut Cds: f64;
         let mut Cdb: f64;
-        let mut Qg: f64;
-        let mut Qd: f64;
         let mut Csg: f64;
-
         let mut Csd: f64;
         let mut Css: f64;
         let mut Csb: f64;
@@ -359,8 +357,11 @@ impl Bsim4 {
         let mut Cbd: f64;
         let mut Cbs: f64;
         let mut Cbb: f64;
+        let mut Qg: f64;
+        let mut Qd: f64;
         let mut Qs: f64;
         let mut Qb: f64;
+
         let mut Cgg1: f64;
         let mut Cgb1: f64;
         let mut Cgd1: f64;
@@ -386,7 +387,6 @@ impl Bsim4 {
 
         // Initialized locals. Complicated code-paths do not otherwise ensure these are ever set.
         let mut qgmid = 0.0;
-        let mut ceqqgmid = 0.0;
         let mut qgate = 0.0;
         let mut qbulk = 0.0;
         let mut qdrn = 0.0;
@@ -406,8 +406,8 @@ impl Bsim4 {
         let mut Voxacc = 0.0;
         let mut Vfb = 0.0;
 
-        let ScalingFactor = 1.0e-9;
-        let ChargeComputationNeeded = if let AnalysisInfo::TRAN(_a, _b) = an { true } else { false };
+        let nqs_scaling_factor = 1.0e-9; // FIXME: lump this in an NQS thing
+        let ChargeComputationNeeded = true; //if let AnalysisInfo::TRAN(_a, _b) = an { true } else { false };
 
         // Create a new operating point, which we'll fill in along the way
         let mut newop = Bsim4OpPoint::default();
@@ -2695,8 +2695,7 @@ impl Bsim4 {
             newop.cqgb = 0.0;
             newop.cqbb = 0.0;
             newop.gtau = 0.0;
-        } else if let AnalysisInfo::TRAN(_, state) = an {
-            //FIXME: always true, or we should generate an error
+        } else {
             if self.model.capmod == 0 {
                 if Vbseff < 0.0 {
                     VbseffCV = Vbs; /*4.6.2*/
@@ -2960,9 +2959,8 @@ impl Bsim4 {
                         } /* end of linear region */
                     } /* end of 50/50 partition */
                 } /* end of inversion */
-            }
-            /* end of capmod=0 */
-            else {
+            } else {
+                // capmod != 0
                 if Vbseff < 0.0 {
                     VbseffCV = Vbseff;
                     dVbseffCV_dVb = 1.0;
@@ -3478,7 +3476,7 @@ impl Bsim4 {
 
             /* NQS begins */
             if (self.model.trnqsmod != 0) || (self.model.acnqsmod != 0) {
-                qcheq = -(qbulk + qgate);
+                qcheq = -(qbulk + newop.qgate);
                 newop.qchqs = qcheq;
                 newop.cqgb = -(newop.cggb + newop.cbgb);
                 newop.cqdb = -(newop.cgdb + newop.cbdb);
@@ -3487,24 +3485,19 @@ impl Bsim4 {
 
                 CoxWL = self.model_derived.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
                 T1 = newop.gcrg / CoxWL; /* 1 / tau */
-                newop.gtau = T1 * ScalingFactor;
+                newop.gtau = T1 * nqs_scaling_factor;
 
                 if self.model.acnqsmod != 0 {
                     newop.taunet = 1.0 / T1;
                 }
 
                 newop.qcheq = qcheq;
-
-                if self.model.trnqsmod != 0 {
-                    let (_g, i, _r) = state.integrate(newop.qcheq - self.op.qcheq, 0.0, 0.0, self.op.cqcheq);
-                    newop.cqcheq = i;
-                }
             }
         }
 
         // Charge computations
-        if let AnalysisInfo::TRAN(_, state) = an {
-            // FIXME: offline
+        if ChargeComputationNeeded {
+            // FIXME: move these offline
             let czbd = self.model_derived.DunitAreaTempJctCap * self.intp.Adeff;
             let czbs = self.model_derived.SunitAreaTempJctCap * self.intp.Aseff;
             let czbdsw = self.model_derived.DunitLengthSidewallTempJctCap * self.intp.Pdeff;
@@ -3633,1192 +3626,131 @@ impl Bsim4 {
         newop.vdes = vdes;
         newop.qdef = qdef;
 
-        // Initially zero all capacitances and their impedances
-        // Many complicated paths through the code below do not assure they are otherwise initialized.
-        let mut ceqqg = 0.0;
-        let mut ceqqb = 0.0;
-        let mut ceqqd = 0.0;
-        let mut ceqqjd = 0.0;
-        let mut ceqqjs = 0.0;
-        let mut cqcheq = 0.0;
-        let mut cqdef = 0.0;
-
-        let mut gcdgb = 0.0;
-        let mut gcddb = 0.0;
-        let mut gcdsb = 0.0;
-        let mut gcdbb = 0.0;
-        let mut gcsgb = 0.0;
-        let mut gcsdb = 0.0;
-        let mut gcssb = 0.0;
-        let mut gcsbb = 0.0;
-        let mut gcggb = 0.0;
-        let mut gcgdb = 0.0;
-        let mut gcgsb = 0.0;
-        let mut gcgbb = 0.0;
-        let mut gcbdb = 0.0;
-        let mut gcbgb = 0.0;
-        let mut gcbsb = 0.0;
-        let mut gcbbb = 0.0;
-
-        let mut gcgmgmb = 0.0;
-        let mut gcgmdb = 0.0;
-        let mut gcgmsb = 0.0;
-        let mut gcgmbb = 0.0;
-        let mut gcdgmb = 0.0;
-        let mut gcsgmb = 0.0;
-        let mut gcbgmb = 0.0;
-        let mut ceqqgmid = 0.0;
-        let mut gcdbdb = 0.0;
-        let mut gcsbsb = 0.0;
-
-        let mut gqdef = 0.0;
-        let mut gcqgb = 0.0;
-        let mut gcqdb = 0.0;
-        let mut gcqsb = 0.0;
-        let mut gcqbb = 0.0;
-        let mut ggtg = 0.0;
-        let mut ggtd = 0.0;
-        let mut ggtb = 0.0;
-        let mut ggts = 0.0;
-        let mut dxpart = if newop.mode > 0 { 0.4 } else { 0.6 };
-        let mut sxpart = 1.0 - dxpart;
-        let mut ddxpart_dVd = 0.0;
-        let mut ddxpart_dVg = 0.0;
-        let mut ddxpart_dVb = 0.0;
-        let mut ddxpart_dVs = 0.0;
-        let mut dsxpart_dVd = 0.0;
-        let mut dsxpart_dVg = 0.0;
-        let mut dsxpart_dVb = 0.0;
-        let mut dsxpart_dVs = 0.0;
-
         if self.model.trnqsmod != 0 {
             CoxWL = self.model_derived.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
             T1 = newop.gcrg / CoxWL;
-            newop.gtau = T1 * ScalingFactor;
+            newop.gtau = T1 * nqs_scaling_factor;
         } else {
             newop.gtau = 0.0;
         }
 
         // Charge computations
-        if let AnalysisInfo::TRAN(_, state) = an {
-            let (vgdx, vgsx) = if self.model.rgatemod == 3 { (vgmd, vgms) } else { (vgd, vgs) };
-            if self.model.capmod == 0 {
-                cgdo = self.size_params.cgdo;
-                qgdo = self.size_params.cgdo * vgdx;
-                cgso = self.size_params.cgso;
-                qgso = self.size_params.cgso * vgsx;
-            } else {
-                T0 = vgdx + DELTA_1;
-                T1 = sqrt(T0 * T0 + 4.0 * DELTA_1);
-                T2 = 0.5 * (T0 - T1);
+        let (vgdx, vgsx) = if self.model.rgatemod == 3 { (vgmd, vgms) } else { (vgd, vgs) };
+        if self.model.capmod == 0 {
+            cgdo = self.size_params.cgdo;
+            qgdo = self.size_params.cgdo * vgdx;
+            cgso = self.size_params.cgso;
+            qgso = self.size_params.cgso * vgsx;
+        } else {
+            T0 = vgdx + DELTA_1;
+            T1 = sqrt(T0 * T0 + 4.0 * DELTA_1);
+            T2 = 0.5 * (T0 - T1);
 
-                T3 = self.size_params.weffCV * self.size_params.cgdl;
-                T4 = sqrt(1.0 - 4.0 * T2 / self.size_params.ckappad);
-                cgdo = self.size_params.cgdo + T3 - T3 * (1.0 - 1.0 / T4) * (0.5 - 0.5 * T0 / T1);
-                qgdo = (self.size_params.cgdo + T3) * vgdx - T3 * (T2 + 0.5 * self.size_params.ckappad * (T4 - 1.0));
+            T3 = self.size_params.weffCV * self.size_params.cgdl;
+            T4 = sqrt(1.0 - 4.0 * T2 / self.size_params.ckappad);
+            cgdo = self.size_params.cgdo + T3 - T3 * (1.0 - 1.0 / T4) * (0.5 - 0.5 * T0 / T1);
+            qgdo = (self.size_params.cgdo + T3) * vgdx - T3 * (T2 + 0.5 * self.size_params.ckappad * (T4 - 1.0));
 
-                T0 = vgsx + DELTA_1;
-                T1 = sqrt(T0 * T0 + 4.0 * DELTA_1);
-                T2 = 0.5 * (T0 - T1);
-                T3 = self.size_params.weffCV * self.size_params.cgsl;
-                T4 = sqrt(1.0 - 4.0 * T2 / self.size_params.ckappas);
-                cgso = self.size_params.cgso + T3 - T3 * (1.0 - 1.0 / T4) * (0.5 - 0.5 * T0 / T1);
-                qgso = (self.size_params.cgso + T3) * vgsx - T3 * (T2 + 0.5 * self.size_params.ckappas * (T4 - 1.0));
-            }
-
-            if self.intp.nf != 1.0 {
-                cgdo *= self.intp.nf;
-                cgso *= self.intp.nf;
-                qgdo *= self.intp.nf;
-                qgso *= self.intp.nf;
-            }
-            newop.cgdo = cgdo;
-            newop.qgdo = qgdo;
-            newop.cgso = cgso;
-            newop.qgso = qgso;
-
-            // TODO: the BSIM4 reference implementation essentially bakes numerical integration in here,
-            // ignoring the circuit/ analysis integration method.
-            // All of these impedances are calculated as g = C/dt, e.g. using Backward Euler.
-            // Should figure out whether this is the implementation intent, or just for reference.
-            let ag0 = 1.0 / state.dt;
-            if newop.mode > 0 {
-                if self.model.trnqsmod == 0 {
-                    qdrn -= qgdo;
-                    if self.model.rgatemod == 3 {
-                        gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgmdb = -cgdo * ag0;
-                        gcgmsb = -cgso * ag0;
-                        gcgmbb = -self.size_params.cgbo * ag0;
-
-                        gcdgmb = gcgmdb;
-                        gcsgmb = gcgmsb;
-                        gcbgmb = gcgmbb;
-
-                        gcggb = newop.cggb * ag0;
-                        gcgdb = newop.cgdb * ag0;
-                        gcgsb = newop.cgsb * ag0;
-                        gcgbb = -(gcggb + gcgdb + gcgsb);
-
-                        gcdgb = newop.cdgb * ag0;
-                        gcsgb = -(newop.cggb + newop.cbgb + newop.cdgb) * ag0;
-                        gcbgb = newop.cbgb * ag0;
-
-                        let qgmb = self.size_params.cgbo * vgmb;
-                        qgmid = qgdo + qgso + qgmb;
-                        qbulk -= qgmb;
-                        qsrc = -(qgate + qgmid + qbulk + qdrn);
-                    } else {
-                        gcggb = (newop.cggb + cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgdb = (newop.cgdb - cgdo) * ag0;
-                        gcgsb = (newop.cgsb - cgso) * ag0;
-                        gcgbb = -(gcggb + gcgdb + gcgsb);
-
-                        gcdgb = (newop.cdgb - cgdo) * ag0;
-                        gcsgb = -(newop.cggb + newop.cbgb + newop.cdgb + cgso) * ag0;
-                        gcbgb = (newop.cbgb - self.size_params.cgbo) * ag0;
-
-                        gcdgmb = 0.0;
-                        gcsgmb = 0.0;
-                        gcbgmb = 0.0;
-
-                        let qgb = self.size_params.cgbo * vgb;
-                        qgate += qgdo + qgso + qgb;
-                        qbulk -= qgb;
-                        qsrc = -(qgate + qbulk + qdrn);
-                    }
-                    gcddb = (newop.cddb + newop.capbd + cgdo) * ag0;
-                    gcdsb = newop.cdsb * ag0;
-
-                    gcsdb = -(newop.cgdb + newop.cbdb + newop.cddb) * ag0;
-                    gcssb = (newop.capbs + cgso - (newop.cgsb + newop.cbsb + newop.cdsb)) * ag0;
-
-                    if self.model.rbodymod == 0 {
-                        gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
-                        gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
-                        gcbdb = (newop.cbdb - newop.capbd) * ag0;
-                        gcbsb = (newop.cbsb - newop.capbs) * ag0;
-                        gcdbdb = 0.0;
-                        gcsbsb = 0.0;
-                    } else {
-                        gcdbb = -(newop.cddb + newop.cdgb + newop.cdsb) * ag0;
-                        gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb) + newop.capbs * ag0;
-                        gcbdb = newop.cbdb * ag0;
-                        gcbsb = newop.cbsb * ag0;
-
-                        gcdbdb = -newop.capbd * ag0;
-                        gcsbsb = -newop.capbs * ag0;
-                    }
-                    gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
-
-                    ggtg = 0.0;
-                    ggtd = 0.0;
-                    ggtb = 0.0;
-                    ggts = 0.0;
-                    sxpart = 0.6;
-                    dxpart = 0.4;
-                    ddxpart_dVd = 0.0;
-                    ddxpart_dVg = 0.0;
-                    ddxpart_dVb = 0.0;
-                    ddxpart_dVs = 0.0;
-                    dsxpart_dVd = 0.0;
-                    dsxpart_dVg = 0.0;
-                    dsxpart_dVb = 0.0;
-                    dsxpart_dVs = 0.0;
-                } else {
-                    qcheq = newop.qchqs;
-                    CoxWL = self.model_derived.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
-                    T0 = qdef * ScalingFactor / CoxWL;
-
-                    ggtg = T0 * newop.gcrgg;
-                    newop.gtg = ggtg;
-                    ggtd = T0 * newop.gcrgd;
-                    newop.gtd = ggtd;
-                    ggts = T0 * newop.gcrgs;
-                    newop.gts = ggts;
-                    ggtb = T0 * newop.gcrgb;
-                    newop.gtb = ggtb;
-                    gqdef = ScalingFactor * ag0;
-
-                    gcqgb = newop.cqgb * ag0;
-                    gcqdb = newop.cqdb * ag0;
-                    gcqsb = newop.cqsb * ag0;
-                    gcqbb = newop.cqbb * ag0;
-
-                    if qcheq.abs() <= 1.0e-5 * CoxWL {
-                        if self.model.xpart < 0.5 {
-                            dxpart = 0.4;
-                        } else if self.model.xpart > 0.5 {
-                            dxpart = 0.0;
-                        } else {
-                            dxpart = 0.5;
-                        }
-                        ddxpart_dVd = 0.0;
-                        ddxpart_dVg = 0.0;
-                        ddxpart_dVb = 0.0;
-                        ddxpart_dVs = 0.0;
-                    } else {
-                        dxpart = qdrn / qcheq;
-                        Cdd = newop.cddb;
-                        Csd = -(newop.cgdb + newop.cddb + newop.cbdb);
-                        ddxpart_dVd = (Cdd - dxpart * (Cdd + Csd)) / qcheq;
-                        Cdg = newop.cdgb;
-                        Csg = -(newop.cggb + newop.cdgb + newop.cbgb);
-                        ddxpart_dVg = (Cdg - dxpart * (Cdg + Csg)) / qcheq;
-
-                        Cds = newop.cdsb;
-                        Css = -(newop.cgsb + newop.cdsb + newop.cbsb);
-                        ddxpart_dVs = (Cds - dxpart * (Cds + Css)) / qcheq;
-
-                        ddxpart_dVb = -(ddxpart_dVd + ddxpart_dVg + ddxpart_dVs);
-                    }
-                    sxpart = 1.0 - dxpart;
-                    dsxpart_dVd = -ddxpart_dVd;
-                    dsxpart_dVg = -ddxpart_dVg;
-                    dsxpart_dVs = -ddxpart_dVs;
-                    dsxpart_dVb = -(dsxpart_dVd + dsxpart_dVg + dsxpart_dVs);
-
-                    if self.model.rgatemod == 3 {
-                        gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgmdb = -cgdo * ag0;
-                        gcgmsb = -cgso * ag0;
-                        gcgmbb = -self.size_params.cgbo * ag0;
-
-                        gcdgmb = gcgmdb;
-                        gcsgmb = gcgmsb;
-                        gcbgmb = gcgmbb;
-
-                        gcdgb = 0.0;
-                        gcsgb = 0.0;
-                        gcbgb = 0.0;
-                        gcggb = 0.0;
-                        gcgdb = 0.0;
-                        gcgsb = 0.0;
-                        gcgbb = 0.0;
-
-                        let qgmb = self.size_params.cgbo * vgmb;
-                        qgmid = qgdo + qgso + qgmb;
-                        qgate = 0.0;
-                        qbulk = -qgmb;
-                        qdrn = -qgdo;
-                        qsrc = -(qgmid + qbulk + qdrn);
-                    } else {
-                        gcggb = (cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgdb = -cgdo * ag0;
-                        gcgsb = -cgso * ag0;
-                        gcgbb = -self.size_params.cgbo * ag0;
-
-                        gcdgb = gcgdb;
-                        gcsgb = gcgsb;
-                        gcbgb = gcgbb;
-                        gcdgmb = 0.0;
-                        gcsgmb = 0.0;
-                        gcbgmb = 0.0;
-
-                        let qgb = self.size_params.cgbo * vgb;
-                        qgate = qgdo + qgso + qgb;
-                        qbulk = -qgb;
-                        qdrn = -qgdo;
-                        qsrc = -(qgate + qbulk + qdrn);
-                    }
-
-                    gcddb = (newop.capbd + cgdo) * ag0;
-                    gcdsb = 0.0;
-                    gcsdb = 0.0;
-                    gcssb = (newop.capbs + cgso) * ag0;
-
-                    if self.model.rbodymod == 0 {
-                        gcdbb = -(gcdgb + gcddb + gcdgmb);
-                        gcsbb = -(gcsgb + gcssb + gcsgmb);
-                        gcbdb = -newop.capbd * ag0;
-                        gcbsb = -newop.capbs * ag0;
-                        gcdbdb = 0.0;
-                        gcsbsb = 0.0;
-                    } else {
-                        gcdbb = 0.0;
-                        gcsbb = 0.0;
-                        gcbdb = 0.0;
-                        gcbsb = 0.0;
-                        gcdbdb = -newop.capbd * ag0;
-                        gcsbsb = -newop.capbs * ag0;
-                    }
-                    gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
-                }
-            } else {
-                if self.model.trnqsmod == 0 {
-                    qsrc = qdrn - qgso;
-                    if self.model.rgatemod == 3 {
-                        gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgmdb = -cgdo * ag0;
-                        gcgmsb = -cgso * ag0;
-                        gcgmbb = -self.size_params.cgbo * ag0;
-
-                        gcdgmb = gcgmdb;
-                        gcsgmb = gcgmsb;
-                        gcbgmb = gcgmbb;
-
-                        gcggb = newop.cggb * ag0;
-                        gcgdb = newop.cgsb * ag0;
-                        gcgsb = newop.cgdb * ag0;
-                        gcgbb = -(gcggb + gcgdb + gcgsb);
-
-                        gcdgb = -(newop.cggb + newop.cbgb + newop.cdgb) * ag0;
-                        gcsgb = newop.cdgb * ag0;
-                        gcbgb = newop.cbgb * ag0;
-
-                        let qgmb = self.size_params.cgbo * vgmb;
-                        qgmid = qgdo + qgso + qgmb;
-                        qbulk -= qgmb;
-                        qdrn = -(qgate + qgmid + qbulk + qsrc);
-                    } else {
-                        gcggb = (newop.cggb + cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgdb = (newop.cgsb - cgdo) * ag0;
-                        gcgsb = (newop.cgdb - cgso) * ag0;
-                        gcgbb = -(gcggb + gcgdb + gcgsb);
-
-                        gcdgb = -(newop.cggb + newop.cbgb + newop.cdgb + cgdo) * ag0;
-                        gcsgb = (newop.cdgb - cgso) * ag0;
-                        gcbgb = (newop.cbgb - self.size_params.cgbo) * ag0;
-
-                        gcdgmb = 0.0;
-                        gcsgmb = 0.0;
-                        gcbgmb = 0.0;
-
-                        let qgb = self.size_params.cgbo * vgb;
-                        qgate += qgdo + qgso + qgb;
-                        qbulk -= qgb;
-                        qdrn = -(qgate + qbulk + qsrc);
-                    }
-                    gcddb = (newop.capbd + cgdo - (newop.cgsb + newop.cbsb + newop.cdsb)) * ag0;
-                    gcdsb = -(newop.cgdb + newop.cbdb + newop.cddb) * ag0;
-
-                    gcsdb = newop.cdsb * ag0;
-                    gcssb = (newop.cddb + newop.capbs + cgso) * ag0;
-
-                    if self.model.rbodymod == 0 {
-                        gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb);
-                        gcsbb = -(gcsgb + gcsdb + gcssb + gcsgmb);
-                        gcbdb = (newop.cbsb - newop.capbd) * ag0;
-                        gcbsb = (newop.cbdb - newop.capbs) * ag0;
-                        gcdbdb = 0.0;
-                        gcsbsb = 0.0;
-                    } else {
-                        gcdbb = -(gcdgb + gcddb + gcdsb + gcdgmb) + newop.capbd * ag0;
-                        gcsbb = -(newop.cddb + newop.cdgb + newop.cdsb) * ag0;
-                        gcbdb = newop.cbsb * ag0;
-                        gcbsb = newop.cbdb * ag0;
-                        gcdbdb = -newop.capbd * ag0;
-                        gcsbsb = -newop.capbs * ag0;
-                    }
-                    gcbbb = -(gcbgb + gcbdb + gcbsb + gcbgmb);
-
-                    ggtg = 0.0;
-                    ggtd = 0.0;
-                    ggtb = 0.0;
-                    ggts = 0.0;
-                    sxpart = 0.4;
-                    dxpart = 0.6;
-                    ddxpart_dVd = 0.0;
-                    ddxpart_dVg = 0.0;
-                    ddxpart_dVb = 0.0;
-                    ddxpart_dVs = 0.0;
-                    dsxpart_dVd = 0.0;
-                    dsxpart_dVg = 0.0;
-                    dsxpart_dVb = 0.0;
-                    dsxpart_dVs = 0.0;
-                } else {
-                    qcheq = newop.qchqs;
-                    CoxWL = self.model_derived.coxe * self.size_params.weffCV * self.intp.nf * self.size_params.leffCV;
-                    T0 = qdef * ScalingFactor / CoxWL;
-                    ggtg = T0 * newop.gcrgg;
-                    newop.gtg = ggtg;
-                    ggts = T0 * newop.gcrgd;
-                    newop.gts = ggts;
-                    ggtd = T0 * newop.gcrgs;
-                    newop.gtd = ggtd;
-                    ggtb = T0 * newop.gcrgb;
-                    newop.gtb = ggtb;
-                    gqdef = ScalingFactor * ag0;
-
-                    gcqgb = newop.cqgb * ag0;
-                    gcqdb = newop.cqsb * ag0;
-                    gcqsb = newop.cqdb * ag0;
-                    gcqbb = newop.cqbb * ag0;
-
-                    if qcheq.abs() <= 1.0e-5 * CoxWL {
-                        if self.model.xpart < 0.5 {
-                            sxpart = 0.4;
-                        } else if self.model.xpart > 0.5 {
-                            sxpart = 0.0;
-                        } else {
-                            sxpart = 0.5;
-                        }
-                        dsxpart_dVd = 0.0;
-                        dsxpart_dVg = 0.0;
-                        dsxpart_dVb = 0.0;
-                        dsxpart_dVs = 0.0;
-                    } else {
-                        sxpart = qdrn / qcheq;
-                        Css = newop.cddb;
-                        Cds = -(newop.cgdb + newop.cddb + newop.cbdb);
-                        dsxpart_dVs = (Css - sxpart * (Css + Cds)) / qcheq;
-                        Csg = newop.cdgb;
-                        Cdg = -(newop.cggb + newop.cdgb + newop.cbgb);
-                        dsxpart_dVg = (Csg - sxpart * (Csg + Cdg)) / qcheq;
-
-                        Csd = newop.cdsb;
-                        Cdd = -(newop.cgsb + newop.cdsb + newop.cbs);
-                        dsxpart_dVd = (Csd - sxpart * (Csd + Cdd)) / qcheq;
-
-                        dsxpart_dVb = -(dsxpart_dVd + dsxpart_dVg + dsxpart_dVs);
-                    }
-                    dxpart = 1.0 - sxpart;
-                    ddxpart_dVd = -dsxpart_dVd;
-                    ddxpart_dVg = -dsxpart_dVg;
-                    ddxpart_dVs = -dsxpart_dVs;
-                    ddxpart_dVb = -(ddxpart_dVd + ddxpart_dVg + ddxpart_dVs);
-
-                    if self.model.rgatemod == 3 {
-                        gcgmgmb = (cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgmdb = -cgdo * ag0;
-                        gcgmsb = -cgso * ag0;
-                        gcgmbb = -self.size_params.cgbo * ag0;
-
-                        gcdgmb = gcgmdb;
-                        gcsgmb = gcgmsb;
-                        gcbgmb = gcgmbb;
-
-                        gcdgb = 0.0;
-                        gcsgb = 0.0;
-                        gcbgb = 0.0;
-                        gcggb = 0.0;
-                        gcgdb = 0.0;
-                        gcgsb = 0.0;
-                        gcgbb = 0.0;
-
-                        let qgmb = self.size_params.cgbo * vgmb;
-                        qgmid = qgdo + qgso + qgmb;
-                        qgate = 0.0;
-                        qbulk = -qgmb;
-                        qdrn = -qgdo;
-                        qsrc = -qgso;
-                    } else {
-                        gcggb = (cgdo + cgso + self.size_params.cgbo) * ag0;
-                        gcgdb = -cgdo * ag0;
-                        gcgsb = -cgso * ag0;
-                        gcgbb = -self.size_params.cgbo * ag0;
-
-                        gcdgb = gcgdb;
-                        gcsgb = gcgsb;
-                        gcbgb = gcgbb;
-                        gcdgmb = 0.0;
-                        gcsgmb = 0.0;
-                        gcbgmb = 0.0;
-
-                        let qgb = self.size_params.cgbo * vgb;
-                        qgate = qgdo + qgso + qgb;
-                        qbulk = -qgb;
-                        qdrn = -qgdo;
-                        qsrc = -qgso;
-                    }
-
-                    gcddb = (newop.capbd + cgdo) * ag0;
-                    gcdsb = 0.0;
-                    gcsdb = 0.0;
-                    gcssb = (newop.capbs + cgso) * ag0;
-                    if self.model.rbodymod == 0 {
-                        gcdbb = -(gcdgb + gcddb + gcdgmb);
-                        gcsbb = -(gcsgb + gcssb + gcsgmb);
-                        gcbdb = -newop.capbd * ag0;
-                        gcbsb = -newop.capbs * ag0;
-                        gcdbdb = 0.0;
-                        gcsbsb = 0.0;
-                    } else {
-                        gcdbb = 0.0;
-                        gcsbb = 0.0;
-                        gcbdb = 0.0;
-                        gcbsb = 0.0;
-                        gcdbdb = -newop.capbd * ag0;
-                        gcsbsb = -newop.capbs * ag0;
-                    }
-                    gcbbb = -(gcbdb + gcbgb + gcbsb + gcbgmb);
-                }
-            }
-            if self.model.trnqsmod != 0 {
-                newop.qcdump = qdef * ScalingFactor;
-                let (_g, i, _r) = state.integrate(newop.qcdump - self.op.qcdump, 0.0, 0.0, self.op.cqcdump);
-                newop.cqcdump = i;
-            }
-
-            newop.qg = qgate;
-            newop.qd = qdrn - newop.qbd;
-            newop.qs = qsrc - newop.qbs;
-            if self.model.rgatemod == 3 {
-                newop.qgmid = qgmid;
-            }
-
-            if self.model.rbodymod != 0 {
-                newop.qb = qbulk + newop.qbd + newop.qbs;
-            } else {
-                newop.qb = qbulk;
-            }
-
-            let (_g, i, _r) = state.integrate(newop.qb - self.op.qb, 0.0, 0.0, self.op.cqb);
-            newop.cqb = i;
-            let (_g, i, _r) = state.integrate(newop.qg - self.op.qg, 0.0, 0.0, self.op.cqg);
-            newop.cqg = i;
-            let (_g, i, _r) = state.integrate(newop.qd - self.op.qd, 0.0, 0.0, self.op.cqd);
-            newop.cqd = i;
-
-            if self.model.rgatemod == 3 {
-                let (_g, i, _r) = state.integrate(newop.qgmid - self.op.qgmid, 0.0, 0.0, self.op.cqgmid);
-                newop.cqgmid = i;
-            }
-
-            if self.model.rbodymod != 0 {
-                let (_g, i, _r) = state.integrate(newop.qbs - self.op.qbs, 0.0, 0.0, self.op.cqbs);
-                newop.cqbs = i;
-                let (_g, i, _r) = state.integrate(newop.qbd - self.op.qbd, 0.0, 0.0, self.op.cqbd);
-                newop.cqbd = i;
-            }
-
-            /* Calculate equivalent charge current */
-
-            let cqgate = newop.cqg;
-            let cqbody = newop.cqb;
-            let cqdrn = newop.cqd;
-
-            ceqqg = cqgate - gcggb * vgb + gcgdb * vbd + gcgsb * vbs;
-            ceqqd = cqdrn - gcdgb * vgb - gcdgmb * vgmb + (gcddb + gcdbdb) * vbd - gcdbdb * vbd_jct + gcdsb * vbs;
-            ceqqb = cqbody - gcbgb * vgb - gcbgmb * vgmb + gcbdb * vbd + gcbsb * vbs;
-
-            if self.model.rgatemod == 3 {
-                ceqqgmid = newop.cqgmid + gcgmdb * vbd + gcgmsb * vbs - gcgmgmb * vgmb;
-            } else {
-                ceqqgmid = 0.0;
-            }
-
-            if self.model.rbodymod != 0 {
-                ceqqjs = newop.cqbs + gcsbsb * vbs_jct;
-                ceqqjd = newop.cqbd + gcdbdb * vbd_jct;
-            }
-
-            if self.model.trnqsmod != 0 {
-                T0 = ggtg * vgb - ggtd * vbd - ggts * vbs;
-                ceqqg += T0;
-                T1 = qdef * newop.gtau;
-                ceqqd -= dxpart * T0 + T1 * (ddxpart_dVg * vgb - ddxpart_dVd * vbd - ddxpart_dVs * vbs);
-                cqdef = newop.cqcdump - gqdef * qdef;
-                cqcheq = newop.cqcheq - (gcqgb * vgb - gcqdb * vbd - gcqsb * vbs) + T0;
-            }
+            T0 = vgsx + DELTA_1;
+            T1 = sqrt(T0 * T0 + 4.0 * DELTA_1);
+            T2 = 0.5 * (T0 - T1);
+            T3 = self.size_params.weffCV * self.size_params.cgsl;
+            T4 = sqrt(1.0 - 4.0 * T2 / self.size_params.ckappas);
+            cgso = self.size_params.cgso + T3 - T3 * (1.0 - 1.0 / T4) * (0.5 - 0.5 * T0 / T1);
+            qgso = (self.size_params.cgso + T3) * vgsx - T3 * (T2 + 0.5 * self.size_params.ckappas * (T4 - 1.0));
         }
 
-        newop.gqdef = gqdef;
-        newop.ggtg = ggtg;
-        newop.ggtd = ggtd;
-        newop.ggts = ggts;
-        newop.ggtb = ggtb;
-        newop.gcsbsb = gcsbsb;
-        newop.gcsbsb = gcsbsb;
-        newop.gcqsb = gcqsb;
-        newop.gcqdb = gcqdb;
-        newop.gcqgb = gcqgb;
-        newop.cqcheq = cqcheq;
-        newop.cqdef = cqdef;
-        newop.gcqbb = gcqbb;
-        newop.ceqqg = ceqqg;
-        newop.ceqqd = ceqqd;
-        newop.ceqqb = ceqqb;
-        newop.ceqqjs = ceqqjs;
-        newop.ceqqjd = ceqqjd;
-        newop.ceqqgmid = ceqqgmid;
-        newop.gcgbb = gcgbb;
-        newop.gcsbb = gcsbb;
-        newop.gcssb = gcssb;
-        newop.gcsgb = gcsgb;
-        newop.gcsdb = gcsdb;
-        newop.gcdbb = gcdbb;
-        newop.gcggb = gcggb;
-        newop.gcgdb = gcgdb;
-        newop.gcgsb = gcgsb;
-        newop.gcgsb = gcgsb;
-        newop.gcgmgmb = gcgmgmb;
-        newop.gcgmsb = gcgmsb;
-        newop.gcgmdb = gcgmdb;
-        newop.gcgmbb = gcgmbb;
-        newop.gcdgmb = gcdgmb;
-        newop.gcsgmb = gcsgmb;
-        newop.ddxpart_dVd = ddxpart_dVd;
-        newop.ddxpart_dVs = ddxpart_dVs;
-        newop.ddxpart_dVb = ddxpart_dVb;
-        newop.dsxpart_dVb = dsxpart_dVb;
-        newop.dsxpart_dVs = dsxpart_dVs;
-        newop.dsxpart_dVg = dsxpart_dVg;
-        newop.dsxpart_dVd = dsxpart_dVd;
-        newop.ddxpart_dVg = ddxpart_dVg;
-        newop.gcgmdb = gcgmdb;
-        newop.gcbgmb = gcbgmb;
-        newop.gcddb = gcddb;
-        newop.gcdgb = gcdgb;
-        newop.gcdsb = gcdsb;
-        newop.gcbdb = gcbdb;
-        newop.gcbgb = gcbgb;
-        newop.gcbsb = gcbsb;
-        newop.gcbbb = gcbbb;
+        if self.intp.nf != 1.0 {
+            cgdo *= self.intp.nf;
+            cgso *= self.intp.nf;
+            qgdo *= self.intp.nf;
+            qgso *= self.intp.nf;
+        }
+        newop.cgdo = cgdo;
+        newop.qgdo = qgdo;
+        newop.cgso = cgso;
+        newop.qgso = qgso;
         newop.vgd = vgd;
-        newop.dxpart = dxpart;
-        newop.sxpart = sxpart;
-        // Debatable whether to store these two or re-calculate them
+        newop.vgb = vgb;
+        newop.vgmb = vgmb;
         newop.vbs_jct = vbs_jct;
         newop.vbd_jct = vbd_jct;
 
+        // Charge Edits
+        if newop.mode > 0 {
+            if self.model.trnqsmod == 0 {
+                qdrn -= qgdo;
+                if self.model.rgatemod == 3 { 
+                    let qgmb = self.size_params.cgbo * vgmb;
+                    qgmid = qgdo + qgso + qgmb;
+                    qbulk -= qgmb;
+                    qsrc = -(qgate + qgmid + qbulk + qdrn);
+                } 
+            } else {
+                if self.model.rgatemod == 3 {
+                    let qgmb = self.size_params.cgbo * vgmb;
+                    qgmid = qgdo + qgso + qgmb;
+                    qgate = 0.0;
+                    qbulk = -qgmb;
+                    qdrn = -qgdo;
+                    qsrc = -(qgmid + qbulk + qdrn);
+                } else { 
+                    let qgb = self.size_params.cgbo * vgb;
+                    qgate = qgdo + qgso + qgb;
+                    qbulk = -qgb;
+                    qdrn = -qgdo;
+                    qsrc = -(qgate + qbulk + qdrn);
+                }
+            }
+        } else {
+            if self.model.trnqsmod == 0 {
+                qsrc = qdrn - qgso;
+                if self.model.rgatemod == 3 {
+                    let qgmb = self.size_params.cgbo * vgmb;
+                    qgmid = qgdo + qgso + qgmb;
+                    qbulk -= qgmb;
+                    qdrn = -(qgate + qgmid + qbulk + qsrc);
+                } else {
+                    let qgb = self.size_params.cgbo * vgb;
+                    qgate += qgdo + qgso + qgb;
+                    qbulk -= qgb;
+                    qdrn = -(qgate + qbulk + qsrc);
+                } 
+            } else { 
+                if self.model.rgatemod == 3 { 
+                    let qgmb = self.size_params.cgbo * vgmb;
+                    qgmid = qgdo + qgso + qgmb;
+                    qgate = 0.0;
+                    qbulk = -qgmb;
+                    qdrn = -qgdo;
+                    qsrc = -qgso;
+                } else { 
+                    let qgb = self.size_params.cgbo * vgb;
+                    qgate = qgdo + qgso + qgb;
+                    qbulk = -qgb;
+                    qdrn = -qgdo;
+                    qsrc = -qgso;
+                }
+            }
+        }
+        newop.qg = qgate;
+        newop.qd = qdrn - newop.qbd;
+        newop.qs = qsrc - newop.qbs;
+        if self.model.rgatemod == 3 {
+            newop.qgmid = qgmid;
+        }
+        newop.qb = if self.model.rbodymod != 0 {
+            qbulk + newop.qbd + newop.qbs
+        } else {
+            qbulk
+        };
+
+        // That completes the DC, capacitance, and charge calculations.
+        // Add transient impedances if needed. 
+        if let AnalysisInfo::TRAN(_, tran_state) = an {
+            self.tran_op(&mut newop, tran_state);
+        }
         return newop;
-    }
-    /// Convert out current-guess operating-point into matrix stamps
-    fn stamp(&self) -> Stamps<f64> {
-        let newop = &self.guess;
-
-        // Load current vector
-        let mut ceqdrn: f64;
-        let mut ceqbd: f64;
-        let mut ceqbs: f64;
-        let mut Gm: f64;
-        let mut Gmbs: f64;
-        let mut FwdSum: f64;
-        let mut RevSum: f64;
-        let mut gbspsp: f64;
-        let mut gbbdp: f64;
-        let mut gbbsp: f64;
-        let mut gbspg: f64;
-        let mut gbspb: f64;
-        let mut gbspdp: f64;
-        let mut gbdpdp: f64;
-        let mut gbdpg: f64;
-        let mut gbdpb: f64;
-        let mut gbdpsp: f64;
-
-        let mut Istoteq: f64;
-        let mut gIstotg: f64;
-        let mut gIstotd: f64;
-        let mut gIstots: f64;
-        let mut gIstotb: f64;
-        let mut Idtoteq: f64;
-        let mut gIdtotg: f64;
-        let mut gIdtotd: f64;
-        let mut gIdtots: f64;
-        let mut gIdtotb: f64;
-        let mut Ibtoteq: f64;
-        let mut gIbtotg: f64;
-        let mut gIbtotd: f64;
-        let mut gIbtots: f64;
-        let mut gIbtotb: f64;
-        let mut Igtoteq: f64;
-        let mut gIgtotg: f64;
-        let mut gIgtotd: f64;
-        let mut gIgtots: f64;
-        let mut gIgtotb: f64;
-
-        let mut ceqgcrg = 0.0;
-        let mut gcrg = 0.0;
-        let mut gcrgd = 0.0;
-        let mut gcrgg = 0.0;
-        let mut gcrgs = 0.0;
-        let mut gcrgb = 0.0;
-
-        if newop.mode >= 0 {
-            Gm = newop.gm;
-            Gmbs = newop.gmbs;
-            FwdSum = Gm + Gmbs;
-            RevSum = 0.0;
-
-            ceqdrn = self.model.p() * (newop.cd - newop.gds * newop.vds - Gm * newop.vgs - Gmbs * newop.vbs);
-            ceqbd = self.model.p()
-                * (newop.csub + newop.Igidl
-                    - (newop.gbds + newop.ggidld) * newop.vds
-                    - (newop.gbgs + newop.ggidlg) * newop.vgs
-                    - (newop.gbbs + newop.ggidlb) * newop.vbs);
-            ceqbs = self.model.p() * (newop.Igisl + newop.ggisls * newop.vds - newop.ggislg * newop.vgd - newop.ggislb * newop.vbd);
-
-            gbbdp = -(newop.gbds);
-            gbbsp = newop.gbds + newop.gbgs + newop.gbbs;
-
-            gbdpg = newop.gbgs;
-            gbdpdp = newop.gbds;
-            gbdpb = newop.gbbs;
-            gbdpsp = -(gbdpg + gbdpdp + gbdpb);
-
-            gbspg = 0.0;
-            gbspdp = 0.0;
-            gbspb = 0.0;
-            gbspsp = 0.0;
-
-            if self.model.igcmod != 0 {
-                gIstotg = newop.gIgsg + newop.gIgcsg;
-                gIstotd = newop.gIgcsd;
-                gIstots = newop.gIgss + newop.gIgcss;
-                gIstotb = newop.gIgcsb;
-                Istoteq = self.model.p() * (newop.Igs + newop.Igcs - gIstotg * newop.vgs - newop.gIgcsd * newop.vds - newop.gIgcsb * newop.vbs);
-
-                gIdtotg = newop.gIgdg + newop.gIgcdg;
-                gIdtotd = newop.gIgdd + newop.gIgcdd;
-                gIdtots = newop.gIgcds;
-                gIdtotb = newop.gIgcdb;
-                Idtoteq = self.model.p()
-                    * (newop.Igd + newop.Igcd
-                        - newop.gIgdg * newop.vgd
-                        - newop.gIgcdg * newop.vgs
-                        - newop.gIgcdd * newop.vds
-                        - newop.gIgcdb * newop.vbs);
-            } else {
-                gIstotg = 0.0;
-                gIstotd = 0.0;
-                gIstots = 0.0;
-                gIstotb = 0.0;
-                Istoteq = 0.0;
-                gIdtotg = 0.0;
-                gIdtotd = 0.0;
-                gIdtots = 0.0;
-                gIdtotb = 0.0;
-                Idtoteq = 0.0;
-            }
-
-            if self.model.igbmod != 0 {
-                gIbtotg = newop.gIgbg;
-                gIbtotd = newop.gIgbd;
-                gIbtots = newop.gIgbs;
-                gIbtotb = newop.gIgbb;
-                Ibtoteq = self.model.p() * (newop.Igb - newop.gIgbg * newop.vgs - newop.gIgbd * newop.vds - newop.gIgbb * newop.vbs);
-            } else {
-                gIbtotg = 0.0;
-                gIbtotd = 0.0;
-                gIbtots = 0.0;
-                gIbtotb = 0.0;
-                Ibtoteq = 0.0;
-            }
-
-            if (self.model.igcmod != 0) || (self.model.igbmod != 0) {
-                gIgtotg = gIstotg + gIdtotg + gIbtotg;
-                gIgtotd = gIstotd + gIdtotd + gIbtotd;
-                gIgtots = gIstots + gIdtots + gIbtots;
-                gIgtotb = gIstotb + gIdtotb + gIbtotb;
-                Igtoteq = Istoteq + Idtoteq + Ibtoteq;
-            } else {
-                gIgtotg = 0.0;
-                gIgtotd = 0.0;
-                gIgtots = 0.0;
-                gIgtotb = 0.0;
-                Igtoteq = 0.0;
-            }
-
-            if self.model.rgatemod > 1 {
-                let tmp = if self.model.rgatemod == 2 {
-                    newop.vges - newop.vgs
-                } else {
-                    // rgatemod == 3
-                    newop.vgms - newop.vgs
-                };
-                gcrgd = newop.gcrgd * tmp;
-                gcrgg = newop.gcrgg * tmp;
-                gcrgs = newop.gcrgs * tmp;
-                gcrgb = newop.gcrgb * tmp;
-                ceqgcrg = -(gcrgd * newop.vds + gcrgg * newop.vgs + gcrgb * newop.vbs);
-                gcrgg -= newop.gcrg;
-                gcrg = newop.gcrg;
-            }
-        } else {
-            Gm = -newop.gm;
-            Gmbs = -newop.gmbs;
-            FwdSum = 0.0;
-            RevSum = -(Gm + Gmbs);
-
-            ceqdrn = -self.model.p() * (newop.cd + newop.gds * newop.vds + Gm * newop.vgd + Gmbs * newop.vbd);
-
-            ceqbs = self.model.p()
-                * (newop.csub + newop.Igisl + (newop.gbds + newop.ggisls) * newop.vds
-                    - (newop.gbgs + newop.ggislg) * newop.vgd
-                    - (newop.gbbs + newop.ggislb) * newop.vbd);
-            ceqbd = self.model.p() * (newop.Igidl - newop.ggidld * newop.vds - newop.ggidlg * newop.vgs - newop.ggidlb * newop.vbs);
-
-            gbbsp = -(newop.gbds);
-            gbbdp = newop.gbds + newop.gbgs + newop.gbbs;
-
-            gbdpg = 0.0;
-            gbdpsp = 0.0;
-            gbdpb = 0.0;
-            gbdpdp = 0.0;
-
-            gbspg = newop.gbgs;
-            gbspsp = newop.gbds;
-            gbspb = newop.gbbs;
-            gbspdp = -(gbspg + gbspsp + gbspb);
-
-            if self.model.igcmod != 0 {
-                gIstotg = newop.gIgsg + newop.gIgcdg;
-                gIstotd = newop.gIgcds;
-                gIstots = newop.gIgss + newop.gIgcdd;
-                gIstotb = newop.gIgcdb;
-                Istoteq = self.model.p()
-                    * (newop.Igs + newop.Igcd - newop.gIgsg * newop.vgs - newop.gIgcdg * newop.vgd + newop.gIgcdd * newop.vds
-                        - newop.gIgcdb * newop.vbd);
-
-                gIdtotg = newop.gIgdg + newop.gIgcsg;
-                gIdtotd = newop.gIgdd + newop.gIgcss;
-                gIdtots = newop.gIgcsd;
-                gIdtotb = newop.gIgcsb;
-                Idtoteq = self.model.p()
-                    * (newop.Igd + newop.Igcs - (newop.gIgdg + newop.gIgcsg) * newop.vgd + newop.gIgcsd * newop.vds - newop.gIgcsb * newop.vbd);
-            } else {
-                gIstotg = 0.0;
-                gIstotd = 0.0;
-                gIstots = 0.0;
-                gIstotb = 0.0;
-                Istoteq = 0.0;
-                gIdtotg = 0.0;
-                gIdtotd = 0.0;
-                gIdtots = 0.0;
-                gIdtotb = 0.0;
-                Idtoteq = 0.0;
-            }
-
-            if self.model.igbmod != 0 {
-                gIbtotg = newop.gIgbg;
-                gIbtotd = newop.gIgbs;
-                gIbtots = newop.gIgbd;
-                gIbtotb = newop.gIgbb;
-                Ibtoteq = self.model.p() * (newop.Igb - newop.gIgbg * newop.vgd + newop.gIgbd * newop.vds - newop.gIgbb * newop.vbd);
-            } else {
-                gIbtotg = 0.0;
-                gIbtotd = 0.0;
-                gIbtots = 0.0;
-                gIbtotb = 0.0;
-                Ibtoteq = 0.0;
-            }
-
-            if (self.model.igcmod != 0) || (self.model.igbmod != 0) {
-                gIgtotg = gIstotg + gIdtotg + gIbtotg;
-                gIgtotd = gIstotd + gIdtotd + gIbtotd;
-                gIgtots = gIstots + gIdtots + gIbtots;
-                gIgtotb = gIstotb + gIdtotb + gIbtotb;
-                Igtoteq = Istoteq + Idtoteq + Ibtoteq;
-            } else {
-                gIgtotg = 0.0;
-                gIgtotd = 0.0;
-                gIgtots = 0.0;
-                gIgtotb = 0.0;
-                Igtoteq = 0.0;
-            }
-
-            if self.model.rgatemod > 1 {
-                let tmp = if self.model.rgatemod == 2 {
-                    newop.vges - newop.vgs
-                } else {
-                    // rgatemod == 3
-                    newop.vgms - newop.vgs
-                };
-                gcrgd = newop.gcrgs * tmp;
-                gcrgg = newop.gcrgg * tmp;
-                gcrgs = newop.gcrgd * tmp;
-                gcrgb = newop.gcrgb * tmp;
-                ceqgcrg = -(gcrgg * newop.vgd - gcrgs * newop.vds + gcrgb * newop.vbd);
-                gcrgg -= newop.gcrg;
-                gcrg = newop.gcrg;
-            } else {
-                ceqgcrg = 0.0;
-                gcrg = 0.0;
-                gcrgd = 0.0;
-                gcrgg = 0.0;
-                gcrgs = 0.0;
-                gcrgb = 0.0;
-            }
-        }
-
-        let mut gstot = 0.0;
-        let mut gstotd = 0.0;
-        let mut gstotg = 0.0;
-        let mut gstots = 0.0;
-        let mut gstotb = 0.0;
-        let mut ceqgstot = 0.0;
-        let mut gdtot = 0.0;
-        let mut gdtotd = 0.0;
-        let mut gdtotg = 0.0;
-        let mut gdtots = 0.0;
-        let mut gdtotb = 0.0;
-        let mut ceqgdtot = 0.0;
-
-        if self.model.rdsmod == 1 {
-            ceqgstot = self.model.p() * (newop.gstotd * newop.vds + newop.gstotg * newop.vgs + newop.gstotb * newop.vbs);
-            gstot = newop.gstot;
-            gstotd = newop.gstotd;
-            gstotg = newop.gstotg;
-            gstots = newop.gstots - gstot;
-            gstotb = newop.gstotb;
-
-            ceqgdtot = -self.model.p() * (newop.gdtotd * newop.vds + newop.gdtotg * newop.vgs + newop.gdtotb * newop.vbs);
-            gdtot = newop.gdtot;
-            gdtotd = newop.gdtotd - gdtot;
-            gdtotg = newop.gdtotg;
-            gdtots = newop.gdtots;
-            gdtotb = newop.gdtotb;
-        }
-
-        let (ceqjs, ceqjd) = match self.model.mos_type {
-            MosType::NMOS => (newop.cbs - newop.gbs * newop.vbs_jct, newop.cbd - newop.gbd * newop.vbd_jct),
-            MosType::PMOS => (-(newop.cbs - newop.gbs * newop.vbs_jct), -(newop.cbd - newop.gbd * newop.vbd_jct)),
-        };
-
-        let Bsim4OpPoint {
-            mut ceqqg,
-            mut ceqqd,
-            mut ceqqb,
-            mut cqdef,
-            mut cqcheq,
-            mut ceqqjs,
-            mut ceqqjd,
-            mut ceqqgmid,
-            ..
-        } = newop;
-
-        if self.model.p() > 0.0 {
-            ceqqg = -ceqqg;
-            ceqqd = -ceqqd;
-            ceqqb = -ceqqb;
-            ceqgcrg = -ceqgcrg;
-
-            if self.model.trnqsmod != 0 {
-                cqdef = -cqdef;
-                cqcheq = -cqcheq;
-            }
-
-            if self.model.rbodymod != 0 {
-                ceqqjs = -ceqqjs;
-                ceqqjd = -ceqqjd;
-            }
-
-            if self.model.rgatemod == 3 {
-                ceqqgmid = -ceqqgmid;
-            }
-        }
-
-        // Gather up RHS current-vector terms
-        let mut b: Vec<(Option<VarIndex>, f64)> = vec![];
-
-        b.push((self.ports.dNodePrime, (ceqjd - ceqbd + ceqgdtot - ceqdrn - ceqqd + Idtoteq)));
-        b.push((self.ports.gNodePrime, -(ceqqg - ceqgcrg + Igtoteq)));
-
-        if self.model.rgatemod == 2 {
-            b.push((self.ports.gNodeExt, -ceqgcrg));
-        } else if self.model.rgatemod == 3 {
-            b.push((self.ports.gNodeMid, -(ceqqgmid + ceqgcrg)));
-        }
-
-        if self.model.rbodymod == 0 {
-            b.push((self.ports.bNodePrime, (ceqbd + ceqbs - ceqjd - ceqjs - ceqqb + Ibtoteq)));
-            b.push((
-                self.ports.sNodePrime,
-                (ceqdrn - ceqbs + ceqjs + ceqqg + ceqqb + ceqqd + ceqqgmid - ceqgstot + Istoteq),
-            ));
-        } else {
-            b.push((self.ports.dbNode, -(ceqjd + ceqqjd)));
-            b.push((self.ports.bNodePrime, (ceqbd + ceqbs - ceqqb + Ibtoteq)));
-            b.push((self.ports.sbNode, -(ceqjs + ceqqjs)));
-            b.push((
-                self.ports.sNodePrime,
-                (ceqdrn - ceqbs + ceqjs + ceqqd + ceqqg + ceqqb + ceqqjd + ceqqjs + ceqqgmid - ceqgstot + Istoteq),
-            ));
-        }
-
-        if self.model.rdsmod != 0 {
-            b.push((self.ports.dNode, -ceqgdtot));
-            b.push((self.ports.sNode, ceqgstot));
-        }
-        if self.model.trnqsmod != 0 {
-            b.push((self.ports.qNode, cqcheq - cqdef));
-        }
-
-        // Gather up matrix Jacobian terms
-        let mut j: Vec<(Option<Eindex>, f64)> = vec![];
-
-        let (gjbd, gjbs) = if self.model.rbodymod != 0 { (newop.gbd, newop.gbs) } else { (0.0, 0.0) };
-        let (gdpr, gspr) = if self.model.rdsmod != 0 {
-            (self.intp.drainConductance, self.intp.sourceConductance)
-        } else {
-            (0.0, 0.0)
-        };
-
-        let geltd = self.intp.grgeltd;
-        let tmp1 = newop.qdef * newop.gtau;
-
-        if self.model.rgatemod == 1 {
-            j.push((self.matps.GEgePtr, geltd));
-            j.push((self.matps.GPgePtr, -(geltd)));
-            j.push((self.matps.GEgpPtr, -(geltd)));
-            j.push((self.matps.GPgpPtr, newop.gcggb + geltd - newop.ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, newop.gcgdb - newop.ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, newop.gcgsb - newop.ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, newop.gcgbb - newop.ggtb + gIgtotb));
-        } else if self.model.rgatemod == 2 {
-            j.push((self.matps.GEgePtr, gcrg));
-            j.push((self.matps.GEgpPtr, gcrgg));
-            j.push((self.matps.GEdpPtr, gcrgd));
-            j.push((self.matps.GEspPtr, gcrgs));
-            j.push((self.matps.GEbpPtr, gcrgb));
-
-            j.push((self.matps.GPgePtr, -(gcrg)));
-            j.push((self.matps.GPgpPtr, newop.gcggb - gcrgg - newop.ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, newop.gcgdb - gcrgd - newop.ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, newop.gcgsb - gcrgs - newop.ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, newop.gcgbb - gcrgb - newop.ggtb + gIgtotb));
-        } else if self.model.rgatemod == 3 {
-            j.push((self.matps.GEgePtr, geltd));
-            j.push((self.matps.GEgmPtr, -(geltd)));
-            j.push((self.matps.GMgePtr, -(geltd)));
-            j.push((self.matps.GMgmPtr, geltd + gcrg + newop.gcgmgmb));
-
-            j.push((self.matps.GMdpPtr, gcrgd + newop.gcgmdb));
-            j.push((self.matps.GMgpPtr, gcrgg));
-            j.push((self.matps.GMspPtr, gcrgs + newop.gcgmsb));
-            j.push((self.matps.GMbpPtr, gcrgb + newop.gcgmbb));
-
-            j.push((self.matps.DPgmPtr, newop.gcdgmb));
-            j.push((self.matps.GPgmPtr, -(gcrg)));
-            j.push((self.matps.SPgmPtr, newop.gcsgmb));
-            j.push((self.matps.BPgmPtr, newop.gcbgmb));
-
-            j.push((self.matps.GPgpPtr, newop.gcggb - gcrgg - newop.ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, newop.gcgdb - gcrgd - newop.ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, newop.gcgsb - gcrgs - newop.ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, newop.gcgbb - gcrgb - newop.ggtb + gIgtotb));
-        } else {
-            j.push((self.matps.GPgpPtr, newop.gcggb - newop.ggtg + gIgtotg));
-            j.push((self.matps.GPdpPtr, newop.gcgdb - newop.ggtd + gIgtotd));
-            j.push((self.matps.GPspPtr, newop.gcgsb - newop.ggts + gIgtots));
-            j.push((self.matps.GPbpPtr, newop.gcgbb - newop.ggtb + gIgtotb));
-        }
-
-        if self.model.rdsmod != 0 {
-            j.push((self.matps.DgpPtr, gdtotg));
-            j.push((self.matps.DspPtr, gdtots));
-            j.push((self.matps.DbpPtr, gdtotb));
-            j.push((self.matps.SdpPtr, gstotd));
-            j.push((self.matps.SgpPtr, gstotg));
-            j.push((self.matps.SbpPtr, gstotb));
-        }
-
-        j.push((
-            self.matps.DPdpPtr,
-            gdpr + newop.gds + newop.gbd + tmp1 * newop.ddxpart_dVd - gdtotd + RevSum + newop.gcddb + gbdpdp + newop.dxpart * newop.ggtd - gIdtotd,
-        ));
-        j.push((self.matps.DPdPtr, -(gdpr + gdtot)));
-        j.push((
-            self.matps.DPgpPtr,
-            Gm + newop.gcdgb - gdtotg + gbdpg - gIdtotg + newop.dxpart * newop.ggtg + tmp1 * newop.ddxpart_dVg,
-        ));
-        j.push((
-            self.matps.DPspPtr,
-            -(newop.gds + gdtots - newop.dxpart * newop.ggts + gIdtots - tmp1 * newop.ddxpart_dVs + FwdSum - newop.gcdsb - gbdpsp),
-        ));
-        j.push((
-            self.matps.DPbpPtr,
-            -(gjbd + gdtotb - Gmbs - newop.gcdbb - gbdpb + gIdtotb - tmp1 * newop.ddxpart_dVb - newop.dxpart * newop.ggtb),
-        ));
-
-        j.push((self.matps.DdpPtr, -(gdpr - gdtotd)));
-        j.push((self.matps.DdPtr, gdpr + gdtot));
-
-        j.push((
-            self.matps.SPdpPtr,
-            -(newop.gds + gstotd + RevSum - newop.gcsdb - gbspdp - tmp1 * newop.dsxpart_dVd - newop.sxpart * newop.ggtd + gIstotd),
-        ));
-        j.push((
-            self.matps.SPgpPtr,
-            newop.gcsgb - Gm - gstotg + gbspg + newop.sxpart * newop.ggtg + tmp1 * newop.dsxpart_dVg - gIstotg,
-        ));
-        j.push((
-            self.matps.SPspPtr,
-            gspr + newop.gds + newop.gbs + tmp1 * newop.dsxpart_dVs - gstots + FwdSum + newop.gcssb + gbspsp + newop.sxpart * newop.ggts - gIstots,
-        ));
-        j.push((self.matps.SPsPtr, -(gspr + gstot)));
-        j.push((
-            self.matps.SPbpPtr,
-            -(gjbs + gstotb + Gmbs - newop.gcsbb - gbspb - newop.sxpart * newop.ggtb - tmp1 * newop.dsxpart_dVb + gIstotb),
-        ));
-
-        j.push((self.matps.SspPtr, -(gspr - gstots)));
-        j.push((self.matps.SsPtr, gspr + gstot));
-
-        j.push((self.matps.BPdpPtr, newop.gcbdb - gjbd + gbbdp - gIbtotd));
-        j.push((self.matps.BPgpPtr, newop.gcbgb - newop.gbgs - gIbtotg));
-        j.push((self.matps.BPspPtr, newop.gcbsb - gjbs + gbbsp - gIbtots));
-        j.push((self.matps.BPbpPtr, gjbd + gjbs + newop.gcbbb - newop.gbbs - gIbtotb));
-
-        let ggidld = newop.ggidld;
-        let ggidlg = newop.ggidlg;
-        let ggidlb = newop.ggidlb;
-        let ggislg = newop.ggislg;
-        let ggisls = newop.ggisls;
-        let ggislb = newop.ggislb;
-
-        /* stamp gidl */
-        j.push((self.matps.DPdpPtr, ggidld));
-        j.push((self.matps.DPgpPtr, ggidlg));
-        j.push((self.matps.DPspPtr, -(ggidlg + ggidld + ggidlb)));
-        j.push((self.matps.DPbpPtr, ggidlb));
-        j.push((self.matps.BPdpPtr, -(ggidld)));
-        j.push((self.matps.BPgpPtr, -(ggidlg)));
-        j.push((self.matps.BPspPtr, (ggidlg + ggidld + ggidlb)));
-        j.push((self.matps.BPbpPtr, -(ggidlb)));
-        /* stamp gisl */
-        j.push((self.matps.SPdpPtr, -(ggisls + ggislg + ggislb)));
-        j.push((self.matps.SPgpPtr, ggislg));
-        j.push((self.matps.SPspPtr, ggisls));
-        j.push((self.matps.SPbpPtr, ggislb));
-        j.push((self.matps.BPdpPtr, (ggislg + ggisls + ggislb)));
-        j.push((self.matps.BPgpPtr, -(ggislg)));
-        j.push((self.matps.BPspPtr, -(ggisls)));
-        j.push((self.matps.BPbpPtr, -(ggislb)));
-
-        if self.model.rbodymod != 0 {
-            j.push((self.matps.DPdbPtr, newop.gcdbdb - newop.gbd));
-            j.push((self.matps.SPsbPtr, -(newop.gbs - newop.gcsbsb)));
-
-            j.push((self.matps.DBdpPtr, newop.gcdbdb - newop.gbd));
-            j.push((self.matps.DBdbPtr, newop.gbd - newop.gcdbdb + self.intp.grbpd + self.intp.grbdb));
-            j.push((self.matps.DBbpPtr, -(self.intp.grbpd)));
-            j.push((self.matps.DBbPtr, -(self.intp.grbdb)));
-
-            j.push((self.matps.BPdbPtr, -(self.intp.grbpd)));
-            j.push((self.matps.BPbPtr, -(self.intp.grbpb)));
-            j.push((self.matps.BPsbPtr, -(self.intp.grbps)));
-            j.push((self.matps.BPbpPtr, self.intp.grbpd + self.intp.grbps + self.intp.grbpb));
-
-            j.push((self.matps.SBspPtr, newop.gcsbsb - newop.gbs));
-            j.push((self.matps.SBbpPtr, -(self.intp.grbps)));
-            j.push((self.matps.SBbPtr, -(self.intp.grbsb)));
-            j.push((self.matps.SBsbPtr, newop.gbs - newop.gcsbsb + self.intp.grbps + self.intp.grbsb));
-
-            j.push((self.matps.BdbPtr, -(self.intp.grbdb)));
-            j.push((self.matps.BbpPtr, -(self.intp.grbpb)));
-            j.push((self.matps.BsbPtr, -(self.intp.grbsb)));
-            j.push((self.matps.BbPtr, self.intp.grbsb + self.intp.grbdb + self.intp.grbpb));
-        }
-
-        if self.model.trnqsmod != 0 {
-            j.push((self.matps.QqPtr, newop.gqdef + newop.gtau));
-            j.push((self.matps.QgpPtr, newop.ggtg - newop.gcqgb));
-            j.push((self.matps.QdpPtr, newop.ggtd - newop.gcqdb));
-            j.push((self.matps.QspPtr, newop.ggts - newop.gcqsb));
-            j.push((self.matps.QbpPtr, newop.ggtb - newop.gcqbb));
-
-            j.push((self.matps.DPqPtr, newop.dxpart * newop.gtau));
-            j.push((self.matps.SPqPtr, newop.sxpart * newop.gtau));
-            j.push((self.matps.GPqPtr, -(newop.gtau)));
-        }
-        // And return our matrix stamps
-        return Stamps { g: j, b };
-    }
-    /// Commit operating-point guesses to internal state
-    fn commit(&mut self) {
-        self.op = self.guess.clone();
     }
 }
 
@@ -4828,6 +3760,10 @@ impl Component for Bsim4 {
     }
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
         self.load_dc_tr(guess, an)
+    }
+    /// Commit operating-point guesses to internal state
+    fn commit(&mut self) {
+        self.op = self.guess.clone();
     }
 }
 
@@ -4937,50 +3873,6 @@ fn DEVpnjlim(vnew: f64, vold: f64, vt: f64, vcrit: f64) -> f64 {
 }
 
 impl Bsim4 {
-    // pub(crate) fn from<T: SpNum>(b4i: circuit::Bsim4i, models: mut ModelCache, solver: mut Solver<T>) -> Option<Self> {
-    //     // Debuggin via JSON dump!
-    //     // use serde::{Deserialize, Serialize};
-    //     // use std::fs::File;
-    //     // use std::io::prelude::*;
-
-    //     // let s = serde_json::to_string(&model.vals).unwrap();
-    //     // let mut rfj = File::create("model.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("model = {}", s);
-
-    //     // let s = serde_json::to_string(&model.derived).unwrap();
-    //     // let mut rfj = File::create("model_derived.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("derived = {}", s);
-
-    //     // let s = serde_json::to_string(&inst.intp).unwrap();
-    //     // let mut rfj = File::create("intp.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("intp = {}", s);
-
-    //     // let s = serde_json::to_string(&inst.size_params).unwrap();
-    //     // let mut rfj = File::create("size_params.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("size_params = {}", s);
-
-    //     // let s = serde_json::to_string(&ports).unwrap();
-    //     // let mut rfj = File::create("ports.json").unwrap();
-    //     // rfj.write_all(s.as_bytes()).unwrap();
-    //     // println!("ports = {}", s);
-
-    //     // FIXME: reference-ize these
-    //     Some(Self {
-    //         ports,
-    //         model: &model.vals,
-    //         model_derived: &model.derived,
-    //         size_params: &inst.size_params,
-    //         intp: &inst.intp,
-    //         op: Bsim4OpPoint::default(),
-    //         guess: Bsim4OpPoint::default(),
-    //         matps: Bsim4MatrixPointers::default(),
-    //     })
-    // }
-
     pub(crate) fn new(ports: Bsim4Ports<Option<VarIndex>>, model: Bsim4ModelEntry, inst: Bsim4InstEntry) -> Self {
         Self {
             ports,
@@ -4996,200 +3888,4 @@ impl Bsim4 {
 }
 
 mod tests {
-    use super::*;
-    use crate::assert::assert;
-    use crate::{assert, sperror, TestResult};
-
-    #[test]
-    fn test_bsim4_load() -> TestResult {
-        use super::Bsim4ModelCache;
-        let mut models = Bsim4ModelCache::new();
-        models.add("default".to_string(), Bsim4ModelSpecs::default());
-        let inst = Bsim4InstSpecs::default();
-        let (model, inst) = models.inst(&"default".to_string(), inst).ok_or(sperror("Model Not Found"))?;
-
-        let ports = Bsim4Ports::<Option<VarIndex>>::default();
-        let mut solver = Bsim4::new(ports, model, inst);
-
-        let p = 1.0;
-        let portvs: Bsim4Ports<f64> = Bsim4Ports {
-            dNode: p,
-            dNodePrime: p,
-            sNode: 0.0,
-            sNodePrime: 0.0,
-            gNodeExt: p,
-            gNodePrime: p,
-            gNodeMid: p,
-            bNode: 0.0,
-            bNodePrime: 0.0,
-            dbNode: 0.0,
-            sbNode: 0.0,
-            qNode: 0.0,
-        };
-
-        use crate::analysis::AnalysisInfo;
-        let an = AnalysisInfo::OP;
-        let op = solver.op(portvs, &an);
-        println!("op.cd = {:?}", op.cd);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_bsim4_nmos_dcop1() -> TestResult {
-        use crate::analysis::dcop;
-        use crate::circuit::*;
-        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
-        use crate::comps::mos::MosPorts;
-        let inst = Bsim4InstSpecs::default();
-        let ports = MosPorts {
-            d: n("gd"),
-            g: n("gd"),
-            s: NodeRef::Gnd,
-            b: NodeRef::Gnd,
-        };
-        let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("default".to_string(), Bsim4ModelSpecs::default());
-
-        ckt.add(Bsim4i {
-            name: "bsim4".to_string(),
-            ports,
-            model: "default".to_string(),
-            params: inst,
-        });
-        let p = 1.0;
-        ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
-        ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
-        let soln = dcop(ckt)?;
-        let vgd = soln.get("gd")?;
-        assert(vgd).eq(1.0)?;
-        let id = soln.get("v1")?;
-        assert(id).abs().isclose(150e-6, 1e-6)?;
-
-        Ok(())
-    }
-    #[test]
-    fn test_bsim4_pmos_dcop1() -> TestResult {
-        use crate::analysis::dcop;
-        use crate::circuit::*;
-        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
-        use crate::comps::mos::MosPorts;
-        use NodeRef::Gnd;
-
-        let mut ckt = Ckt::new();
-        ckt.models.bsim4.add(
-            "pmos",
-            Bsim4ModelSpecs {
-                mos_type: Some(MosType::PMOS),
-                ..Default::default()
-            },
-        );
-
-        ckt.add(Bsim4i {
-            name: "bsim4".to_string(),
-            ports: [n("gd"), n("gd"), Gnd, Gnd].into(),
-            model: "pmos".to_string(),
-            params: Bsim4InstSpecs::default(),
-        });
-        let p = -1.0;
-        ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
-        ckt.add(Comp::R(1e-10, n("gd"), NodeRef::Gnd));
-        let soln = dcop(ckt)?;
-        let vgd = soln.get("gd")?;
-        assert(vgd).eq(-1.0)?;
-        let id = soln.get("v1")?;
-        assert(id).abs().isclose(57e-6, 1e-6)?;
-
-        Ok(())
-    }
-    #[test]
-    fn test_bsim4_inv_dcop() -> TestResult {
-        use crate::analysis::dcop;
-        use crate::circuit::*;
-        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
-        use crate::comps::mos::{MosPorts, MosType};
-        use NodeRef::Gnd;
-
-        let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
-        ckt.models.bsim4.add(
-            "pmos",
-            Bsim4ModelSpecs {
-                mos_type: Some(MosType::PMOS),
-                ..Default::default()
-            },
-        );
-
-        ckt.add(Bsim4i {
-            name: "p".to_string(),
-            ports: ("d", "inp", "vdd", "vdd").into(),
-            model: "pmos".to_string(),
-            params: Bsim4InstSpecs::default(),
-        });
-        ckt.add(Bsim4i {
-            name: "n".to_string(),
-            ports: ("d", "inp", Gnd, Gnd).into(),
-            model: "nmos".to_string(),
-            params: Bsim4InstSpecs::default(),
-        });
-        ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
-        ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
-
-        let soln = dcop(ckt)?;
-        
-        let vd = soln.get("vdd")?;
-        assert(vd).eq(1.0)?;
-        let vd = soln.get("inp")?;
-        assert(vd).eq(0.0)?;
-        let vd = soln.get("d")?;
-        assert(vd).gt(0.95)?;
-        let id = soln.get("vinp")?;
-        assert(id).abs().lt(1e-6)?;
-        let id = soln.get("vvdd")?;
-        assert(id).abs().lt(1e-6)?;
-
-        Ok(())
-    }
-    #[test]
-    fn test_bsim4_tran1() -> TestResult {
-        use crate::analysis::{tran, TranOptions};
-        use crate::circuit::*;
-        use crate::circuit::{Bsim4i, Ckt, Comp, NodeRef};
-        use crate::comps::mos::{MosPorts, MosType};
-        use NodeRef::Gnd;
-        let mut ckt = Ckt::new();
-        ckt.models.bsim4.add("nmos", Bsim4ModelSpecs::default());
-        ckt.models.bsim4.add(
-            "pmos",
-            Bsim4ModelSpecs {
-                mos_type: Some(MosType::PMOS),
-                ..Default::default()
-            },
-        );
-        let inst = Bsim4InstSpecs::default();
-        ckt.add(Bsim4i {
-            name: "p".to_string(),
-            ports: [n("d"), n("inp"), n("vdd"), n("vdd")].into(),
-            model: "pmos".to_string(),
-            params: inst,
-        });
-        ckt.add(Bsim4i {
-            name: "n".to_string(),
-            ports: [n("d"), n("inp"), Gnd, Gnd].into(),
-            model: "nmos".to_string(),
-            params: inst,
-        });
-        let p = 1.0;
-        ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
-        ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
-
-        let opts = TranOptions {
-            ic: vec![(n("inp"), 1.0)],
-            ..Default::default()
-        };
-        let soln = tran(ckt, opts)?;
-        println!("{:?}", soln.map);
-
-        Ok(())
-    }
 }

@@ -1,22 +1,8 @@
 syntax = "proto3";
+package spice21;
+import "mos.proto";
+import "bsim4.proto";
 
-package spice21.proto;
-
-import "google/protobuf/any.proto";
-import "google/protobuf/api.proto";
-import "google/protobuf/duration.proto";
-import "google/protobuf/empty.proto";
-import "google/protobuf/field_mask.proto";
-import "google/protobuf/source_context.proto";
-import "google/protobuf/struct.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/type.proto";
-import "google/protobuf/wrappers.proto";
-
-
-message Node {
-    string name = 1;
-}
 
 message Resistor {
     string name = 1;
@@ -30,14 +16,6 @@ message Capacitor {
     string p = 2;
     string n = 3;
     double c = 4;
-}
-
-message Mos {
-    string name = 1;
-    string g = 2;
-    string d = 3;
-    string s = 4;
-    string b = 5;
 }
 
 message Isrc {
@@ -73,7 +51,7 @@ message DiodeModel {
     double rs = 15;
     double cj0 = 16;
 }
-
+// Diode Instance 
 message Diode {
     string name = 1;
     string p = 2;
@@ -81,7 +59,9 @@ message Diode {
     double area = 4;
     double temp = 5;
 }
-
+// Instance Enumeration 
+// Includes variants for all simulator-defined primitives, 
+// plus custom-defined Modules. 
 message Instance {
     oneof comp {
         Resistor r = 1;
@@ -90,37 +70,51 @@ message Instance {
         Isrc i = 4;
         Vsrc v = 5;
         Diode d = 6;
+        ModuleInstance x = 7;
     }
 }
-
-message Circuit {
-    string name = 1;
-    repeated Instance comps = 2;
-    repeated Def defs = 3;
+// Module Definition 
+message Module {
+    string name = 1; // Module Name 
+    repeated string ports = 2; // Port Names 
+    repeated string signals = 4; // Internal Signals
+    repeated Instance comps = 5; // Component Instances
+    map <string, double> params = 9; // Parameters and Default Values
 }
-
+// Module Instance
+message ModuleInstance {
+    string name = 1; // Instance Name
+    string module = 2; // Module Name 
+    map <string, string> ports = 3; // Port Connections 
+    map <string, double> params = 4; // Parameter Values
+}
+// Definition Enum
+// Includes all variants of things to define, including:
+// * Module Definitions 
+// * Models 
+// * Instance Parameter-Sets
 message Def {
     oneof defines {
-        DiodeModel diodemodel = 1;
+        Module module = 1;
+        DiodeModel diodemodel = 3;
+        Bsim4Model bsim4model = 4;
+        Bsim4InstParams bsim4inst = 5;
+        Mos1Model mos1model = 6;
+        Mos1InstParams mos1inst = 7;
     }
 }
-
-message Statement {
-    oneof s {
-        Instance inst = 1;
-        Def def = 2;
-    }
+// Circuit 
+// A "top-level" combination of definitions and component instances
+message Circuit {
+    string name = 1; // Circuit Name 
+    repeated string signals = 2; // Signal Names
+    repeated Def defs = 3; // Definitions 
+    repeated Instance comps = 4; // Component Instances 
 }
 
+// Transient Analysis Options 
 message TranOptions {
-    double tstop = 1;
-    double tstep = 2;
-}
-
-message Sim {
-    Circuit ckt = 1;
-}
-
-message OpResult {
-    map<string, double> data = 2;
+    double tstop = 1; // Stop Time 
+    double tstep = 2; // Time-Step 
+    map <string, double> ic = 3; // Initial Conditions. Mapping in the form of {node: value}
 }
