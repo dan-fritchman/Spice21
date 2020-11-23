@@ -44,7 +44,9 @@ jobs:
           protoc --version  ## FIXME: doesn't find the well-known types e.g. DoubleValue yet 
       - name: py-deps
         working-directory: ./spice21py 
-        run: conda install -y cffi maturin pytest protobuf 
+        run: |
+          conda install -y pip cffi pytest protobuf 
+          pip install -y maturin 
       - name: protoc
         run: |
           protoc -I=spice21/src --python_out=spice21py/spice21py spice21/src/*.proto 
