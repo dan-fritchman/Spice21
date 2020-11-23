@@ -3,7 +3,7 @@ name: spice21js
 on: [push, pull_request]
 
 jobs:
-  name: spice21js (${{ matrix.os }})
+  name: spice21js 
   runs-on: ${{ matrix.os }} 
   strategy:
     fail-fast: false
