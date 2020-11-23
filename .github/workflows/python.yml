@@ -3,13 +3,27 @@ name: spice21py
 on: [push]
 
 jobs:
-  build:
+  example-1:
+    name: Ex1 (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -l {0}
     strategy:
+      fail-fast: false
       matrix:
-        platform: [ubuntu-latest, macOS-latest]
-    runs-on: ${{ matrix.platform }}
-
+        os: ["ubuntu-latest", "macos-latest"]
+        python-version: ["3.8", "3.7"]
     steps:
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: ${{ matrix.python-version }}
+      - name: Conda info
+        run: conda info
+      - name: Conda list
+        shell: pwsh
+        run: conda list
       - name: checkout
         uses: actions/checkout@v1
       - name: Setup Rust environment
@@ -25,29 +39,27 @@ jobs:
       - name: Run cargo test
         working-directory: ./spice21
         run: cargo test
-      - name: py-deps
-        working-directory: ./spice21py 
-        run: |
-          pip install --upgrade pip
-          pip install cffi maturin pytest protobuf 
-      - name: protoc
-        continue-on-error: true  # FIXME: remove
+      - name: proto-deps
         run: |
           sudo apt install -y protobuf-compiler
-          protoc --version # FIXME: doesn't find the well-known types e.g. DoubleValue yet 
-          bash scripts/build.sh 
-      - name: py-install
-        continue-on-error: true  # FIXME: remove
+          protoc --version  ## FIXME: doesn't find the well-known types e.g. DoubleValue yet 
+      - name: py-deps
         working-directory: ./spice21py 
-        run: maturin build 
-      - name: pip-install-wheel
-        continue-on-error: true  # FIXME: remove
+        run: conda install -y cffi maturin pytest protobuf 
+      - name: protoc
+        run: |
+          protoc -I=spice21/src --python_out=spice21py/spice21py spice21/src/*.proto 
+          2to3 -wn -f import spice21py/spice21py/*pb2* 
+      - name: build 
         working-directory: ./spice21py 
-        run: pip install target/wheels/*cp37*.whl 
+        run: maturin develop
+      # - name: pip-install-wheel
+      #   # continue-on-error: true  # FIXME: remove
+      #   working-directory: ./spice21py 
+      #   run: pip install target/wheels/*cp37*.whl 
       - name: test
-        continue-on-error: true  # FIXME: remove
         working-directory: ./spice21py 
-        run: pytest --pyargs spice21py
+        run: pytest ##--pyargs spice21py
       
       # - uses: actions/upload-artifact@v1
       #   name: upload-wheel
