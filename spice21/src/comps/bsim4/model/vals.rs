@@ -1,6 +1,7 @@
 
 use super::{Bsim4ModelVals, Bsim4ModelSpecs};
 use super::super::log;
+use crate::comps::consts;
 use crate::comps::consts::*;
 use crate::comps::mos::MosType::{NMOS, PMOS};
 
@@ -10,6 +11,8 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     let mut vals = Bsim4ModelVals::default();
 
     let tnom = 300.15; // FIXME: from ckt->CKTnomTemp
+    // FIXME: Celsius to Kelvin conversion happens, pretty quietly here
+    vals.tnom = if let Some(val) = specs.tnom { val  + consts::KELVIN_TO_C } else { tnom }; 
 
     vals.mos_type = if let Some(val) = specs.mos_type { val } else { NMOS };
 
@@ -1037,7 +1040,7 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.gamma1 = if let Some(val) = specs.gamma1 { val } else { 0.0 };
     vals.gamma2 = if let Some(val) = specs.gamma2 { val } else { 0.0 };
 
-    vals.tnom = if let Some(val) = specs.tnom { val } else { tnom };
+    
     vals.lint = if let Some(val) = specs.lint { val } else { 0.0 };
     vals.ll = if let Some(val) = specs.ll { val } else { 0.0 };
     vals.llc = if let Some(val) = specs.llc { val } else { vals.ll };
@@ -1348,6 +1351,13 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
         5
     };
 
+    // Parameters which stay Options. 
+    // FIXME: remove the f64 versions, which lack real defaults 
+    vals.k1Opt = specs.k1.clone();
+    vals.k2Opt = specs.k2.clone();
+    vals.k1 = if let Some(val) = specs.k1 { val } else { 0.0 };
+    vals.k2 = if let Some(val) = specs.k2 { val } else { 0.0 };
+
     // Resorting to keeping some of these "given" flags around,
     // as downstream behavior does appear to depend on them.
     vals.vtlGiven = specs.vtl.is_some();
@@ -1357,8 +1367,6 @@ pub(crate) fn resolve(specs: &Bsim4ModelSpecs) -> Bsim4ModelVals {
     vals.nsubGiven = specs.nsub.is_some();
     vals.gamma1Given = specs.gamma1.is_some();
     vals.gamma2Given = specs.gamma2.is_some();
-    vals.k1Given = specs.k1.is_some();
-    vals.k2Given = specs.k2.is_some();
     vals.nsubGiven = specs.nsub.is_some();
     vals.xtGiven = specs.xt.is_some();
     vals.vbxGiven = specs.vbx.is_some();

@@ -74,9 +74,10 @@ pub(crate) mod macros {
         $( ($val_name:ident, $val_type:ty) ),* $(,)?
     ]$(,)? ) => {
         #[doc=$struct_desc]
-        #[derive(Clone, Copy, Default)]
+        #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
         pub(crate) struct $specs_name {
-            $( #[doc=$desc]
+            $(  #[doc=$desc]
+                #[serde(default)]
                 pub(crate) $attr_name : Option<$attr_type> ),*
         }
         #[doc=$struct_desc]
@@ -148,6 +149,7 @@ pub(crate) use spnum::*;
 // Private modules
 mod assert;
 mod spnum;
+mod tech;
 
 #[cfg(test)]
 mod tests;

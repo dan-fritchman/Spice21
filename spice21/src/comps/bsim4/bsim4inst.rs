@@ -256,10 +256,9 @@ pub(crate) fn from(
         size_params.vbm = model.vbm + model.lvbm * Inv_L + model.wvbm * Inv_W + model.pvbm * Inv_LW;
         size_params.xt = model.xt + model.lxt * Inv_L + model.wxt * Inv_W + model.pxt * Inv_LW;
         size_params.vfb = model.vfb + model.lvfb * Inv_L + model.wvfb * Inv_W + model.pvfb * Inv_LW;
-        size_params.k1 = model.k1 + model.lk1 * Inv_L + model.wk1 * Inv_W + model.pk1 * Inv_LW;
         size_params.kt1 = model.kt1 + model.lkt1 * Inv_L + model.wkt1 * Inv_W + model.pkt1 * Inv_LW;
         size_params.kt1l = model.kt1l + model.lkt1l * Inv_L + model.wkt1l * Inv_W + model.pkt1l * Inv_LW;
-        size_params.k2 = model.k2 + model.lk2 * Inv_L + model.wk2 * Inv_W + model.pk2 * Inv_LW;
+        
         size_params.kt2 = model.kt2 + model.lkt2 * Inv_L + model.wkt2 * Inv_W + model.pkt2 * Inv_LW;
         size_params.k3 = model.k3 + model.lk3 * Inv_L + model.wk3 * Inv_W + model.pk3 * Inv_LW;
         size_params.k3b = model.k3b + model.lk3b * Inv_L + model.wk3b * Inv_W + model.pk3b * Inv_LW;
@@ -576,13 +575,13 @@ pub(crate) fn from(
         size_params.ldeb = sqrt(model_derived.epssub * model_derived.vtm0 / (Q * size_params.ndep * 1.0e6)) / 3.0;
         size_params.acde *= pow((size_params.ndep / 2.0e16), -0.25);
 
-        if model.k1Given || model.k2Given {
-            if !model.k1Given {
-                size_params.k1 = 0.53;
+        size_params.k1 = if let Some(k1) = model.k1Opt {k1 + model.lk1 * Inv_L + model.wk1 * Inv_W + model.pk1 * Inv_LW} else { 0.53 };
+        size_params.k2 = if let Some(k2) = model.k2Opt {k2 + model.lk2 * Inv_L + model.wk2 * Inv_W + model.pk2 * Inv_LW} else { -0.0186 };
+        if model.k1Opt.is_some() || model.k2Opt.is_some() {
+            if model.k1Opt.is_none() {
                 println!("Warning: k1 should be specified with k2.\n");
             }
-            if !model.k2Given {
-                size_params.k2 = -0.0186;
+            if model.k2Opt.is_none() {
                 println!("Warning: k2 should be specified with k1.\n");
             }
             if model.nsubGiven {
@@ -610,7 +609,6 @@ pub(crate) fn from(
             if size_params.vbm > 0.0 {
                 size_params.vbm = -size_params.vbm;
             }
-
             if !model.gamma1Given {
                 size_params.gamma1 = 5.753e-12 * sqrt(size_params.ndep) / model_derived.coxe;
             }
