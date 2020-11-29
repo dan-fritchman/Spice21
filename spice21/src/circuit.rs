@@ -32,7 +32,15 @@ pub enum NodeRef {
     Name(String),
 }
 use NodeRef::Gnd;
-
+impl NodeRef {
+    pub(crate) fn to_string(&self) -> String {
+        match self {
+            NodeRef::Name(s) => s.clone(),
+            NodeRef::Num(s) => s.to_string(),
+            NodeRef::Gnd => "".into(),
+        }
+    }
+}
 /// Conversion to create Nodes from string-refs
 impl From<&str> for NodeRef {
     fn from(f: &str) -> Self {

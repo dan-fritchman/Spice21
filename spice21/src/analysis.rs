@@ -495,10 +495,11 @@ impl<'a> Tran<'a> {
     pub fn ic(&mut self, n: NodeRef, val: f64) {
         use crate::comps::{Resistor, Vsrc};
 
-        let fnode = self.solver.vars.add("vfnode".to_string(), VarKind::V); // FIXME: names
-        let ivar = self.solver.vars.add("ifsrc".to_string(), VarKind::I); // FIXME: names
+        // Create two new variables: the forcing voltage, and current in its source 
+        let fnode = self.solver.vars.add(format!(".{}.vic", n.to_string()), VarKind::V);
+        let ivar = self.solver.vars.add(format!(".{}.iic", n.to_string()), VarKind::I);
 
-        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n));
+        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n)); // FIXME: rforce value 
         r.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);

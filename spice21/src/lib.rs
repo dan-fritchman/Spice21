@@ -149,7 +149,6 @@ pub(crate) use spnum::*;
 // Private modules
 mod assert;
 mod spnum;
-mod tech;
 
 #[cfg(test)]
 mod tests;
