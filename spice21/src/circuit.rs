@@ -253,7 +253,7 @@ pub struct Defs {
     pub(crate) bsim4: Bsim4Cache,
 }
 impl Defs {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
             mos0: HashMap::new(),
