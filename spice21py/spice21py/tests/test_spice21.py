@@ -191,3 +191,22 @@ def test_bsim4_ro():
     res = tran(ckt, opts)
     assert isinstance(res, dict)
     # FIXME: checks
+
+
+def test_module_def():
+    from ..protos import Module, Resistor
+
+    m = Module(
+        name="mymod",
+        ports=["a", "b", "c"],
+        signals=["d", "e", "f"],
+        params={},
+        comps=[],
+    )
+    enc = bytes(m)
+    assert isinstance(enc, bytes)
+    dec = Module().FromString(enc)
+    assert isinstance(dec, Module)
+    assert m == dec
+    assert m.name == dec.name
+
