@@ -20,4 +20,4 @@ pyo3 = {version = "0.11.1", features = ["extension-module"]}
 # Note this is really what sets Python install-dependencies
 # for Maturin-built projects (not pyproject.toml)! 
 [package.metadata.maturin]
-requires-dist = ["protobuf>=3.13.0"]
+requires-dist = ["protobuf>=3.13.0", "betterproto[compiler]>=1.2.5"]

@@ -68,8 +68,7 @@ def test_ac1():
 
 
 def test_json():
-    """ Test a JSON round-trip via Protobuf """
-    from google.protobuf import json_format
+    """ Test a JSON round-trip """
     from ..protos import Circuit
 
     c = circuit(
@@ -77,9 +76,9 @@ def test_json():
         Capacitor(p="out", c=1e-9),
         Vsrc(p="inp", dc=1e-3, acm=1),
     )
-    j = json_format.MessageToJson(c)
+    j = c.to_json()
     assert isinstance(j, str)
-    c2 = json_format.Parse(j, Circuit())
+    c2 = Circuit().from_json(j)
     assert isinstance(c2, Circuit)
     assert c == c2
 
@@ -98,12 +97,14 @@ def test_bsim4_inst_params():
 
     p = Bsim4InstParams()
     assert isinstance(p, Bsim4InstParams)
-    p.l.value = 1e-6
-    p.w.value = 1e-6
-    p.nf.value = 2
-    assert p.l.value == 1e-6
-    assert p.w.value == 1e-6
-    assert p.nf.value == 2
+    p.l = 1e-6
+    p.w = 1e-6
+    p.nf = 2
+    assert p.l == 1e-6
+    assert p.w == 1e-6
+    assert p.nf == 2
+    assert p.sa is None
+    assert p.sb is None
 
 
 def test_bsim4_ckt():
@@ -154,7 +155,7 @@ def test_mos1_ro():
         insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
     ckt = circuit(
         Mos1Model(name="nmos", mos_type=MosType.NMOS),
-        Mos1Model(name="pmos", mos_type="PMOS"),
+        Mos1Model(name="pmos", mos_type=MosType.PMOS),
         Mos1InstParams(name="default"),
         Vsrc(name="vvdd", p="vdd", n="vss", dc=1.0),
         Vsrc(name="vvss", p="vss", dc=0),
@@ -178,7 +179,7 @@ def test_bsim4_ro():
         insts.extend(inverter(name=f"stg{k}", inp=f"ring{k}", out=f"ring{k+1}"))
     ckt = circuit(
         Bsim4Model(name="nmos", mos_type=MosType.NMOS),
-        Bsim4Model(name="pmos", mos_type="PMOS"),
+        Bsim4Model(name="pmos", mos_type=MosType.PMOS),
         Bsim4InstParams(name="default"),
         Vsrc(name="vvdd", p="vdd", n="vss", dc=1.0),
         Vsrc(name="vvss", p="vss", dc=0),
