@@ -6,13 +6,6 @@ use crate::circuit::{Comp, NodeRef};
 use crate::comps::ComponentSolver;
 use crate::SpNum;
 
-fn s(n: NodeRef) -> String {
-    match n {
-        NodeRef::Name(s) => s.clone(),
-        NodeRef::Num(s) => s.to_string(),
-        NodeRef::Gnd => "".into(),
-    }
-}
 ///
 /// # Hierarchy Elaborator
 ///
@@ -43,14 +36,17 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             if let NodeRef::Gnd = node {
                 return None;
             }
-            self.path.push(s(node.clone()).clone());
+            self.path.push(node.to_string());
             let pathname = self.path.join(".");
             let var = self.vars.find_or_create(NodeRef::Name(pathname)).clone();
-            ns.insert(s(node.clone()), var.clone());
+            ns.insert(node.to_string(), var.clone());
             self.path.pop();
             var
         } else {
-            ns.get(&s(node)).unwrap().clone()
+            match ns.get(&node.to_string()) {
+                Some(n) => n.clone(),
+                None => panic!("!!!"),
+            }
         }
     }
     /// Elaborate a Module or Component Instance
@@ -90,7 +86,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
                 let r = if d.model.has_rs() {
                     self.path.push(name.clone());
                     self.path.push("r".into());
-                    let r_ = self.vars.addv(name.clone());
+                    let r_ = self.vars.addv(self.pathstr());
                     self.path.pop();
                     self.path.pop();
                     Some(r_)
@@ -114,49 +110,70 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
                 };
                 self.comps.push(d.into());
             }
-            Comp::V(vs) => {
-                use crate::comps::Vsrc;
-                let ivar = self.vars.addi(vs.name.clone()); // FIXME: hierarchical path name
-                let circuit::Vi { name, p, n, vdc, acm } = vs;
-                let pvar = self.node_var(p, autonode, ns);
-                let nvar = self.node_var(n, autonode, ns);
-                self.comps.push(Vsrc::new(vdc, acm, pvar, nvar, ivar).into());
-            }
-            Comp::Mos(m) => {
-                use crate::comps::mos::MosPorts;
-                let MosPorts { d, g, s: s_, b } = m.ports;
-                let ports: MosPorts<Option<VarIndex>> = [
-                    self.node_var(d, autonode, ns),
-                    self.node_var(g, autonode, ns),
-                    self.node_var(s_, autonode, ns),
-                    self.node_var(b, autonode, ns),
-                ]
-                .into();
-                // Determine solver-type from defined models
-                let c: ComponentSolver = if let Some(model) = self.defs.bsim4.models.get(&m.model) {
-                    use crate::comps::bsim4::bsim4ports::Bsim4Ports;
-                    use crate::comps::bsim4::Bsim4;
-                    let (model, inst) = self.defs.bsim4.get(&m.model, &m.params).unwrap();
-                    let ports = Bsim4Ports::from(m.name, &ports, &model.vals, &inst.intp, &mut self.vars);
-                    Bsim4::new(ports, model, inst).into()
-                } else if let Some(model) = self.defs.mos1.models.get(&m.model) {
-                    use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
-                    let params = match self.defs.mos1.insts.get(&m.params) {
-                        Some(m) => m.clone(),
-                        None => panic!(format!("Parameters not defined: {}", m.params)),
-                    };
-                    Mos1::new(Mos1Model::resolve(model.clone()), Mos1InstanceParams::resolve(params), ports.into()).into()
-                } else if let Some(mos_type) = self.defs.mos0.get(&m.model) {
-                    // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
-                    use crate::comps::Mos0;
-                    Mos0::new(ports.into(), mos_type.clone()).into()
-                } else {
-                    panic!(format!("Model not defined: {}", m.model));
-                };
-                self.comps.push(c);
-            }
-            Comp::Module(m) => self.elaborate_module_inst(m, ns),
+            Comp::V(x) => self.elaborate_vsrc(x, ns),
+            Comp::Mos(x) => self.elaborate_mos(x, ns),
+            Comp::Module(x) => self.elaborate_module_inst(x, ns),
         }
+    }
+    pub(crate) fn elaborate_vsrc(&mut self, vi: circuit::Vi, ns: &mut HashMap<String, Option<VarIndex>>) {
+        use crate::comps::Vsrc;
+        let circuit::Vi { name, p, n, vdc, acm } = vi;
+        // Note order of ops here is, as in many cases, 
+        // effected by the `autonode`-ing 
+        // Create or retrieve our node-variables
+        let pvar = self.node_var(p, self.on_top(), ns);
+        let nvar = self.node_var(n, self.on_top(), ns);
+        // Create the current variable, named `self.path`
+        self.path.push(name);
+        let ivar = self.vars.addi(self.pathstr()); 
+        self.path.pop();
+        // And create our solver 
+        self.comps.push(Vsrc::new(vdc, acm, pvar, nvar, ivar).into());
+    }
+    pub(crate) fn elaborate_mos(&mut self, m: circuit::Mosi, ns: &mut HashMap<String, Option<VarIndex>>) {
+        use crate::comps::mos::MosPorts;
+        let circuit::Mosi { name, ports, model, params } = m;
+        let MosPorts { d, g, s: s_, b } = ports;
+        let ports: MosPorts<Option<VarIndex>> = [
+            self.node_var(d, self.on_top(), ns),
+            self.node_var(g, self.on_top(), ns),
+            self.node_var(s_, self.on_top(), ns),
+            self.node_var(b, self.on_top(), ns),
+        ]
+        .into();
+        // Add the instance-name to our path
+        self.path.push(name);
+        // Determine solver-type from defined models
+        let c: ComponentSolver = if let Some(m_) = self.defs.bsim4.models.get(&model) {
+            use crate::comps::bsim4::bsim4ports::Bsim4Ports;
+            use crate::comps::bsim4::Bsim4;
+            let (model, inst) = self.defs.bsim4.get(&model, &params).unwrap();
+            let ports = Bsim4Ports::from(self.pathstr(), &ports, &model.vals, &inst.intp, &mut self.vars);
+            Bsim4::new(ports, model, inst).into()
+        } else if let Some(model) = self.defs.mos1.models.get(&model) {
+            use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
+            let params = match self.defs.mos1.insts.get(&params) {
+                Some(p) => p.clone(),
+                None => panic!(format!("Parameters not defined: {}", params)),
+            };
+            Mos1::new(Mos1Model::resolve(model.clone()), Mos1InstanceParams::resolve(params), ports.into()).into()
+        } else if let Some(mos_type) = self.defs.mos0.get(&model) {
+            // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
+            use crate::comps::Mos0;
+            Mos0::new(ports.into(), mos_type.clone()).into()
+        } else {
+            panic!(format!("Model not defined: {}", model));
+        };
+        self.comps.push(c);
+        self.path.pop();
+    }
+    /// Concatenate our path into a period-separated string
+    fn pathstr(&self) -> String {
+        self.path.join(".")
+    }
+    /// Boolean helper function, indicating whether we are currently at top-level
+    fn on_top(&self) -> bool {
+        self.path.len() == 0
     }
     pub(crate) fn elaborate_module_inst(&mut self, m: circuit::ModuleI, ns: &mut HashMap<String, Option<VarIndex>>) {
         let circuit::ModuleI { name, module, ports, params } = m;
@@ -166,7 +183,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             Some(md) => md,
             None => panic!("ModuleDef not found: {}", module),
         };
-        // Module instances get a new namespace.
+        // Each Module instance generates a new namespace.
         // Initialize it by grabbing the variables corresponding to each port.
         // By the time we get here, each value in the `m.ports` map
         // must correspond to an existing variable, or elaboration fails.
@@ -205,7 +222,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
     }
     /// Create a new Signal at `self.path.signame`, and append it to `ns`.
     pub(crate) fn elaborate_signal(&mut self, signame: String, ns: &mut HashMap<String, Option<VarIndex>>) {
-        // FIXME: add checks for name collisions 
+        // FIXME: add checks for name collisions
         self.path.push(signame.clone());
         let pathname = self.path.join(".");
         let var = self.vars.addv(pathname);
@@ -217,12 +234,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
 /// Returns the generated `Elaborator`, including its flattened `ComponentSolvers`
 /// and all definitions carried over from `ckt`.
 pub(crate) fn elaborate<'a, T: SpNum>(ckt: circuit::Ckt) -> Elaborator<'a, T> {
-    let circuit::Ckt {
-        name,
-        comps,
-        defs,
-        signals,
-    } = ckt;
+    let circuit::Ckt { name, comps, defs, signals } = ckt;
     let mut e = Elaborator {
         comps: Vec::new(),
         vars: Variables::new(),
@@ -242,4 +254,3 @@ pub(crate) fn elaborate<'a, T: SpNum>(ckt: circuit::Ckt) -> Elaborator<'a, T> {
     }
     e
 }
-          

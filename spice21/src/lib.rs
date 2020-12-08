@@ -74,16 +74,17 @@ pub(crate) mod macros {
         $( ($val_name:ident, $val_type:ty) ),* $(,)?
     ]$(,)? ) => {
         #[doc=$struct_desc]
-        #[derive(Clone, Copy, Default)]
-        pub(crate) struct $specs_name {
-            $( #[doc=$desc]
-                pub(crate) $attr_name : Option<$attr_type> ),*
+        #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
+        pub struct $specs_name {
+            $(  #[doc=$desc]
+                #[serde(default)]
+                pub $attr_name : Option<$attr_type> ),*
         }
         #[doc=$struct_desc]
         #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
-        pub(crate) struct $vals_name {
-            $( pub(crate) $attr_name : $attr_type, )*
-            $( pub(crate) $val_name : $val_type, )*
+        pub struct $vals_name {
+            $( pub $attr_name : $attr_type, )*
+            $( pub $val_name : $val_type, )*
         }
     }
     }
