@@ -3,8 +3,7 @@
 //!
 use super::consts;
 use super::{make_matrix_elem, Component};
-use crate::analysis::{AnalysisInfo, Options, Solver, Stamps, VarIndex, VarKind, Variables};
-use crate::circuit::Di;
+use crate::analysis::{AnalysisInfo, Stamps, VarIndex, VarKind, Variables, Options};
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
@@ -72,6 +71,24 @@ pub struct DiodePorts {
     pub n: Option<VarIndex>,
     pub r: Option<VarIndex>,
 }
+impl DiodePorts {
+    pub(crate) fn from<P: Clone + Into<Option<VarIndex>>, T: SpNum>(path: String, model: &DiodeModel, p: P, n: P, vars: &mut Variables<T>) -> Self {
+        // Internal resistance node addition
+        let r = if model.has_rs() {
+            // self.path.push(name.clone());
+            // self.path.push("r".into());
+            // let r_ = self.vars.addv(self.pathstr());
+            // self.path.pop();
+            // self.path.pop();
+            // Some(r_)
+            let name = format!("{}.{}", path, "r");
+            Some(vars.add(name, VarKind::V))
+        } else {
+            p.clone().into()
+        };
+        Self { p: p.into(), n: n.into(), r }
+    }
+}
 
 /// Diode Matrix-Pointers
 /// Includes internal "r" node-pointers on "p" (cathode) side.
@@ -104,7 +121,6 @@ pub struct DiodeIntParams {
     pub f3: f64,
     pub bv: f64, // Breakdown Voltage
 }
-
 impl DiodeIntParams {
     /// Derive Diode internal parameters from model, instance, and circuit options.
     pub(crate) fn derive(model: &DiodeModel, inst: &DiodeInstParams, opts: &Options) -> Self {
@@ -152,7 +168,6 @@ impl DiodeIntParams {
                 bv = model.bv - vt * (ibv / isat + 1.0 - bv / vt).ln();
             }
         }
-
         // Forward-bias depletion-cap fitting
         let f2 = (xfc * (1.0 + model.m)).exp();
         let f3 = 1.0 - model.fc * (1.0 + model.m);
@@ -160,7 +175,7 @@ impl DiodeIntParams {
         let cz = model.cj0 * area;
         let cz2 = cz / f2;
 
-        return DiodeIntParams {
+        DiodeIntParams {
             vt,
             vte,
             vcrit,
@@ -173,7 +188,7 @@ impl DiodeIntParams {
             f2,
             f3,
             bv,
-        };
+        }
     }
 }
 
@@ -188,18 +203,12 @@ pub struct Diode {
     pub op: DiodeOpPoint,
     pub guess: DiodeOpPoint,
 }
-
-impl Diode {
-    /// Create a new Diode solver from a Circuit (parser) Diode
-    // pub(crate) fn from<T: SpNum>(d: Di, solver: &mut Solver<T>) -> Diode {
-        
-    // }
+impl Diode { 
     /// Voltage limiting
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
         let vnew = vd;
         let vold = if let Some(v) = past { v } else { self.guess.vd };
         let DiodeIntParams { vte, vcrit, .. } = self.intp;
-
         // Typical case - unchanged
         if vnew <= vcrit || (vnew - vold).abs() <= 2.0 * vte {
             return vnew;
@@ -247,9 +256,8 @@ impl Component for Diode {
         self.op = self.guess;
     }
     /// DC & Transient Stamp Loading
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        let gmin_temp = 1e-15; // FIXME: get from ckt
-        let gmin = gmin_temp;
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+        let gmin = opts.gmin;
         // Destructure most key parameters
         let DiodeIntParams {
             vt,
@@ -356,7 +364,7 @@ impl Component for Diode0 {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         let vp = guess.get(self.p);
         let vn = guess.get(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);

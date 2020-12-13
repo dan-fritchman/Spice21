@@ -9,7 +9,7 @@ use num::Complex;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
+use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables, Options};
 use super::sparse21::{Eindex, Matrix};
 use crate::{SpNum, SpResult};
 
@@ -45,7 +45,7 @@ pub(crate) struct FakeComp<'a> {
 }
 #[allow(dead_code)]
 impl<'a> Component for FakeComp<'a> {
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         panic!("FakeComp somehow got instantiated")
     }
     fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
@@ -86,10 +86,10 @@ pub(crate) trait Component {
         Ok(())
     }
 
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
         panic!("AC Not Implemented For This Component!")
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64>;
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64>;
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>);
 }
 
@@ -131,13 +131,13 @@ impl Component for Vsrc {
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
         self.in_ = make_matrix_elem(mat, Some(self.ivar), self.n);
     }
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         return Stamps {
             g: vec![(self.pi, 1.0), (self.ip, 1.0), (self.ni, -1.0), (self.in_, -1.0)],
             b: vec![(Some(self.ivar), self.v)],
         };
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
         return Stamps {
             g: vec![
                 (self.pi, Complex::new(1.0, 0.0)),
@@ -198,7 +198,7 @@ impl Component for Capacitor {
     fn commit(&mut self) {
         self.op = self.guess;
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         let vd = guess.get(self.p) - guess.get(self.n);
         let q = self.q(vd);
 
@@ -221,7 +221,7 @@ impl Component for Capacitor {
             AnalysisInfo::AC(_o, _s) => panic!("HOW WE GET HERE?!?"),
         }
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
         let an_st = match an {
             AnalysisInfo::AC(_, state) => state,
             _ => panic!("Invalid AC AnalysisInfo"),
@@ -297,7 +297,7 @@ impl Component for Resistor {
             }
         }
     }
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         use TwoTerm::{N, P};
         return Stamps {
             g: vec![
@@ -309,7 +309,7 @@ impl Component for Resistor {
             b: vec![],
         };
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
         use TwoTerm::{N, P};
         return Stamps {
             g: vec![
@@ -338,7 +338,7 @@ impl Isrc {
 
 impl Component for Isrc {
     fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         return Stamps {
             g: vec![],
             b: vec![(self.p, self.i), (self.n, -self.i)],

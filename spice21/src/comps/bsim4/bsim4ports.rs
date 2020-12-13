@@ -22,6 +22,12 @@ pub(crate) struct Bsim4Ports<T> {
 }
 
 impl Bsim4Ports<Option<VarIndex>> {
+    /// Create Bsim4Ports from all the required device info
+    /// * Terminal connections `terms` include the primary/ external G,D,S,B nodes
+    /// * Model dictates whether several internal nodes are created
+    /// * Internal params `intp` dictates several more
+    /// * If internal variables are to be created, they are added to mutable Variables `vars`. 
+    /// Instance path is required for generation of internal node-names. 
     pub(crate) fn from<T: SpNum>(
         path: String,
         terms: &MosPorts<Option<VarIndex>>,

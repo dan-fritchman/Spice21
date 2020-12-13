@@ -1,6 +1,8 @@
 //! # Spice21 Analyses
 //!
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::ops::Index;
 
 use crate::circuit;
 use crate::circuit::{Ckt, NodeRef};
@@ -146,7 +148,7 @@ impl Solver<'_, f64> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
-            let updates = comp.load(&self.vars, an);
+            let updates = comp.load(&self.vars, an, &self.opts);
             // Make updates for G and b
             for upd in updates.g.iter() {
                 if let (Some(ei), val) = *upd {
@@ -230,7 +232,7 @@ impl<'a> Solver<'a, Complex<f64>> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
-            let updates = comp.load_ac(&self.vars, an);
+            let updates = comp.load_ac(&self.vars, an, &self.opts);
             // Make updates for G and b
             for upd in updates.g.iter() {
                 if let (Some(ei), val) = *upd {
@@ -302,9 +304,9 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
     pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
         // Elaborate the circuit
         use crate::elab::{elaborate, Elaborator};
-        let e = elaborate(ckt);
-        let Elaborator { defs, mut comps, vars, .. } = e;
-        // Create our matrix and its elements 
+        let e = elaborate(ckt, opts);
+        let Elaborator { defs, mut comps, vars, opts, .. } = e;
+        // Create our matrix and its elements
         let mut mat = Matrix::new();
         for comp in comps.iter_mut() {
             comp.create_matrix_elems(&mut mat);
@@ -313,7 +315,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
         Solver {
             comps,
             vars,
-            mat, 
+            mat,
             rhs: Vec::new(),
             history: Vec::new(),
             defs,
@@ -323,21 +325,19 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
     fn converged(&self, dx: &Vec<NumT>, res: &Vec<NumT>) -> bool {
         // Inter-step Newton convergence
         for e in dx.iter() {
-            if e.absv() > 1e-3 {
+            if e.absv() > self.opts.reltol {
                 return false;
             }
         }
         // KCL convergence
         for e in res.iter() {
-            if e.absv() > 1e-12 {
+            if e.absv() > self.opts.iabstol {
                 return false;
             }
         }
         return true;
     }
 }
-use std::collections::HashMap;
-use std::ops::Index;
 
 /// Operating Point Result
 #[derive(Debug)]
@@ -379,7 +379,6 @@ pub fn dcop(ckt: Ckt) -> SpResult<OpResult> {
     let _r = s.solve(&AnalysisInfo::OP)?;
     return Ok(OpResult::from(s.vars));
 }
-
 pub(crate) enum AnalysisInfo<'a> {
     OP,
     TRAN(&'a TranOptions, &'a TranState),
@@ -495,11 +494,11 @@ impl<'a> Tran<'a> {
     pub fn ic(&mut self, n: NodeRef, val: f64) {
         use crate::comps::{Resistor, Vsrc};
 
-        // Create two new variables: the forcing voltage, and current in its source 
+        // Create two new variables: the forcing voltage, and current in its source
         let fnode = self.solver.vars.add(format!(".{}.vic", n.to_string()), VarKind::V);
         let ivar = self.solver.vars.add(format!(".{}.iic", n.to_string()), VarKind::I);
 
-        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n)); // FIXME: rforce value 
+        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n)); // FIXME: rforce value
         r.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);
@@ -704,9 +703,9 @@ pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<TranResult> {
 /// Simulation Options
 pub struct Options {
     pub temp: f64,
-    pub nom_temp: f64,
+    pub tnom: f64,
     pub gmin: f64,
-    pub abstol: f64,
+    pub iabstol: f64,
     pub reltol: f64,
     pub chgtol: f64,
     pub volt_tol: f64,
@@ -727,9 +726,9 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             temp: 300.15,
-            nom_temp: 300.15,
+            tnom: 300.15,
             gmin: 1e-12,
-            abstol: 1e-12,
+            iabstol: 1e-12,
             reltol: 1e-3,
             chgtol: 1e-14,
             volt_tol: 1e-6,

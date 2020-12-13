@@ -9,7 +9,7 @@ use std::ops::{Index, IndexMut};
 
 use super::consts;
 use super::{make_matrix_elem, Component};
-use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables};
+use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables, Options};
 use crate::sparse21::{Eindex, Matrix};
 use crate::SpNum;
 
@@ -617,13 +617,13 @@ impl Component for Mos1 {
         // Load our last guess as the new operating point
         self.op = self.guess.clone();
     }
-    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         let v = self.vs(vars); // Collect terminal voltages
         let (op, stamps) = self.op_stamp(v, an); // Do most of our work here
         self.guess = op; // Save the calculated operating point
         stamps // And return our matrix stamps
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo, opts: &Options) -> Stamps<Complex<f64>> {
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(_opts, state) => state.omega,
@@ -734,7 +734,7 @@ impl Component for Mos0 {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         let vg = guess.get(self.ports[G]);
         let vd = guess.get(self.ports[D]);
         let vs = guess.get(self.ports[S]);

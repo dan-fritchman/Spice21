@@ -1412,7 +1412,7 @@ fn test_hier1() -> TestResult {
                 "#,
     )?;
     use crate::elab::elaborate;
-    let e = elaborate::<f64>(ckt);
+    let e = elaborate::<f64>(ckt, Options::default());
     assert(e.comps.len()).eq(11)?;
     assert(e.vars.len()).eq(5)?;
     Ok(())

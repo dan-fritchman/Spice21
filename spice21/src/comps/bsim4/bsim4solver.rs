@@ -3,7 +3,7 @@ use super::bsim4ports::Bsim4Ports;
 use super::model::Bsim4ModelVals;
 use super::*;
 
-use crate::analysis::{AnalysisInfo, Stamps, TranState, VarIndex, Variables};
+use crate::analysis::{AnalysisInfo, Stamps, TranState, VarIndex, Variables, Options};
 use crate::comps::consts::*;
 use crate::comps::mos::MosType;
 use crate::comps::Component;
@@ -131,7 +131,7 @@ impl Bsim4 {
             qNode: guess.get(self.ports.qNode),
         }
     }
-    pub(crate) fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    pub(crate) fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         // Grab our port voltages/ values
         let portvs = self.vs(guess);
         // Calculate an operating point from them
@@ -3758,8 +3758,8 @@ impl Component for Bsim4 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.create_matps(mat)
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        self.load_dc_tr(guess, an)
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+        self.load_dc_tr(guess, an, opts)
     }
     /// Commit operating-point guesses to internal state
     fn commit(&mut self) {

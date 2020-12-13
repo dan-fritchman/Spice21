@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::analysis::{VarIndex, Variables};
+use crate::analysis::{Options, VarIndex, Variables};
 use crate::circuit;
 use crate::circuit::{Comp, NodeRef};
 use crate::comps::ComponentSolver;
@@ -24,6 +24,7 @@ pub(crate) struct Elaborator<'a, NumT: SpNum> {
     pub(crate) vars: Variables<NumT>,
     pub(crate) defs: circuit::Defs,
     pub(crate) path: Vec<String>,
+    pub(crate) opts: Options,
 }
 impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
     /// Get or create a Variable for Node `node`.
@@ -75,59 +76,48 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
                 let nvar = self.node_var(n, autonode, ns);
                 self.comps.push(Isrc::new(dc, pvar.clone(), nvar.clone()).into());
             }
-            Comp::D(d) => {
-                use crate::comps::diode::{Diode, DiodeIntParams, DiodePorts};
-                // Destruct the key parser-diode attributes
-                let circuit::Di { name, model, inst, p, n } = d;
-                // Create or retrive the solver node-variables
-                let pvar = self.node_var(p, autonode, ns);
-                let nvar = self.node_var(n, autonode, ns);
-                // Internal resistance node addition
-                let r = if d.model.has_rs() {
-                    self.path.push(name.clone());
-                    self.path.push("r".into());
-                    let r_ = self.vars.addv(self.pathstr());
-                    self.path.pop();
-                    self.path.pop();
-                    Some(r_)
-                } else {
-                    pvar.clone()
-                };
-                // Derive internal params
-                use crate::analysis::Options;
-                let intp = DiodeIntParams::derive(&model, &inst, &Options::default()); // FIXME: Options
-                                                                                       // And create our solver
-                let d = Diode {
-                    ports: DiodePorts {
-                        p: pvar.clone(),
-                        n: nvar.clone(),
-                        r,
-                    },
-                    model,
-                    inst,
-                    intp,
-                    ..Default::default()
-                };
-                self.comps.push(d.into());
-            }
             Comp::V(x) => self.elaborate_vsrc(x, ns),
+            Comp::D(x) => self.elaborate_diode(x, ns),
             Comp::Mos(x) => self.elaborate_mos(x, ns),
             Comp::Module(x) => self.elaborate_module_inst(x, ns),
         }
     }
+    pub(crate) fn elaborate_diode(&mut self, d: circuit::Di, ns: &mut HashMap<String, Option<VarIndex>>) {
+        use crate::comps::diode::{Diode, DiodeIntParams, DiodePorts};
+        // Destruct the key parser-diode attributes
+        let circuit::Di { name, model, inst, p, n } = d;
+        // Create or retrive the solver node-variables
+        let autonode = self.on_top();
+        let pvar = self.node_var(p, autonode, ns);
+        let nvar = self.node_var(n, autonode, ns);
+        self.path.push(name);
+        // Derive internal params
+        let intp = DiodeIntParams::derive(&model, &inst, &self.opts);
+        // And create our solver
+        let ports = DiodePorts::from(self.pathstr(), &model, pvar, nvar, &mut self.vars);
+        let d = Diode {
+            ports,
+            model,
+            inst,
+            intp,
+            ..Default::default()
+        };
+        self.path.pop();
+        self.comps.push(d.into());
+    }
     pub(crate) fn elaborate_vsrc(&mut self, vi: circuit::Vi, ns: &mut HashMap<String, Option<VarIndex>>) {
         use crate::comps::Vsrc;
         let circuit::Vi { name, p, n, vdc, acm } = vi;
-        // Note order of ops here is, as in many cases, 
-        // effected by the `autonode`-ing 
+        // Note order of ops here is, as in many cases,
+        // effected by the `autonode`-ing
         // Create or retrieve our node-variables
         let pvar = self.node_var(p, self.on_top(), ns);
         let nvar = self.node_var(n, self.on_top(), ns);
         // Create the current variable, named `self.path`
         self.path.push(name);
-        let ivar = self.vars.addi(self.pathstr()); 
+        let ivar = self.vars.addi(self.pathstr());
         self.path.pop();
-        // And create our solver 
+        // And create our solver
         self.comps.push(Vsrc::new(vdc, acm, pvar, nvar, ivar).into());
     }
     pub(crate) fn elaborate_mos(&mut self, m: circuit::Mosi, ns: &mut HashMap<String, Option<VarIndex>>) {
@@ -233,13 +223,14 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
 /// Elaborate a top-level circuit
 /// Returns the generated `Elaborator`, including its flattened `ComponentSolvers`
 /// and all definitions carried over from `ckt`.
-pub(crate) fn elaborate<'a, T: SpNum>(ckt: circuit::Ckt) -> Elaborator<'a, T> {
+pub(crate) fn elaborate<'a, T: SpNum>(ckt: circuit::Ckt, opts: Options) -> Elaborator<'a, T> {
     let circuit::Ckt { name, comps, defs, signals } = ckt;
     let mut e = Elaborator {
         comps: Vec::new(),
         vars: Variables::new(),
         defs,
         path: Vec::new(),
+        opts,
     };
     // Initialize the top-level namespace with Gnd
     let mut ns: HashMap<String, Option<VarIndex>> = HashMap::new();
