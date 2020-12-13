@@ -3,7 +3,7 @@
 //!
 use super::consts;
 use super::{make_matrix_elem, Component};
-use crate::analysis::{AnalysisInfo, Stamps, VarIndex, VarKind, Variables, Options};
+use crate::analysis::{AnalysisInfo, Options, Stamps, VarIndex, VarKind, Variables};
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, SpNum, SpResult};
 
@@ -75,12 +75,6 @@ impl DiodePorts {
     pub(crate) fn from<P: Clone + Into<Option<VarIndex>>, T: SpNum>(path: String, model: &DiodeModel, p: P, n: P, vars: &mut Variables<T>) -> Self {
         // Internal resistance node addition
         let r = if model.has_rs() {
-            // self.path.push(name.clone());
-            // self.path.push("r".into());
-            // let r_ = self.vars.addv(self.pathstr());
-            // self.path.pop();
-            // self.path.pop();
-            // Some(r_)
             let name = format!("{}.{}", path, "r");
             Some(vars.add(name, VarKind::V))
         } else {
@@ -203,7 +197,7 @@ pub struct Diode {
     pub op: DiodeOpPoint,
     pub guess: DiodeOpPoint,
 }
-impl Diode { 
+impl Diode {
     /// Voltage limiting
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
         let vnew = vd;

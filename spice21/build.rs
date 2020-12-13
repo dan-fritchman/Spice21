@@ -27,8 +27,9 @@ fn main() {
     config.field_attribute("spice21.Instance.comp", "#[serde(flatten)]");
     config.type_attribute("spice21.Def.defines", "#[serde(tag = \"type\")]");
     config.field_attribute("spice21.Def.defines", "#[serde(flatten)]");
+    
     // And build!
     config
-        .compile_protos(&["src/spice21.proto", "src/mos.proto", "src/bsim4.proto"], &["src/"])
+        .compile_protos(&["protos/spice21.proto"], &["protos/"])
         .unwrap();
 }
