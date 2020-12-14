@@ -28,25 +28,37 @@ fn test_dcop1() -> TestResult {
 /// I-R DCOP
 #[test]
 fn test_dcop2() -> TestResult {
-    let ckt = Ckt::from_comps(vec![
-        Comp::idc("i1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
-        Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
-    ]);
+    let ckt = Ckt::from_yaml(
+        r#"
+            name: tbd
+            defs: []
+            signals: [vdd]
+            comps:
+              - {type: I, name: i1, p: vdd, n: "", dc: 1e-3 }
+              - {type: R, name: r1, p: vdd, n: "", g: 1e-3 }
+        "#,
+    )?;
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(1.0);
+    assert(soln.get("vdd")?).eq(1.0)?;
     Ok(())
 }
 /// I - R - R divider
 #[test]
 fn test_dcop3() -> TestResult {
-    let ckt = Ckt::from_comps(vec![
-        Comp::r("r1", 1e-3, NodeRef::Num(0), NodeRef::Gnd),
-        Comp::r("r1", 1e-3, NodeRef::Num(1), NodeRef::Num(0)),
-        Comp::idc("i1", 1e-3, NodeRef::Num(1), NodeRef::Gnd),
-    ]);
+    let ckt = Ckt::from_yaml(
+        r#"
+            name: tbd
+            defs: []
+            signals: [vdd, div]
+            comps:
+              - {type: I, name: i1, p: vdd, n: "",  dc: 1e-3 }
+              - {type: R, name: r1, p: vdd, n: div, g: 1e-3 }
+              - {type: R, name: r2, p: div, n: "",  g: 1e-3 }
+        "#,
+    )?;
     let soln = dcop(ckt)?;
-    assert((soln.get("0")? - 1.0).abs() < 1e-4);
-    assert((soln.get("1")? - 2.0).abs() < 1e-4);
+    assert(soln.get("div")? - 1.0).abs().lt(1e-4)?;
+    assert(soln.get("vdd")? - 2.0).abs().lt(1e-4)?;
     Ok(())
 }
 /// V - R - R divider
@@ -74,13 +86,18 @@ fn test_dcop4() -> TestResult {
 #[test]
 fn test_dcop5() -> TestResult {
     // I - R - Diode
-    use crate::circuit::{Di, Vi};
-    use NodeRef::Gnd;
-
+    use crate::circuit::{DiodeI, Vi};
     // Voltage-biased Diode
     let v = 0.70;
     let mut ckt = Ckt::new();
-    ckt.add(Di::new("dd", n("p"), Gnd));
+    ckt.signals = vec!["p".into()];
+    add_diode_defaults(&mut ckt);
+    ckt.add(DiodeI {
+        name: "dd".into(),
+        p: "p".into(),
+        n: "".into(),
+        params: "default".into(),
+    });
     ckt.add(Vi {
         name: s("vin"),
         p: n("p"),
@@ -96,7 +113,14 @@ fn test_dcop5() -> TestResult {
 
     // Current-biased Diode, with the measured current
     let mut ckt = Ckt::new();
-    ckt.add(Di::new("dd", n("p"), Gnd));
+    ckt.signals.push("p".into());
+    add_diode_defaults(&mut ckt);
+    ckt.add(DiodeI {
+        name: "dd".into(),
+        p: "p".into(),
+        n: "".into(),
+        params: "default".into(),
+    });
     ckt.add(Comp::idc("i1", i, n("p"), Gnd));
 
     // Check the voltage matches our initial v-bias
@@ -109,56 +133,47 @@ fn test_dcop5() -> TestResult {
 /// NMOS Char
 #[test]
 fn test_dcop6() -> TestResult {
-    let mut ckt = Ckt::from_comps(vec![
-        Comp::Mos(Mosi {
-            name: s("m"),
-            model: "nmos".into(),
-            params: "".into(),
-            ports: MosPorts {
-                g: Num(0),
-                d: Num(1),
-                s: Gnd,
-                b: Gnd,
-            },
-        }),
-        Comp::vdc("v1", 1.0, Num(0), Gnd),
-        Comp::vdc("v2", 1.0, Num(1), Gnd),
-    ]);
+    let mut ckt = Ckt::from_yaml(
+        r#"
+            name: nmos_diode
+            signals: [g, d]
+            defs: []
+            comps:
+            - {type: M, name: m, ports: {g: g, d: d, s: "", b: ""}, params: default, model: nmos }
+            - {type: V, name: v1, p: g, n: "", dc: 1.0, acm: 0.0 }
+            - {type: V, name: v2, p: d, n: "", dc: 1.0, acm: 0.0 }
+        "#,
+    )?;
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(1.0);
-    assert(soln.get("1")?).eq(1.0);
-    assert(soln.get("v1")?).eq(0.0);
-    assert(soln.get("v2")? + 14.1e-3).abs().lt(1e-4);
+    assert(soln.get("g")?).eq(1.0)?;
+    assert(soln.get("d")?).eq(1.0)?;
+    assert(soln.get("v1")?).eq(0.0)?;
+    assert(soln.get("v2")? + 14.1e-3).abs().lt(1e-4)?;
     Ok(())
 }
 /// PMOS Char
 #[test]
 fn test_dcop7() -> TestResult {
-    use NodeRef::{Gnd, Num};
-    let mut ckt = Ckt::from_comps(vec![
-        Comp::Mos(Mosi {
-            name: s("m"),
-            model: "pmos".into(),
-            params: "".into(),
-            ports: MosPorts {
-                g: Num(0),
-                d: Num(1),
-                s: Gnd,
-                b: Gnd,
-            },
-        }),
-        Comp::vdc("v1", -1.0, NodeRef::Num(0), NodeRef::Gnd),
-        Comp::vdc("v2", -1.0, NodeRef::Num(1), NodeRef::Gnd),
-    ]);
+    let mut ckt = Ckt::from_yaml(
+        r#"
+            name: pmos_diode
+            signals: [g, d]
+            defs: []
+            comps:
+            - {type: M, name: m, ports: {g: g, d: d, s: "", b: ""}, params: default, model: pmos }
+            - {type: V, name: v1, p: g, n: "", dc: -1.0, acm: 0.0 }
+            - {type: V, name: v2, p: d, n: "", dc: -1.0, acm: 0.0 }
+        "#,
+    )?;
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(-1.0);
-    assert(soln.get("1")?).eq(-1.0);
-    assert(soln.get("v1")?).eq(0.0);
-    assert(soln.get("v2")? - 14.1e-3).abs().lt(1e-4);
+    assert(soln.get("g")?).eq(-1.0)?;
+    assert(soln.get("d")?).eq(-1.0)?;
+    assert(soln.get("v1")?).eq(0.0)?;
+    assert(soln.get("v2")? - 14.1e-3).abs().lt(1e-4)?;
     Ok(())
 }
 /// Diode NMOS
@@ -183,7 +198,7 @@ fn test_dcop8() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")? - 0.697).abs().lt(1e-3);
+    assert(soln.get("0")? - 0.697).abs().lt(1e-3)?;
     Ok(())
 }
 /// Diode NMOS Tran
@@ -213,7 +228,7 @@ fn test_diode_nmos_tran() -> TestResult {
     };
     let soln = tran(ckt, opts)?;
     for point in soln.data.iter() {
-        assert(point[0] - 0.697).abs().lt(1e-3);
+        assert(point[0] - 0.697).abs().lt(1e-3)?;
     }
     Ok(())
 }
@@ -239,7 +254,7 @@ fn test_dcop8b() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")? - 0.697).abs().lt(1e-3);
+    assert(soln.get("0")? - 0.697).abs().lt(1e-3)?;
     Ok(())
 }
 /// Diode PMOS
@@ -263,7 +278,7 @@ fn test_diode_pmos_dcop() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")? + 0.697).abs().lt(1e-3);
+    assert(soln.get("0")? + 0.697).abs().lt(1e-3)?;
     Ok(())
 }
 /// Diode PMOS Tran
@@ -319,7 +334,7 @@ fn test_dcop8d() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")? + 0.697).abs().lt(1e-3);
+    assert(soln.get("0")? + 0.697).abs().lt(1e-3)?;
     Ok(())
 }
 /// NMOS-R, "Grounded"
@@ -342,7 +357,7 @@ fn test_dcop9() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(0.0);
+    assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
 /// NMOS-R, "Grounded", S/D Swapped
@@ -366,7 +381,7 @@ fn test_dcop9b() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(0.0);
+    assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
 
@@ -391,7 +406,7 @@ fn test_dcop9c() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(0.0);
+    assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
 /// PMOS-R, "Grounded", S/D Swapped
@@ -415,7 +430,7 @@ fn test_dcop9d() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("0")?).eq(0.0);
+    assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
 /// NMOS-R Inverter
@@ -439,9 +454,9 @@ fn test_dcop10() -> TestResult {
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.get("vdd")?).eq(1.0);
-    assert!(soln[1] < 50e-3);
-    assert!((soln[2] + 1e-3).abs() < 0.1e-3);
+    assert(soln.get("vdd")?).eq(1.0)?;
+    assert(soln[1]).lt(50e-3)?;
+    assert(soln[2] + 1e-3).abs().lt(0.1e-3)?;
     Ok(())
 }
 /// PMOS-R Inverter
@@ -1418,13 +1433,13 @@ fn test_hier1() -> TestResult {
     Ok(())
 }
 /// Test-helper to write results to JSON file
-/// Panics if write fails 
+/// Panics if write fails
 #[allow(dead_code)]
 fn to_file(soln: &TranResult, fname: &str) {
-    use std::fs::File;
-    use std::io::prelude::*;
     #[allow(unused_imports)] // Need these traits in scope
     use serde::ser::{SerializeSeq, Serializer};
+    use std::fs::File;
+    use std::io::prelude::*;
 
     // FIXME: "configuration" of when new data written is right here!
     const OVERWRITE: bool = true;
@@ -1435,7 +1450,7 @@ fn to_file(soln: &TranResult, fname: &str) {
     }
 }
 /// Read golden results from JSON
-/// Panics if read fails 
+/// Panics if read fails
 fn load_golden(fname: &str) -> HashMap<String, Vec<f64>> {
     use std::fs::File;
     use std::io::BufReader;
@@ -1484,4 +1499,13 @@ fn add_bsim4_defaults(ckt: &mut Ckt) {
     ckt.defs.bsim4.models.insert("pmos".into(), pmos);
     let params = Bsim4InstSpecs::default();
     ckt.defs.bsim4.insts.insert("default".into(), params);
+}
+/// Helper. Modifies `ckt` adding Diode defaults
+fn add_diode_defaults(ckt: &mut Ckt) {
+    use crate::comps::diode::{DiodeModel, DiodeInstParams};
+    ckt.defs.diodes.add_model("default".into(), DiodeModel::default());
+    ckt.defs.diodes.add_inst("default".into(), DiodeInstParams{
+        model: "default".into(),
+        ..Default::default()
+    });
 }

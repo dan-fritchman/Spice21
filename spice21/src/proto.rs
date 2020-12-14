@@ -81,8 +81,7 @@ mod tests {
                         name: s("dtbd"),
                         p: s("a"),
                         n: s("b"),
-                        area: 1.0,
-                        temp: 300.0,
+                        params: "default".into(),
                     })),
                 },
                 Instance {
@@ -156,8 +155,7 @@ mod tests {
                                     name: s("dtbd"),
                                     p: s("a"),
                                     n: s("b"),
-                                    area: 1.0,
-                                    temp: 300.0,
+                                    params: "default".into(),
                                 })),
                             },
                             Instance {

@@ -9,17 +9,15 @@ use num::Complex;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-use super::analysis::{AnalysisInfo, Stamps, VarIndex, Variables, Options};
+use super::analysis::{AnalysisInfo, Options, Stamps, VarIndex, Variables};
 use super::sparse21::{Eindex, Matrix};
 use crate::{SpNum, SpResult};
 
-use diode::Diode0;
-pub mod diode;
-pub(crate) use diode::{Diode, DiodeInstParams, DiodeModel};
+// Sub-modules and re-exports
 pub mod mos;
 pub(crate) use mos::*;
 pub mod bsim4;
-pub use bsim4::Bsim4;
+pub mod diode;
 
 /// Constants
 pub mod consts {
@@ -52,7 +50,7 @@ impl<'a> Component for FakeComp<'a> {
 }
 
 ///
-/// Spice21 ComponentSolver
+/// # Spice21 ComponentSolver
 /// The primary enumeration of component-types supported in simulation.
 ///
 /// Shout-out `enum_dispatch` for "dynamic" dispatching the methods of
@@ -64,11 +62,11 @@ pub(crate) enum ComponentSolver<'a> {
     Isrc(Isrc),
     Capacitor(Capacitor),
     Resistor(Resistor),
-    Diode0(Diode0),
-    Diode(Diode),
-    Mos0(Mos0),
-    Mos1(Mos1),
-    Bsim4(Bsim4),
+    Diode0(diode::Diode0),
+    Diode(diode::Diode),
+    Mos0(mos::Mos0),
+    Mos1(mos::Mos1),
+    Bsim4(bsim4::Bsim4),
     FakeComp(FakeComp<'a>),
 }
 
@@ -76,20 +74,20 @@ pub(crate) enum ComponentSolver<'a> {
 pub(crate) trait Component {
     /// Commit operating-point guesses to internal state
     fn commit(&mut self) {}
-
     /// Update values of single-valued components
     /// FIXME: prob not for every Component
     fn update(&mut self, _val: f64) {}
-
     /// Validation of parameter Values etc.
     fn validate(&self) -> SpResult<()> {
         Ok(())
     }
-
+    /// AC & Complex-Valued Analysis Load Method
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
         panic!("AC Not Implemented For This Component!")
     }
+    /// DC, Tran, and all real-valued analysis load method
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64>;
+    /// Create matrix elements, adding them to mutable Matrix `mat`
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>);
 }
 

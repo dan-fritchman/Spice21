@@ -12,17 +12,16 @@ use enum_dispatch::enum_dispatch;
 use std::collections::HashMap;
 
 use crate::{SpError, SpResult};
-
 use super::comps::bsim4::Bsim4Cache;
 use super::comps::mos::{MosPorts, MosType};
-use super::comps::{DiodeInstParams, DiodeModel};
-use super::proto::def::Defines as DefProto;
+
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 
 // Re-exports
 pub use super::proto::Module as ModuleDef;
 pub use super::proto::ModuleInstance as ModuleI;
+pub use super::proto::Diode as DiodeI;
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -91,27 +90,7 @@ pub struct Ci {
     pub c: f64,
     pub p: NodeRef,
     pub n: NodeRef,
-}
-/// Diode Instance
-pub struct Di {
-    pub name: String,
-    pub model: DiodeModel,
-    pub inst: DiodeInstParams,
-    pub p: NodeRef,
-    pub n: NodeRef,
-}
-
-impl Di {
-    pub fn new<S: Into<String>>(name: S, p: NodeRef, n: NodeRef) -> Self {
-        Self {
-            p,
-            n,
-            name: name.into(),
-            inst: DiodeInstParams::default(),
-            model: DiodeModel::default(),
-        }
-    }
-}
+} 
 
 /// Mos Instance
 pub struct Mosi {
@@ -132,7 +111,7 @@ pub enum Comp {
     I(Ii),
     R(Ri),
     C(Ci),
-    D(Di),
+    D(DiodeI),
     Mos(Mosi),
     Module(ModuleI),
 }
@@ -198,10 +177,6 @@ impl Comp {
                 };
                 Comp::C(x)
             }
-            CompProto::D(d) => {
-                let d1 = Di::new(d.name, n(d.p), n(d.n));
-                Comp::D(d1)
-            }
             CompProto::V(v) => {
                 let vs = Vi {
                     name: v.name,
@@ -234,23 +209,48 @@ impl Comp {
                     ports,
                 })
             }
+            CompProto::D(x) => Comp::D(x),
             CompProto::X(x) => Comp::Module(x),
         }
     }
 }
 
+
+use std::sync::{Arc, RwLock};
+
+pub(crate) type DefPtr<T> = Arc<RwLock<T>>;
+pub(crate) fn defptr<T>(i: T) -> DefPtr<T> {
+    Arc::new(RwLock::new(i))
+}
+
+use crate::comps::diode::DiodeDefs;
+
 use crate::proto::Mos1InstParams as Mos1InstSpecs;
 use crate::proto::Mos1Model as Mos1ModelSpecs;
+
+///
+/// # Mos1 Model and Instance-Param Definitions
+///
 #[derive(Default)]
 pub struct Mos1Defs {
     pub(crate) models: HashMap<String, Mos1ModelSpecs>,
     pub(crate) insts: HashMap<String, Mos1InstSpecs>,
 }
+///
+/// # Definitions Struct
+///
+/// Central repository for top-level circuit definitions, including:
+/// * Module definitions
+/// * Models
+/// * Instance parameter-sets
+///
+#[derive(Default)]
 pub struct Defs {
     pub(crate) modules: HashMap<String, ModuleDef>,
     pub(crate) mos0: HashMap<String, MosType>,
     pub(crate) mos1: Mos1Defs,
     pub(crate) bsim4: Bsim4Cache,
+    pub(crate) diodes: DiodeDefs,
 }
 impl Defs {
     pub fn new() -> Self {
@@ -258,12 +258,16 @@ impl Defs {
             modules: HashMap::new(),
             mos0: HashMap::new(),
             mos1: Mos1Defs::default(),
-            bsim4: Bsim4Cache::new(),
+            bsim4: Bsim4Cache::default(),
+            diodes: DiodeDefs::default(),
         }
     }
 }
 
-/// Primary Circuit Structure
+///
+/// # Primary Circuit Structure
+///
+#[derive(Default)]
 pub struct Ckt {
     pub name: String,
     pub signals: Vec<String>,
@@ -277,7 +281,7 @@ impl Ckt {
             name: String::from(""),
             signals: Vec::new(),
             comps: Vec::new(),
-            defs: Defs::new(),
+            defs: Defs::default(),
         }
     }
     /// Create a Circuit from a vector of Components
@@ -299,6 +303,7 @@ impl Ckt {
         } = c;
         let mut defs = Defs::new();
 
+        use super::proto::def::Defines as DefProto;
         // Step through all definitions
         for def in ds_.into_iter() {
             match def.defines.unwrap() {
@@ -453,8 +458,7 @@ mod tests {
                         "name": "dtbd",
                         "p": "a",
                         "n": "b",
-                        "area": 1.0,
-                        "temp": 300.0
+                        "params": "default"
                     },
                     {
                         "type": "M",

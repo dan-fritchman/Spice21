@@ -1,11 +1,14 @@
 //!
 //! # Diode Solver(s)
 //!
+use std::collections::HashMap;
+
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Stamps, VarIndex, VarKind, Variables};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{attr, SpNum, SpResult};
+use crate::{attr, SpNum, SpResult, sperror};
+use crate::circuit::{DefPtr, defptr};
 
 // Diode Model Parameters
 attr!(
@@ -48,6 +51,7 @@ impl DiodeModel {
 pub struct DiodeInstParams {
     pub temp: Option<f64>, // Instance temperature
     pub area: Option<f64>, // Area factor
+    pub model: String,     // Model Name
 }
 
 /// Diode Operating Point
@@ -190,9 +194,9 @@ impl DiodeIntParams {
 #[derive(Default)]
 pub struct Diode {
     pub ports: DiodePorts,
-    pub model: DiodeModel,
-    pub inst: DiodeInstParams,
-    pub intp: DiodeIntParams,
+    pub model: DefPtr<DiodeModel>,
+    // pub inst: DiodeInstParams,
+    pub intp: DefPtr<DiodeIntParams>,
     pub matps: DiodeMatps,
     pub op: DiodeOpPoint,
     pub guess: DiodeOpPoint,
@@ -202,20 +206,20 @@ impl Diode {
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
         let vnew = vd;
         let vold = if let Some(v) = past { v } else { self.guess.vd };
-        let DiodeIntParams { vte, vcrit, .. } = self.intp;
+        let intp = &*(self.intp.read().unwrap()); 
         // Typical case - unchanged
-        if vnew <= vcrit || (vnew - vold).abs() <= 2.0 * vte {
+        if vnew <= intp.vcrit || (vnew - vold).abs() <= 2.0 * intp.vte {
             return vnew;
         }
         // Limiting cases
         if vold > 0.0 {
-            let arg = 1.0 + (vnew - vold) / vte;
+            let arg = 1.0 + (vnew - vold) / intp.vte;
             if arg > 0.0 {
-                return vold + vte * arg.ln();
+                return vold + intp.vte * arg.ln();
             }
-            return vcrit;
+            return intp.vcrit;
         }
-        return vte * (vnew / vte).ln();
+        return intp.vte * (vnew / intp.vte).ln();
     }
 }
 impl Component for Diode {
@@ -230,18 +234,18 @@ impl Component for Diode {
     }
     /// Parameter Validation
     fn validate(&self) -> SpResult<()> {
-        // FIXME: convert these to Error types
-        if self.model.m > 0.9 {
-            panic!("diode grading coefficient too big!");
+        let model = &*(self.model.read().unwrap());
+        if model.m > 0.9 {
+            return Err(sperror("diode grading coefficient too big!"));
         }
-        if self.model.eg < 0.1 {
-            panic!("Diode activation energy too small!");
+        if model.eg < 0.1 {
+            return Err(sperror("Diode activation energy too small!"));
         }
-        if self.model.fc > 0.95 {
-            panic!("Diode fc too big!");
+        if model.fc > 0.95 {
+            return Err(sperror("Diode fc too big!"));
         }
-        if self.model.bv < 0.0 {
-            panic!("Diode breakdown voltages must be positive values");
+        if model.bv < 0.0 {
+            return Err(sperror("Diode breakdown voltages must be positive values"));
         }
         Ok(())
     }
@@ -251,56 +255,45 @@ impl Component for Diode {
     }
     /// DC & Transient Stamp Loading
     fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+        // Grab the data from our shared attributes
+        let model = &*(self.model.read().unwrap());
+        let intp = &*(self.intp.read().unwrap());
+        // Grab all relevant options
         let gmin = opts.gmin;
-        // Destructure most key parameters
-        let DiodeIntParams {
-            vt,
-            vte,
-            isat,
-            gspr,
-            f1,
-            f2,
-            f3,
-            cz,
-            cz2,
-            dep_threshold,
-            bv,
-            ..
-        } = self.intp;
 
         // Extract our differential voltage
         let mut vd = guess.get(self.ports.r) - guess.get(self.ports.n);
         // Apply inter-estimate limits
-        if self.model.has_bv() && vd < (10.0 * vte - bv).min(0.0) {
-            let vtemp = self.limit(-bv, Some(bv - self.guess.vd));
-            vd = vtemp - bv;
+        if model.has_bv() && vd < (10.0 * intp.vte - intp.bv).min(0.0) {
+            let vtemp = self.limit(-intp.bv, Some(intp.bv - self.guess.vd));
+            vd = vtemp - intp.bv;
         } else {
             vd = self.limit(vd, None);
         }
         // Calculate diode current and its derivative, conductance
-        let (mut id, mut gd) = if !self.model.has_bv() || vd >= -bv {
+        let (mut id, mut gd) = if !model.has_bv() || vd >= -intp.bv {
             // Regular (non-breakdown) operation
-            let e = (vd / vte).exp();
-            (isat * (e - 1.0) + gmin * vd, isat * e / vte + gmin)
+            let e = (vd / intp.vte).exp();
+            (intp.isat * (e - 1.0) + gmin * vd, intp.isat * e / intp.vte + gmin)
         } else {
             // Breakdown - vd < BV
-            let e = ((vd - bv) / vte).exp();
-            (-isat * e + gmin * vd, isat * e / vte + gmin)
+            let e = ((vd - intp.bv) / intp.vte).exp();
+            (-intp.isat * e + gmin * vd, intp.isat * e / intp.vte + gmin)
         };
 
         // Charge Storage Calculations
-        let (qd, cd) = if vd < dep_threshold {
-            let a = 1.0 - vd / self.model.vj;
-            let s = -self.model.m * a.ln();
-            let qd = self.model.tt * self.model.vj * cz * (1.0 - a * s) / (1.0 - self.model.m);
-            let cd = self.model.tt * gd + cz * s;
+        let (qd, cd) = if vd < intp.dep_threshold {
+            let a = 1.0 - vd / model.vj;
+            let s = -model.m * a.ln();
+            let qd = model.tt * model.vj * intp.cz * (1.0 - a * s) / (1.0 - model.m);
+            let cd = model.tt * gd + intp.cz * s;
             (qd, cd)
         } else {
             // Forward-bias model, adapted from Spice's polynomial approach
-            let qd = self.model.tt * id
-                + cz * f1
-                + cz2 * (f3 * (vd - dep_threshold) + self.model.m / 2.0 / self.model.vj * (vd * vd - dep_threshold * dep_threshold));
-            let cd = self.model.tt + cz2 * f3 + self.model.m * vd / self.model.vj;
+            let qd = model.tt * id
+                + intp.cz * intp.f1
+                + intp.cz2 * (intp.f3 * (vd - intp.dep_threshold) + model.m / 2.0 / model.vj * (vd * vd - intp.dep_threshold * intp.dep_threshold));
+            let cd = model.tt + intp.cz2 * intp.f3 + model.m * vd / model.vj;
             (qd, cd)
         };
         // If in transient, add the cap current and conductance
@@ -329,10 +322,10 @@ impl Component for Diode {
                 (self.matps.nn, gd),
                 (self.matps.rn, -gd),
                 (self.matps.nr, -gd),
-                (self.matps.rr, gd + gspr),
-                (self.matps.pp, gspr),
-                (self.matps.pr, -gspr),
-                (self.matps.rp, -gspr),
+                (self.matps.rr, gd + intp.gspr),
+                (self.matps.pp, intp.gspr),
+                (self.matps.pr, -intp.gspr),
+                (self.matps.rp, -intp.gspr),
             ],
             b: vec![(self.ports.r, -irhs), (self.ports.n, irhs)],
         };
@@ -370,5 +363,66 @@ impl Component for Diode0 {
             g: vec![(self.pp, gd), (self.nn, gd), (self.pn, -gd), (self.np, -gd)],
             b: vec![(self.p, -irhs), (self.n, irhs)],
         };
+    }
+}
+
+///
+/// # Diode Model and Instance-Param Definitions 
+///
+/// Definitions of DiodeModels and DiodeInstanceParams are stored in HashMaps
+/// `models` and `insts` as they are defined. 
+/// When instances are requested via the `get` method, 
+/// internal parameters (`DiodeInternalParams`) are derived, 
+/// and stored alongside pointers to their models in the `cache` Hash. 
+/// 
+#[derive(Default)]
+pub struct DiodeDefs {
+    models: HashMap<String, DefPtr<DiodeModel>>,
+    insts: HashMap<String, DiodeInstParams>,
+    cache: HashMap<String, DiodeCacheEntry>,
+}
+/// Diode Cache Entry
+/// Includes the internal/ derived, instance, and model parameters
+/// that fully characterize a Diode instance
+pub(crate) struct DiodeCacheEntry {
+    pub(crate) model: DefPtr<DiodeModel>,
+    pub(crate) intp: DefPtr<DiodeIntParams>,
+}
+impl DiodeCacheEntry {
+    fn clone(&self) -> Self {
+        Self {
+            model: DefPtr::clone(&self.model),
+            intp: DefPtr::clone(&self.intp),
+        }
+    }
+}
+impl DiodeDefs {
+    pub(crate) fn add_model(&mut self, name: &str, specs: DiodeModel) {
+        self.models.insert(name.to_string(), defptr(specs));
+    }
+    pub(crate) fn add_inst(&mut self, name: &str, inst: DiodeInstParams) {
+        self.insts.insert(name.to_string(), inst);
+    }
+    pub(crate) fn get(&mut self, inst_name: &String, opts: &Options) -> Option<DiodeCacheEntry> {
+        if let Some(e) = self.cache.get(&inst_name.clone()) {
+            return Some(e.clone());
+        }
+        // Not in cache, check whether we have definitions.
+        let inst = self.insts.get(inst_name)?;
+        let model = self.models.get(&inst.model)?;
+        // If we get here, we found definitions of both instance and model params. 
+        // Now derive the internal ones, including any circuit options. 
+        let intp = {
+            let m = &*(model.read().ok()?);
+            DiodeIntParams::derive(m, inst, opts)
+        };
+        // Create new pointers and a new cache entry for the new combo. 
+        let intp = defptr(intp);
+        let entry = DiodeCacheEntry {
+            intp,
+            model: DefPtr::clone(&model),
+        };
+        self.cache.insert(inst_name.clone(), entry.clone());
+        Some(entry)
     }
 }

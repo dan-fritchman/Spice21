@@ -33,6 +33,13 @@ message Vsrc {
     double acm = 5;
 }
 
+// Terminal Structure for Two-Terminal Devices
+// All such devices have terminal-names "p" and "n". 
+message TwoTerms {
+    string p = 2; // Positive Terminal 
+    string n = 3; // Negative Terminal 
+}
+// Diode Model Parameters 
 message DiodeModel {
     string name = 1;
     double tnom = 2;
@@ -51,14 +58,26 @@ message DiodeModel {
     double rs = 15;
     double cj0 = 16;
 }
-// Diode Instance 
-message Diode {
-    string name = 1;
-    string p = 2;
-    string n = 3;
+// Diode Instance Parameters 
+message DiodeInstParams {
+    string name = 1;  // Param-set Name 
+    string model = 2; // Model Name
     double area = 4;
     double temp = 5;
 }
+// Diode Instance 
+message Diode {
+    string name = 1; 
+    string p = 2;
+    string n = 3;
+    string params = 5; // Instance parameter-set name
+}
+// message Diode {
+//   string name = 1; // Instance Name 
+//   string params = 3; // Instance parameter-set name
+//   TwoTerms ports = 4; // Port connections
+// }
+
 // Instance Enumeration 
 // Includes variants for all simulator-defined primitives, 
 // plus custom-defined Modules. 
@@ -96,7 +115,8 @@ message ModuleInstance {
 message Def {
     oneof defines {
         Module module = 1;
-        DiodeModel diodemodel = 3;
+        DiodeModel diodemodel = 2;
+        DiodeInstParams diodeinst = 3;
         Bsim4Model bsim4model = 4;
         Bsim4InstParams bsim4inst = 5;
         Mos1Model mos1model = 6;

@@ -22,7 +22,7 @@ use crate::comps::mos::MosType;
 #[test]
 fn test_bsim4_load() -> TestResult {
     // Create & retrieve model & instance params, the normal way
-    let mut cache = Bsim4Cache::new();
+    let mut cache = Bsim4Cache::default();
     cache.add_model("default", Bsim4ModelSpecs::new(MosType::NMOS));
     cache.add_inst(Bsim4InstSpecs::default());
     let (model, inst) = cache.get(&"default".to_string(), &"".to_string()).ok_or(sperror("Model Not Found"))?;

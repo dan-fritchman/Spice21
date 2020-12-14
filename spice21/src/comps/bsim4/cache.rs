@@ -45,19 +45,13 @@ impl Bsim4InstEntry {
 }
 
 /// Model, Instance, and Combination Registries
+#[derive(Default)]
 pub(crate) struct Bsim4Cache {
     pub(crate) models: HashMap<String, Bsim4ModelSpecs>,
     pub(crate) insts: HashMap<String, Bsim4InstSpecs>,
     cache: HashMap<(String, String), (Bsim4ModelEntry, Bsim4InstEntry)>,
 }
 impl Bsim4Cache {
-    pub(crate) fn new() -> Self {
-        Self {
-            models: HashMap::new(),
-            insts: HashMap::new(),
-            cache: HashMap::new(),
-        }
-    }
     pub(crate) fn add_model(&mut self, name:&str, specs: Bsim4ModelSpecs) {
         self.models.insert(name.to_string(), specs);
     }

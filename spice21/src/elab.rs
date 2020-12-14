@@ -82,23 +82,30 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             Comp::Module(x) => self.elaborate_module_inst(x, ns),
         }
     }
-    pub(crate) fn elaborate_diode(&mut self, d: circuit::Di, ns: &mut HashMap<String, Option<VarIndex>>) {
-        use crate::comps::diode::{Diode, DiodeIntParams, DiodePorts};
+    pub(crate) fn elaborate_diode(&mut self, d: circuit::DiodeI, ns: &mut HashMap<String, Option<VarIndex>>) {
+        use crate::comps::diode;
         // Destruct the key parser-diode attributes
-        let circuit::Di { name, model, inst, p, n } = d;
+        let circuit::DiodeI { name, params, p, n, .. } = d;
         // Create or retrive the solver node-variables
-        let autonode = self.on_top();
-        let pvar = self.node_var(p, autonode, ns);
-        let nvar = self.node_var(n, autonode, ns);
-        self.path.push(name);
+        // FIXME: note no auto-noding here
+        let pvar = ns.get(&p).unwrap().clone();
+        let nvar = ns.get(&n).unwrap().clone();
+        self.path.push(name.clone());
+        // Get our model and params from definitions
+        let ddef = match self.defs.diodes.get(&params.clone(), &self.opts) {
+            Some(e) => e,
+            None => panic!(format!("Parameters not defined: {}", params)),
+        };
+        let diode::DiodeCacheEntry { model, intp } = ddef;
         // Derive internal params
-        let intp = DiodeIntParams::derive(&model, &inst, &self.opts);
+        let ports = {
+            let m = &*(model.read().unwrap());
+            diode::DiodePorts::from(self.pathstr(), m, pvar, nvar, &mut self.vars)
+        };
         // And create our solver
-        let ports = DiodePorts::from(self.pathstr(), &model, pvar, nvar, &mut self.vars);
-        let d = Diode {
+        let d = diode::Diode {
             ports,
             model,
-            inst,
             intp,
             ..Default::default()
         };

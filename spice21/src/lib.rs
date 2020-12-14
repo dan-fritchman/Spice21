@@ -27,7 +27,7 @@ pub(crate) mod macros {
     ]) => {
         #[allow(dead_code)]
         #[doc=$struct_desc]
-        #[derive(Clone, Copy)]
+        #[derive(Clone)]
         pub struct $src_name {
             $( #[doc=$desc]
                 pub $attr_name : $attr_type ),*
