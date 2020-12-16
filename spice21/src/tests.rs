@@ -933,10 +933,12 @@ fn test_mos1_cmos_ro_dcop() -> TestResult {
     let soln = dcop(ckt)?;
     // Checks
     assert(soln.get("vdd")?).eq(1.0)?;
-    for k in ["1", "2", "3"].into_iter() {
-        assert(soln.get(*k)?).gt(0.45)?;
-        assert(soln.get(*k)?).lt(0.55)?;
-    }
+    assert(soln.get("1")?).gt(0.45)?;
+    assert(soln.get("1")?).lt(0.55)?;
+    assert(soln.get("2")?).gt(0.45)?;
+    assert(soln.get("2")?).lt(0.55)?;
+    assert(soln.get("3")?).gt(0.45)?;
+    assert(soln.get("3")?).lt(0.55)?;
     Ok(())
 }
 /// Mos1 CMOS Ring Oscillator Tran

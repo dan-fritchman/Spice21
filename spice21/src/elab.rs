@@ -141,7 +141,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         // Add the instance-name to our path
         self.path.push(name);
         // Determine solver-type from defined models
-        let c: ComponentSolver = if let Some(m_) = self.defs.bsim4.models.get(&model) {
+        let c: ComponentSolver = if let Some(_m) = self.defs.bsim4.models.get(&model) {
             use crate::comps::bsim4::bsim4ports::Bsim4Ports;
             use crate::comps::bsim4::Bsim4;
             let (model, inst) = self.defs.bsim4.get(&model, &params).unwrap();
@@ -173,7 +173,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         self.path.len() == 0
     }
     pub(crate) fn elaborate_module_inst(&mut self, m: circuit::ModuleI, ns: &mut HashMap<String, Option<VarIndex>>) {
-        let circuit::ModuleI { name, module, ports, params } = m;
+        let circuit::ModuleI { name, module, ports, .. } = m;
         // FIXME: parameter handling
 
         let mdef = match self.defs.modules.get(&module) {
@@ -200,7 +200,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
     }
     /// Elaborate the content of `ModuleDef` `m`.
     pub(crate) fn elaborate_module(&mut self, m: circuit::ModuleDef, ns: &mut HashMap<String, Option<VarIndex>>) {
-        let circuit::ModuleDef { name, signals, comps, .. } = m;
+        let circuit::ModuleDef { signals, comps, .. } = m;
         // FIXME: parameter handling
 
         // Create new Variables for each internal Signal, and add them to the Variable namespace
@@ -231,7 +231,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
 /// Returns the generated `Elaborator`, including its flattened `ComponentSolvers`
 /// and all definitions carried over from `ckt`.
 pub(crate) fn elaborate<'a, T: SpNum>(ckt: circuit::Ckt, opts: Options) -> Elaborator<'a, T> {
-    let circuit::Ckt { name, comps, defs, signals } = ckt;
+    let circuit::Ckt { comps, defs, signals, .. } = ckt;
     let mut e = Elaborator {
         comps: Vec::new(),
         vars: Variables::new(),

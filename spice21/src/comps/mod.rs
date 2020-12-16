@@ -43,7 +43,7 @@ pub(crate) struct FakeComp<'a> {
 }
 #[allow(dead_code)]
 impl<'a> Component for FakeComp<'a> {
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         panic!("FakeComp somehow got instantiated")
     }
     fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
@@ -129,7 +129,7 @@ impl Component for Vsrc {
         self.ni = make_matrix_elem(mat, self.n, Some(self.ivar));
         self.in_ = make_matrix_elem(mat, Some(self.ivar), self.n);
     }
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         return Stamps {
             g: vec![(self.pi, 1.0), (self.ip, 1.0), (self.ni, -1.0), (self.in_, -1.0)],
             b: vec![(Some(self.ivar), self.v)],
@@ -196,7 +196,7 @@ impl Component for Capacitor {
     fn commit(&mut self) {
         self.op = self.guess;
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         let vd = guess.get(self.p) - guess.get(self.n);
         let q = self.q(vd);
 
@@ -295,7 +295,7 @@ impl Component for Resistor {
             }
         }
     }
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         use TwoTerm::{N, P};
         return Stamps {
             g: vec![
@@ -336,7 +336,7 @@ impl Isrc {
 
 impl Component for Isrc {
     fn create_matrix_elems<T: SpNum>(&mut self, _mat: &mut Matrix<T>) {}
-    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, _guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         return Stamps {
             g: vec![],
             b: vec![(self.p, self.i), (self.n, -self.i)],

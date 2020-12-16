@@ -11,7 +11,7 @@ use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables, Options};
 use crate::sparse21::{Eindex, Matrix};
-use crate::SpNum;
+use crate::{SpNum, proto};
 
 /// Mos Terminals, in SPICE order: d, g, s, b
 #[derive(Clone, Copy)]
@@ -131,16 +131,14 @@ pub struct Mos1Model {
     pub u0: f64,
     pub fc: f64,
     pub nsub: f64,
-    pub tpg: bool,
     pub nss: f64,
     pub tnom: f64,
     pub kf: f64,
     pub af: f64,
+    pub tpg: bool,
 }
-
-use crate::proto::Mos1Model as Mos1ModelSpecs;
 impl Mos1Model {
-    pub(crate) fn resolve(specs: Mos1ModelSpecs) -> Self {
+    pub(crate) fn resolve(specs: proto::Mos1Model) -> Self {
         Self {
             mos_type: if specs.mos_type == 1 { MosType::PMOS } else { MosType::NMOS },
             vt0: if let Some(val) = specs.vt0 { val } else { 0.0 },
@@ -171,14 +169,14 @@ impl Mos1Model {
             fc: if let Some(val) = specs.fc { val } else { 0.5 },
             kf: if let Some(val) = specs.kf { val } else { 0.0 },
             af: if let Some(val) = specs.af { val } else { 1.0 },
-            tnom: if let Some(val) = specs.tnom { val } else { 27.0 },
+            tnom: if let Some(val) = specs.tnom { val } else { 27.0 }, // FIXME: C vs K here 
             tpg: specs.tpg,
         }
     }
 }
 impl Default for Mos1Model {
     fn default() -> Self {
-        Self::resolve(Mos1ModelSpecs::default())
+        Self::resolve(proto::Mos1Model::default())
     }
 }
 
@@ -528,12 +526,12 @@ impl Mos1 {
         };
 
         // FIXME: bulk junction diodes
-        let cbs = 0.0;
-        let cbd = 0.0;
+        let _cbs = 0.0;
+        let _cbd = 0.0;
         // let gbd = 1e-9;
         // let gbs = 1e-9;
-        let gcbd = 0.0;
-        let gcbs = 0.0;
+        let _gcbd = 0.0;
+        let _gcbs = 0.0;
 
         // Store as our op point for next time
         let guess = Mos1OpPoint {
@@ -557,9 +555,9 @@ impl Mos1 {
             reversed,
         };
 
-        // Bulk junction caps RHS adjustment
-        let ceqbs = 0.0; //p * (cbs + gbs * vsb);
-        let ceqbd = 0.0; //p * (cbd + gbd * vdb);
+        // FIXME: Bulk junction caps RHS adjustment
+        let _ceqbs = 0.0; //p * (cbs + gbs * vsb);
+        let _ceqbd = 0.0; //p * (cbd + gbd * vdb);
         let irhs = ids - gm * vgs - gds * vds;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
@@ -617,13 +615,13 @@ impl Component for Mos1 {
         // Load our last guess as the new operating point
         self.op = self.guess.clone();
     }
-    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         let v = self.vs(vars); // Collect terminal voltages
         let (op, stamps) = self.op_stamp(v, an); // Do most of our work here
         self.guess = op; // Save the calculated operating point
         stamps // And return our matrix stamps
     }
-    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo, opts: &Options) -> Stamps<Complex<f64>> {
+    fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(_opts, state) => state.omega,
@@ -640,12 +638,12 @@ impl Component for Mos1 {
         let gcgb = omega * self.op.cgb;
 
         // FIXME: bulk junction diodes
-        let cbs = 0.0;
-        let cbd = 0.0;
+        let _cbs = 0.0;
+        let _cbd = 0.0;
         let gbd = 1e-9;
         let gbs = 1e-9;
-        let gcbd = 0.0;
-        let gcbs = 0.0;
+        let _gcbd = 0.0;
+        let _gcbs = 0.0;
         let gcbg = 0.0;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
@@ -734,7 +732,7 @@ impl Component for Mos0 {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         let vg = guess.get(self.ports[G]);
         let vd = guess.get(self.ports[D]);
         let vs = guess.get(self.ports[S]);

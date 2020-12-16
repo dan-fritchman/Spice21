@@ -1,5 +1,6 @@
 syntax = "proto3";
 package spice21;
+import "google/protobuf/wrappers.proto";
 import "mos.proto";
 import "bsim4.proto";
 
@@ -42,28 +43,28 @@ message TwoTerms {
 // Diode Model Parameters 
 message DiodeModel {
     string name = 1;
-    double tnom = 2;
-    double is = 3;
-    double n = 4;
-    double tt = 5;
-    double vj = 6;
-    double m = 7;
-    double eg = 8;
-    double xti = 9;
-    double kf = 10;
-    double af = 11;
-    double fc = 12;
-    double bv = 13;
-    double ibv = 14;
-    double rs = 15;
-    double cj0 = 16;
+    google.protobuf.DoubleValue tnom = 2;
+    google.protobuf.DoubleValue is = 3;
+    google.protobuf.DoubleValue n = 4;
+    google.protobuf.DoubleValue tt = 5;
+    google.protobuf.DoubleValue vj = 6;
+    google.protobuf.DoubleValue m = 7;
+    google.protobuf.DoubleValue eg = 8;
+    google.protobuf.DoubleValue xti = 9;
+    google.protobuf.DoubleValue kf = 10;
+    google.protobuf.DoubleValue af = 11;
+    google.protobuf.DoubleValue fc = 12;
+    google.protobuf.DoubleValue bv = 13;
+    google.protobuf.DoubleValue ibv = 14;
+    google.protobuf.DoubleValue rs = 15;
+    google.protobuf.DoubleValue cj0 = 16;
 }
 // Diode Instance Parameters 
 message DiodeInstParams {
     string name = 1;  // Param-set Name 
     string model = 2; // Model Name
-    double area = 4;
-    double temp = 5;
+    google.protobuf.DoubleValue area = 4;
+    google.protobuf.DoubleValue temp = 5;
 }
 // Diode Instance 
 message Diode {

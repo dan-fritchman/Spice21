@@ -3,6 +3,7 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
+#[allow(unused_imports)] // These traits must be in scope, no matter what `cargo check` thinks. 
 use num::{Num, One, Zero};
 
 use crate::assert::assert;

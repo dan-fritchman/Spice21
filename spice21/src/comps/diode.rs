@@ -6,9 +6,10 @@ use std::collections::HashMap;
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Stamps, VarIndex, VarKind, Variables};
+use crate::circuit::{defptr, DefPtr};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{attr, SpNum, SpResult, sperror};
-use crate::circuit::{DefPtr, defptr};
+use crate::{attr, from_opt_type, sperror, SpNum, SpResult};
+use crate::proto;
 
 // Diode Model Parameters
 attr!(
@@ -30,7 +31,7 @@ attr!(
         (ibv, f64, 1e-3, "Current at reverse breakdown voltage"), //
         (rs, f64, 0.0, "Ohmic resistance"),
         (cj0, f64, 0.0, "Junction capacitance"),
-        // Removed:
+        // Removed, redudant params:
         // (cjo, f64, 0.0, "Junction capacitance"),
         // (cond, f64, 0.0, "Ohmic conductance"),
     ]
@@ -43,6 +44,33 @@ impl DiodeModel {
     }
     pub(crate) fn has_bv(&self) -> bool {
         self.bv != 0.0
+    }
+    /// Derive a `DiodeModel` from (`Option`-based) `proto::DiodeModel`
+    /// Apply defaults for all unspecified fields 
+    pub(crate) fn from(specs: proto::DiodeModel) -> Self {
+        Self {
+            tnom: if let Some(val) = specs.tnom { val } else { 300.15 },
+            is: if let Some(val) = specs.is { val } else { 1e-14 },
+            n: if let Some(val) = specs.n { val } else { 1.0 },
+            tt: if let Some(val) = specs.tt { val } else { 0.0 },
+            vj: if let Some(val) = specs.vj { val } else { 1.0 },
+            m: if let Some(val) = specs.m { val } else { 0.5 },
+            eg: if let Some(val) = specs.eg { val } else { 1.11 },
+            xti: if let Some(val) = specs.xti { val } else { 3.0 },
+            kf: if let Some(val) = specs.kf { val } else { 0.0 },
+            af: if let Some(val) = specs.af { val } else { 1.0 },
+            fc: if let Some(val) = specs.fc { val } else { 0.5 },
+            bv: if let Some(val) = specs.bv { val } else { 0.0 },
+            ibv: if let Some(val) = specs.ibv { val } else { 1e-3 },
+            rs: if let Some(val) = specs.rs { val } else { 0.0 },
+            cj0: if let Some(val) = specs.cj0 { val } else { 0.0 },
+        }
+    }
+}
+impl Default for DiodeModel {
+    /// Default DiodeModel, derived from the all-default-value proto-
+    fn default() -> Self {
+        Self::from(proto::DiodeModel::default())
     }
 }
 
@@ -206,7 +234,7 @@ impl Diode {
     fn limit(&self, vd: f64, past: Option<f64>) -> f64 {
         let vnew = vd;
         let vold = if let Some(v) = past { v } else { self.guess.vd };
-        let intp = &*(self.intp.read().unwrap()); 
+        let intp = &*(self.intp.read().unwrap());
         // Typical case - unchanged
         if vnew <= intp.vcrit || (vnew - vold).abs() <= 2.0 * intp.vte {
             return vnew;
@@ -351,7 +379,7 @@ impl Component for Diode0 {
         self.np = make_matrix_elem(mat, self.n, self.p);
         self.nn = make_matrix_elem(mat, self.n, self.n);
     }
-    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
         let vp = guess.get(self.p);
         let vn = guess.get(self.n);
         let vd = (vp - vn).max(-1.5).min(1.5);
@@ -367,14 +395,14 @@ impl Component for Diode0 {
 }
 
 ///
-/// # Diode Model and Instance-Param Definitions 
+/// # Diode Model and Instance-Param Definitions
 ///
 /// Definitions of DiodeModels and DiodeInstanceParams are stored in HashMaps
-/// `models` and `insts` as they are defined. 
-/// When instances are requested via the `get` method, 
-/// internal parameters (`DiodeInternalParams`) are derived, 
-/// and stored alongside pointers to their models in the `cache` Hash. 
-/// 
+/// `models` and `insts` as they are defined.
+/// When instances are requested via the `get` method,
+/// internal parameters (`DiodeInternalParams`) are derived,
+/// and stored alongside pointers to their models in the `cache` Hash.
+///
 #[derive(Default)]
 pub struct DiodeDefs {
     models: HashMap<String, DefPtr<DiodeModel>>,
@@ -410,13 +438,13 @@ impl DiodeDefs {
         // Not in cache, check whether we have definitions.
         let inst = self.insts.get(inst_name)?;
         let model = self.models.get(&inst.model)?;
-        // If we get here, we found definitions of both instance and model params. 
-        // Now derive the internal ones, including any circuit options. 
+        // If we get here, we found definitions of both instance and model params.
+        // Now derive the internal ones, including any circuit options.
         let intp = {
             let m = &*(model.read().ok()?);
             DiodeIntParams::derive(m, inst, opts)
         };
-        // Create new pointers and a new cache entry for the new combo. 
+        // Create new pointers and a new cache entry for the new combo.
         let intp = defptr(intp);
         let entry = DiodeCacheEntry {
             intp,
