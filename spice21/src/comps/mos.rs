@@ -9,9 +9,9 @@ use std::ops::{Index, IndexMut};
 
 use super::consts;
 use super::{make_matrix_elem, Component};
-use crate::analysis::{AnalysisInfo, Stamps, VarIndex, Variables, Options};
+use crate::analysis::{AnalysisInfo, Options, Stamps, VarIndex, Variables};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{SpNum, proto};
+use crate::{proto, SpNum};
 
 /// Mos Terminals, in SPICE order: d, g, s, b
 #[derive(Clone, Copy)]
@@ -23,6 +23,7 @@ pub enum MosTerm {
 }
 use MosTerm::{B, D, G, S};
 
+#[derive(Default)]
 pub struct MosPorts<T> {
     pub d: T,
     pub g: T,
@@ -111,8 +112,6 @@ pub struct Mos1Model {
     pub gamma: f64,
     pub phi: f64,
     pub lambda: f64,
-    pub rd: f64,
-    pub rs: f64,
     pub cbd: f64,
     pub cbs: f64,
     pub is: f64,
@@ -120,7 +119,6 @@ pub struct Mos1Model {
     pub cgso: f64,
     pub cgdo: f64,
     pub cgbo: f64,
-    pub rsh: f64,
     pub cj: f64,
     pub mj: f64,
     pub cjsw: f64,
@@ -135,10 +133,13 @@ pub struct Mos1Model {
     pub tnom: f64,
     pub kf: f64,
     pub af: f64,
+    pub rd: Option<f64>,
+    pub rs: Option<f64>,
+    pub rsh: Option<f64>,
     pub tpg: bool,
 }
 impl Mos1Model {
-    pub(crate) fn resolve(specs: proto::Mos1Model) -> Self {
+    pub(crate) fn resolve(specs: &proto::Mos1Model) -> Self {
         Self {
             mos_type: if specs.mos_type == 1 { MosType::PMOS } else { MosType::NMOS },
             vt0: if let Some(val) = specs.vt0 { val } else { 0.0 },
@@ -146,8 +147,6 @@ impl Mos1Model {
             gamma: if let Some(val) = specs.gamma { val } else { 0.0 },
             phi: if let Some(val) = specs.phi { val } else { 0.6 },
             lambda: if let Some(val) = specs.lambda { val } else { 0.0 },
-            rd: if let Some(val) = specs.rd { val } else { 0.0 },
-            rs: if let Some(val) = specs.rs { val } else { 0.0 },
             cbd: if let Some(val) = specs.cbd { val } else { 0.0 },
             cbs: if let Some(val) = specs.cbs { val } else { 0.0 },
             is: if let Some(val) = specs.is { val } else { 1.0e-14 },
@@ -155,7 +154,6 @@ impl Mos1Model {
             cgso: if let Some(val) = specs.cgso { val } else { 0.0 },
             cgdo: if let Some(val) = specs.cgdo { val } else { 0.0 },
             cgbo: if let Some(val) = specs.cgbo { val } else { 0.0 },
-            rsh: if let Some(val) = specs.rsh { val } else { 0.0 },
             cj: if let Some(val) = specs.cj { val } else { 0.0 },
             mj: if let Some(val) = specs.mj { val } else { 0.5 },
             cjsw: if let Some(val) = specs.cjsw { val } else { 0.0 },
@@ -169,14 +167,24 @@ impl Mos1Model {
             fc: if let Some(val) = specs.fc { val } else { 0.5 },
             kf: if let Some(val) = specs.kf { val } else { 0.0 },
             af: if let Some(val) = specs.af { val } else { 1.0 },
-            tnom: if let Some(val) = specs.tnom { val } else { 27.0 }, // FIXME: C vs K here 
+            tnom: if let Some(val) = specs.tnom {
+                val + consts::KELVIN_TO_C
+            } else {
+                consts::TEMP_REF
+            }, // C to Kelvin conversion, right here
+            rd: specs.rd, // Options
+            rs: specs.rs,
+            rsh: specs.rsh,
             tpg: specs.tpg,
         }
+    }
+    pub(crate) fn p(&self) -> f64 {
+        self.mos_type.p()
     }
 }
 impl Default for Mos1Model {
     fn default() -> Self {
-        Self::resolve(proto::Mos1Model::default())
+        Self::resolve(&proto::Mos1Model::default())
     }
 }
 
@@ -192,18 +200,17 @@ pub struct Mos1InstanceParams {
     ps: f64,
     nrd: f64,
     nrs: f64,
-    temp: f64,
+    temp: Option<f64>,
     // FIXME: maybe even more explicitly ignore these
-    // dtemp: f64,
+    // dtemp: Option<f64>,
     // off: bool,
     // icvds: f64,
     // icvgs: f64,
     // icvbs: f64,
     // ic: f64,
 }
-use crate::proto::Mos1InstParams as Mos1InstSpecs;
 impl Mos1InstanceParams {
-    pub(crate) fn resolve(specs: Mos1InstSpecs) -> Self {
+    pub(crate) fn resolve(specs: &proto::Mos1InstParams) -> Self {
         Mos1InstanceParams {
             m: if let Some(val) = specs.m { val } else { 0.0 },
             l: if let Some(val) = specs.l { val } else { 1e-6 },
@@ -214,7 +221,7 @@ impl Mos1InstanceParams {
             ps: if let Some(val) = specs.ps { val } else { 1e-6 },
             nrd: if let Some(val) = specs.nrd { val } else { 1.0 },
             nrs: if let Some(val) = specs.nrs { val } else { 1.0 },
-            temp: if let Some(val) = specs.temp { val } else { consts::TEMP_REF },
+            temp: specs.temp
             // dtemp: if let Some(val) = specs.dtemp { val } else { 0.0 },
             // icvds: if let Some(val) = specs.icvds { val } else { 0.0 },
             // icvgs: if let Some(val) = specs.icvgs { val } else { 0.0 },
@@ -226,17 +233,16 @@ impl Mos1InstanceParams {
 }
 impl Default for Mos1InstanceParams {
     fn default() -> Self {
-        Self::resolve(Mos1InstSpecs::default())
+        Self::resolve(&proto::Mos1InstParams::default())
     }
 }
 
 /// Mos1 Internal "Parameters", derived at instance-construction
 /// and updated only on changes in temperature
-#[derive(Default)]
 struct Mos1InternalParams {
     temp: f64,
     vtherm: f64,
-    vt_t: f64,
+    vt0_t: f64,
     kp_t: f64,
     phi_t: f64,
     beta: f64,
@@ -245,75 +251,55 @@ struct Mos1InternalParams {
     cgd_ov: f64,
     cgb_ov: f64,
     leff: f64,
-    isat_bd: f64,
-    isat_bs: f64,
+    drain_junc: MosJunction,
+    source_junc: MosJunction,
     grd: f64,
     grs: f64,
+}
+
+enum SourceDrain {
+    S,
+    D,
+}
+struct MosJunction {
+    area: f64,
+    isat: f64,
+    depletion_threshold: f64,
+    vcrit: f64,
+    czb: f64,
+    czbsw: f64,
+    f2: f64,
+    f3: f64,
+    f4: f64,
+    sd: SourceDrain,
 }
 
 /// Mos1 DC & Transient Operating Point
 #[derive(Default, Clone)]
 struct Mos1OpPoint {
     ids: f64,
-    //    id: f64,
-    //    is: f64,
-    //    ig: f64,
-    //    ib: f64,
-    //    ibd: f64,
-    //    ibs: f64,
     vgs: f64,
     vds: f64,
     vgd: f64,
     vgb: f64,
-    //    vds: f64,
-    //    vbs: f64,
-    //    vbd: f64,
-
-    //    von: f64,
-    //    vdsat: f64,
-    //    sourcevcrit: f64,
-    //    drainvcrit: f64,
-    //    rs: f64,
-    //    sourceconductance: f64,
-    //    rd: f64,
-    //    drainconductance: f64,
-    //
     gm: f64,
     gds: f64,
-    //    gmb: f64,
     gmbs: f64,
-    //    gbd: f64,
-    //    gbs: f64,
-
-    //    cbd: f64,
-    //    cbs: f64,
     cgs: f64,
     cgd: f64,
     cgb: f64,
-
-    //    cqgs: f64,
-    //    cqgd: f64,
-    //    cqgb: f64,
-    //    cqbd: f64,
-    //    cqbs: f64,
-    //
-    //    cbd0: f64,
-    //    cbdsw0: f64,
-    //    cbs0: f64,
-    //    cbssw0: f64,
     qgs: f64,
     qgd: f64,
     qgb: f64,
-    //    qbd: f64,
-    //    qbs: f64,
-    //    pwr: f64,
     icgs: f64,
     icgd: f64,
     icgb: f64,
     reversed: bool,
 }
 
-/// Mos Level 1 Solver
+///
+/// # Mos Level 1 Solver
+///
 pub struct Mos1 {
     model: Mos1Model,
     _params: Mos1InstanceParams,
@@ -323,11 +309,9 @@ pub struct Mos1 {
     ports: MosPorts<Option<VarIndex>>,
     matps: MosMatrixPointers,
 }
-
-/// Mosfet Level 1 Instance
 impl Mos1 {
-    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosPorts<Option<VarIndex>>) -> Mos1 {
-        let intparams = Mos1::derive(&model, &params);
+    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosPorts<Option<VarIndex>>, opts: &Options) -> Mos1 {
+        let intparams = Mos1::derive(&model, &params, opts);
         Mos1 {
             model,
             _params: params,
@@ -339,47 +323,186 @@ impl Mos1 {
         }
     }
     /// Calculate derived parameters from instance parameters
-    fn derive(model: &Mos1Model, inst: &Mos1InstanceParams) -> Mos1InternalParams {
-        let temp = inst.temp;
-        let vtherm = temp * consts::KB_OVER_Q;
-        // FIXME: all temperature dependences
-        let phi_t = model.phi;
+    fn derive(model: &Mos1Model, inst: &Mos1InstanceParams, opts: &Options) -> Mos1InternalParams {
+        if let Some(t) = inst.temp {
+            panic!("Mos1 Instance Temperatures Are Not Supported");
+        }
+        let temp = opts.temp; // Note: in Kelvin
 
-        let leff = inst.l - 2.0 * model.ld;
+        use consts::{KB, KB_OVER_Q, Q, TEMP_REF};
 
+        // FIXME: offload these parts to derived Models
         let cox_per_area = consts::SIO2_PERMITTIVITY / model.tox;
-        let cox = cox_per_area * leff * inst.w;
+        // Nominal temperature params
+        let fact1 = model.tnom / TEMP_REF;
+        let vtnom = model.tnom * KB_OVER_Q;
+        let kt1 = KB * model.tnom;
+        let egfet1 = 1.16 - (7.02e-4 * model.tnom.powi(2)) / (model.tnom + 1108.0);
+        let arg1 = -egfet1 / 2.0 / kt1 + 1.1150877 / (KB * 2.0 * TEMP_REF);
+        let pbfact1 = -2.0 * vtnom * (1.5 * fact1.ln() + Q * arg1);
 
-        let kp_t = model.u0 * cox_per_area * 1e-4;
-        let beta = kp_t * inst.w / leff;
+        // FIXME: more model derivations to come
 
-        let isat_bd = 1e-15; // FIXME!
-        let isat_bs = 1e-15; // FIXME!
+        // Instance temperature params
+        let kt = temp * KB;
+        let vtherm = temp * KB_OVER_Q;
+        let temp_ratio = temp / model.tnom;
+        let fact2 = temp / TEMP_REF;
+        let egfet = 1.16 - (7.02e-4 * temp.powi(2)) / (temp + 1108.0);
+        let arg = -egfet / 2.0 / kt + 1.1150877 / (KB * 2.0 * TEMP_REF);
+        let pbfact = -2.0 * vtherm * (1.5 * fact2.ln() + Q * arg);
 
+        // Effective Length
+        let leff = inst.l - 2.0 * model.ld;
+        if leff < 0.0 {
+            panic!("Mos1 Effective Length < 0");
+        }
+
+        let phio = (model.phi - pbfact1) / fact1;
+        let phi_t = fact2 * phio + pbfact;
+        let vbi_t = model.vt0 - model.p() * (model.gamma * model.phi.sqrt()) + 0.5 * (egfet1 - egfet) + model.p() * 0.5 * (phi_t - model.phi);
+        let vt0_t = vbi_t + model.p() * model.gamma * phi_t.sqrt();
+        let isat_t = model.is * (-egfet / vtherm + egfet1 / vtnom).exp();
+        let jsat_t = model.js * (-egfet / vtherm + egfet1 / vtnom).exp();
+
+        let pbo = (model.pb - pbfact1) / fact1;
+        let gmaold = (model.pb - pbo) / pbo;
+        let capfact = 1.0 / (1.0 + model.mj * (4e-4 * (model.tnom - TEMP_REF) - gmaold));
+        let mut cbd_t = model.cbd * capfact;
+        let mut cbs_t = model.cbs * capfact;
+        let mut cj_t = model.cj * capfact;
+        let capfact = 1.0 / (1.0 + model.mjsw * (4e-4 * (model.tnom - TEMP_REF) - gmaold));
+        let mut cjsw_t = model.cjsw * capfact;
+        let bulkpot_t = fact2 * pbo + pbfact;
+        let gmanew = (bulkpot_t - pbo) / pbo;
+        let capfact = 1.0 / (1.0 + model.mj * (4e-4 * (temp - TEMP_REF) - gmanew));
+        cbd_t *= capfact;
+        cbs_t *= capfact;
+        cj_t *= capfact;
+        let capfact = 1.0 / (1.0 + model.mjsw * (4e-4 * (temp - TEMP_REF) - gmanew));
+        cjsw_t *= capfact;
+
+        // S/D Junction Params
+        let depletion_threshold = model.fc * bulkpot_t;
+        let arg = 1.0 - model.fc;
+        let sarg = ((-model.mj) * arg.ln()).exp();
+        let sargsw = ((-model.mjsw) * arg.ln()).exp();
+        let use_default_isat: bool = jsat_t == 0.0 || inst.a_d == 0.0 || inst.a_s == 0.0;
+
+        // MosJunction construction-closure
+        let junc_new = |area: f64, perim: f64, sd: SourceDrain| {
+            let isat = if use_default_isat { isat_t } else { jsat_t * area };
+            let vcrit = vtherm * (vtherm / (consts::SQRT2 * isat)).ln();
+            let czb = match sd {
+                SourceDrain::D => {
+                    if model.cbd != 0.0 {
+                        cbd_t
+                    } else {
+                        cj_t * area
+                    }
+                }
+                SourceDrain::S => {
+                    if model.cbs != 0.0 {
+                        cbs_t
+                    } else {
+                        cj_t * area
+                    }
+                }
+            };
+            let czbsw = cjsw_t * perim;
+            let f2 = czb * (1.0 - model.fc * (1.0 + model.mj)) * sarg / arg + czbsw * (1.0 - model.fc * (1.0 + model.mjsw)) * sargsw / arg;
+            let f3 = czb * model.mj * sarg / arg / bulkpot_t + czbsw * model.mjsw * sargsw / arg / bulkpot_t;
+            let f4 = czb * bulkpot_t * (1.0 - arg * sarg) / (1.0 - model.mj) + czbsw * bulkpot_t * (1.0 - arg * sargsw) / (1.0 - model.mjsw)
+                - f3 / 2.0 * (depletion_threshold * depletion_threshold)
+                - depletion_threshold * f2;
+
+            MosJunction {
+                area,
+                isat,
+                depletion_threshold,
+                vcrit,
+                czb,
+                czbsw,
+                f2,
+                f3,
+                f4,
+                sd,
+            }
+        };
+
+        // Create the source & drain junction params
+        let drain_junc = junc_new(inst.a_d, inst.pd, SourceDrain::D);
+        let source_junc = junc_new(inst.a_s, inst.ps, SourceDrain::S);
+
+        // Terminal Ohmic Resistances
+        let grs = if let Some(r) = model.rs {
+            if r <= 0.0 {
+                println!("Warning: Mos1 Model with rs <= 0");
+                0.0
+            } else {
+                1.0 / r
+            }
+        } else if let Some(rsh) = model.rsh {
+            if rsh <= 0.0 {
+                println!("Warning: Mos1 Model with rsh <= 0");
+                0.0
+            } else {
+                1.0 / rsh / inst.nrs
+            }
+        } else {
+            0.0
+        };
+        let grd = if let Some(r) = model.rd {
+            if r <= 0.0 {
+                println!("Warning: Mos1 Model with rd <= 0");
+                0.0
+            } else {
+                1.0 / r
+            }
+        } else if let Some(rsh) = model.rsh {
+            if rsh <= 0.0 {
+                println!("Warning: Mos1 Model with rsh <= 0");
+                0.0
+            } else {
+                1.0 / rsh / inst.nrd
+            }
+        } else {
+            0.0
+        };
+
+        // Temperature-adjusted transconductance 
+        let kp_t = model.kp / temp_ratio * temp_ratio.sqrt();
         Mos1InternalParams {
+            vt0_t,
+            kp_t,
             temp,
             vtherm,
             leff,
-            cox,
-            beta,
+            cox: cox_per_area * leff * inst.w,
+            beta: kp_t * inst.w / leff,
             phi_t,
-            isat_bd,
-            isat_bs,
-            ..Default::default()
+            drain_junc,
+            source_junc,
+            cgs_ov: inst.w * model.cgso,
+            cgd_ov: inst.w * model.cgdo,
+            cgb_ov: leff * model.cgbo,
+            grs,
+            grd,
         }
     }
     /// Gather the voltages on each of our node-variables from `Variables` `guess`.
     fn vs(&self, vars: &Variables<f64>) -> MosPorts<f64> {
         MosPorts {
-            g: vars.get(self.ports[G]),
             d: vars.get(self.ports[D]),
+            g: vars.get(self.ports[G]),
             s: vars.get(self.ports[S]),
             b: vars.get(self.ports[B]),
         }
     }
     /// Primary action behind dc & transient loading.
     /// Returns calculated "guess" operating point, plus matrix stamps
-    fn op_stamp(&self, v: MosPorts<f64>, an: &AnalysisInfo) -> (Mos1OpPoint, Stamps<f64>) {
+    fn op_stamp(&self, v: MosPorts<f64>, an: &AnalysisInfo, opts: &Options) -> (Mos1OpPoint, Stamps<f64>) {
+        let gmin = opts.gmin;
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
         // i.e. the polarities typically expressed for NMOS
@@ -397,9 +520,9 @@ impl Mos1 {
 
         // Threshold & body effect calcs
         let von = if vsb > 0.0 {
-            self.intparams.vt_t + self.model.gamma * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
+            self.intparams.vt0_t + self.model.gamma * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
         } else {
-            self.intparams.vt_t // FIXME: body effect for Vsb < 0
+            self.intparams.vt0_t // FIXME: body effect for Vsb < 0
         };
         let vov = vgs - von;
         let vdsat = vov.max(0.0);
@@ -430,25 +553,17 @@ impl Mos1 {
         }
 
         // Bulk Junction Diodes
-        let gmin_temp = 1e-15; // FIXME: get from the circuit
-        let (isat_bs, isat_bd, vtherm) = (self.intparams.isat_bs, self.intparams.isat_bd, self.intparams.vtherm);
+        let vtherm = self.intparams.vtherm;
+        let isat_bs = self.intparams.source_junc.isat;
+        let isat_bd = self.intparams.drain_junc.isat;
         // Source-Bulk
         let ibs = isat_bs * ((-vsb / vtherm).exp() - 1.0);
-        let gbs = (isat_bs / vtherm) * (-vsb / vtherm).exp() + gmin_temp;
+        let gbs = (isat_bs / vtherm) * (-vsb / vtherm).exp() + gmin;
         let ibs_rhs = ibs + vsb * gbs;
         // Drain-Bulk
         let ibd = isat_bd * ((-vdb / vtherm).exp() - 1.0);
-        let gbd = (isat_bd / vtherm) * (-vdb / vtherm).exp() + gmin_temp;
+        let gbd = (isat_bd / vtherm) * (-vdb / vtherm).exp() + gmin;
         let ibd_rhs = ibd + vdb * gbd;
-        // let (gsb, isb) = if vsb > 0.0 {
-        //     // Reverse Bias
-        //     // Not buying this "linear reverse bias" shortcut from SPICE yet.
-        //     let (isat, vtherm) = (self.intparams.isat_bs, self.intparams.vtherm);
-        //     let gsb1 = isat / vterm;
-        //     (gsb1 + gmin_temp, -1.0 * gsb1 * vsb)
-        // } else {
-        //     // Forward bias
-        // };
 
         // Capacitance Calculations
         let cox = self.intparams.cox;
@@ -525,11 +640,9 @@ impl Mos1 {
             (0.0, 0.0, 0.0)
         };
 
-        // FIXME: bulk junction diodes
+        // FIXME: bulk junction diode caps
         let _cbs = 0.0;
         let _cbd = 0.0;
-        // let gbd = 1e-9;
-        // let gbs = 1e-9;
         let _gcbd = 0.0;
         let _gcbs = 0.0;
 
@@ -556,8 +669,8 @@ impl Mos1 {
         };
 
         // FIXME: Bulk junction caps RHS adjustment
-        let _ceqbs = 0.0; //p * (cbs + gbs * vsb);
-        let _ceqbd = 0.0; //p * (cbd + gbd * vdb);
+        // let _ceqbs = p * (cbs + gbs * vsb);
+        // let _ceqbd = 0.0; //p * (cbd + gbd * vdb);
         let irhs = ids - gm * vgs - gds * vds;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
@@ -615,9 +728,9 @@ impl Component for Mos1 {
         // Load our last guess as the new operating point
         self.op = self.guess.clone();
     }
-    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, vars: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         let v = self.vs(vars); // Collect terminal voltages
-        let (op, stamps) = self.op_stamp(v, an); // Do most of our work here
+        let (op, stamps) = self.op_stamp(v, an, opts); // Do most of our work here
         self.guess = op; // Save the calculated operating point
         stamps // And return our matrix stamps
     }
@@ -686,6 +799,16 @@ impl Component for Mos1 {
     }
 }
 
+use std::collections::HashMap;
+///
+/// # Mos1 Model and Instance-Param Definitions
+///
+#[derive(Default)]
+pub struct Mos1Defs {
+    pub(crate) models: HashMap<String, proto::Mos1Model>,
+    pub(crate) insts: HashMap<String, proto::Mos1InstParams>,
+}
+
 /// Mos Level-Zero Instance Parameters
 pub(crate) struct Mos0Params {
     mos_type: MosType,
@@ -693,7 +816,6 @@ pub(crate) struct Mos0Params {
     beta: f64,
     lam: f64,
 }
-
 impl Default for Mos0Params {
     fn default() -> Self {
         Mos0Params {
@@ -711,7 +833,6 @@ pub struct Mos0 {
     ports: MosPorts<Option<VarIndex>>,
     matps: MosMatrixPointers,
 }
-
 impl Mos0 {
     pub(crate) fn new(ports: MosPorts<Option<VarIndex>>, mos_type: MosType) -> Self {
         Mos0 {
@@ -724,7 +845,6 @@ impl Mos0 {
         }
     }
 }
-
 impl Component for Mos0 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];

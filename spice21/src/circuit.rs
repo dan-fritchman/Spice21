@@ -9,11 +9,10 @@
 //!
 
 use enum_dispatch::enum_dispatch;
-use std::collections::HashMap;
 
 use crate::{SpError, SpResult};
-use super::comps::bsim4::Bsim4Cache;
-use super::comps::mos::{MosPorts, MosType};
+use super::defs::Defs;
+use super::comps::mos::{MosPorts};
 
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
@@ -215,55 +214,6 @@ impl Comp {
     }
 }
 
-
-use std::sync::{Arc, RwLock};
-
-pub(crate) type DefPtr<T> = Arc<RwLock<T>>;
-pub(crate) fn defptr<T>(i: T) -> DefPtr<T> {
-    Arc::new(RwLock::new(i))
-}
-
-use crate::comps::diode::DiodeDefs;
-
-use crate::proto::Mos1InstParams as Mos1InstSpecs;
-use crate::proto::Mos1Model as Mos1ModelSpecs;
-
-///
-/// # Mos1 Model and Instance-Param Definitions
-///
-#[derive(Default)]
-pub struct Mos1Defs {
-    pub(crate) models: HashMap<String, Mos1ModelSpecs>,
-    pub(crate) insts: HashMap<String, Mos1InstSpecs>,
-}
-///
-/// # Definitions Struct
-///
-/// Central repository for top-level circuit definitions, including:
-/// * Module definitions
-/// * Models
-/// * Instance parameter-sets
-///
-#[derive(Default)]
-pub struct Defs {
-    pub(crate) modules: HashMap<String, ModuleDef>,
-    pub(crate) mos0: HashMap<String, MosType>,
-    pub(crate) mos1: Mos1Defs,
-    pub(crate) bsim4: Bsim4Cache,
-    pub(crate) diodes: DiodeDefs,
-}
-impl Defs {
-    pub fn new() -> Self {
-        Self {
-            modules: HashMap::new(),
-            mos0: HashMap::new(),
-            mos1: Mos1Defs::default(),
-            bsim4: Bsim4Cache::default(),
-            diodes: DiodeDefs::default(),
-        }
-    }
-}
-
 ///
 /// # Primary Circuit Structure
 ///
@@ -290,7 +240,7 @@ impl Ckt {
             name: String::from(""),
             signals: Vec::new(),
             comps: comps,
-            defs: Defs::new(),
+            defs: Defs::default(),
         }
     }
     /// Create from a protobuf-generated circuit
@@ -301,7 +251,7 @@ impl Ckt {
             defs: ds_,
             signals,
         } = c;
-        let mut defs = Defs::new();
+        let mut defs = Defs::default();
 
         use super::proto::def::Defines as DefProto;
         // Step through all definitions
@@ -321,10 +271,16 @@ impl Ckt {
                 DefProto::Mos1inst(x) => {
                     defs.mos1.insts.insert(x.name.clone(), x);
                 }
-                DefProto::Module(x) => {
-                    defs.modules.insert(x.name.clone(), x);
+                DefProto::Diodemodel(x) => {
+                    use crate::comps::diode::DiodeModel;
+                    defs.diodes.add_model(&x.name.clone(), DiodeModel::from(x))
                 }
-                _ => return Err(SpError::new("Unsupported Definition")),
+                DefProto::Diodeinst(x) => {
+                    defs.diodes.add_inst(&x.name.clone(), x)
+                }
+                DefProto::Module(x) => {
+                    defs.modules.add(x);
+                }
             }
         }
         // And step through all instances

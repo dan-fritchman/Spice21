@@ -6,10 +6,12 @@ use std::collections::HashMap;
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, Options, Stamps, VarIndex, VarKind, Variables};
-use crate::circuit::{defptr, DefPtr};
+use crate::defs::{defptr, DefPtr};
+use crate::proto;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{attr, from_opt_type, sperror, SpNum, SpResult};
-use crate::proto;
+
+pub(crate) use crate::proto::DiodeInstParams;
 
 // Diode Model Parameters
 attr!(
@@ -46,7 +48,7 @@ impl DiodeModel {
         self.bv != 0.0
     }
     /// Derive a `DiodeModel` from (`Option`-based) `proto::DiodeModel`
-    /// Apply defaults for all unspecified fields 
+    /// Apply defaults for all unspecified fields
     pub(crate) fn from(specs: proto::DiodeModel) -> Self {
         Self {
             tnom: if let Some(val) = specs.tnom { val } else { 300.15 },
@@ -72,14 +74,6 @@ impl Default for DiodeModel {
     fn default() -> Self {
         Self::from(proto::DiodeModel::default())
     }
-}
-
-/// Diode Instance Parameters
-#[derive(Default)]
-pub struct DiodeInstParams {
-    pub temp: Option<f64>, // Instance temperature
-    pub area: Option<f64>, // Area factor
-    pub model: String,     // Model Name
 }
 
 /// Diode Operating Point
@@ -248,7 +242,7 @@ impl Diode {
             return intp.vcrit;
         }
         return intp.vte * (vnew / intp.vte).ln();
-    }
+    } 
 }
 impl Component for Diode {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {

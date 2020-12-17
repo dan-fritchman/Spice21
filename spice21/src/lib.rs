@@ -155,8 +155,9 @@ pub(crate) mod macros {
 // Modules
 pub mod analysis;
 pub mod elab;
-pub mod circuit;
 pub mod comps;
+pub mod circuit;
+pub mod defs;
 pub mod proto;
 pub mod spresult;
 pub mod sparse21;

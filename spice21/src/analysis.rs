@@ -1,16 +1,19 @@
 //! # Spice21 Analyses
 //!
+use num::{Complex, Float, Zero};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Index;
 
-use crate::circuit;
 use crate::circuit::{Ckt, NodeRef};
 use crate::comps::{Component, ComponentSolver};
+use crate::defs;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{sperror, SpNum, SpResult};
-use num::{Complex, Float, Zero};
 
+/// 
+/// # Matrix Stamps 
+/// 
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.g`
@@ -138,7 +141,7 @@ pub(crate) struct Solver<'a, NumT: SpNum> {
     pub(crate) mat: Matrix<NumT>,
     pub(crate) rhs: Vec<NumT>,
     pub(crate) history: Vec<Vec<NumT>>,
-    pub(crate) defs: circuit::Defs,
+    pub(crate) defs: defs::Defs,
     pub(crate) opts: Options,
 }
 
@@ -305,7 +308,9 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
         // Elaborate the circuit
         use crate::elab::{elaborate, Elaborator};
         let e = elaborate(ckt, opts);
-        let Elaborator { defs, mut comps, vars, opts, .. } = e;
+        let Elaborator {
+            defs, mut comps, vars, opts, ..
+        } = e;
         // Create our matrix and its elements
         let mut mat = Matrix::new();
         for comp in comps.iter_mut() {

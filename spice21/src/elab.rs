@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::analysis::{Options, VarIndex, Variables};
-use crate::circuit;
+use crate::{circuit, defs};
 use crate::circuit::{Comp, NodeRef};
 use crate::comps::ComponentSolver;
 use crate::SpNum;
@@ -22,7 +22,7 @@ use crate::SpNum;
 pub(crate) struct Elaborator<'a, NumT: SpNum> {
     pub(crate) comps: Vec<ComponentSolver<'a>>,
     pub(crate) vars: Variables<NumT>,
-    pub(crate) defs: circuit::Defs,
+    pub(crate) defs: defs::Defs,
     pub(crate) path: Vec<String>,
     pub(crate) opts: Options,
 }
@@ -151,9 +151,9 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
             let params = match self.defs.mos1.insts.get(&params) {
                 Some(p) => p.clone(),
-                None => panic!(format!("Parameters not defined: {}", params)),
+                None => panic!(format!("Mos1 Instance Parameter-Set not defined: {}", params)),
             };
-            Mos1::new(Mos1Model::resolve(model.clone()), Mos1InstanceParams::resolve(params), ports.into()).into()
+            Mos1::new(Mos1Model::resolve(&model), Mos1InstanceParams::resolve(&params), ports.into(), &self.opts).into()
         } else if let Some(mos_type) = self.defs.mos0.get(&model) {
             // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
             use crate::comps::Mos0;
@@ -195,11 +195,20 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         if self.path.len() > 1024 {
             panic!("Elaboration Error: Too deep a hierarchy (for now)!");
         }
-        self.elaborate_module(mdef.clone(), &mut inst_ns); // FIXME: stop cloning here please!
+        self.elaborate_module(&*(mdef.read().unwrap()), &mut inst_ns); 
+        self.path.pop();
+    }
+    /// Create a new Signal at `self.path.signame`, and append it to `ns`.
+    pub(crate) fn elaborate_signal(&mut self, signame: &str, ns: &mut HashMap<String, Option<VarIndex>>) {
+        // FIXME: add checks for name collisions
+        self.path.push(signame.to_string());
+        let pathname = self.path.join(".");
+        let var = self.vars.addv(pathname);
+        ns.insert(signame.to_string(), Some(var));
         self.path.pop();
     }
     /// Elaborate the content of `ModuleDef` `m`.
-    pub(crate) fn elaborate_module(&mut self, m: circuit::ModuleDef, ns: &mut HashMap<String, Option<VarIndex>>) {
+    pub(crate) fn elaborate_module(&mut self, m: &circuit::ModuleDef, ns: &mut HashMap<String, Option<VarIndex>>) {
         let circuit::ModuleDef { signals, comps, .. } = m;
         // FIXME: parameter handling
 
@@ -207,24 +216,19 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         for signame in signals.into_iter() {
             self.elaborate_signal(signame, ns);
         }
+        // FIXME: handling of instances differs more materially between `Circuit` (top-level) and `Module` 
+        // than we ever intended. 
+        // Top-levels have a Vec<circuit::Comp> (already converted)
+        // Modules have a Vec<proto::Comp> (i.e. the interface objects )
         // FIXME: check port/ param compatibility
-        for inst in comps.into_iter() {
-            let comp = if let Some(i) = inst.comp {
+        for inst in comps.iter() {
+            let comp = if let Some(i) = inst.comp.clone() {
                 circuit::Comp::from(i)
             } else {
                 panic!("Invalid Comp!!!")
             };
             self.elaborate_instance(comp, ns, false);
         }
-    }
-    /// Create a new Signal at `self.path.signame`, and append it to `ns`.
-    pub(crate) fn elaborate_signal(&mut self, signame: String, ns: &mut HashMap<String, Option<VarIndex>>) {
-        // FIXME: add checks for name collisions
-        self.path.push(signame.clone());
-        let pathname = self.path.join(".");
-        let var = self.vars.addv(pathname);
-        ns.insert(signame, Some(var));
-        self.path.pop();
     }
 }
 /// Elaborate a top-level circuit
@@ -243,7 +247,7 @@ pub(crate) fn elaborate<'a, T: SpNum>(ckt: circuit::Ckt, opts: Options) -> Elabo
     let mut ns: HashMap<String, Option<VarIndex>> = HashMap::new();
     ns.insert("".into(), None);
     // Add Variables for each top-level Signal
-    for signame in signals.into_iter() {
+    for signame in signals.iter() {
         e.elaborate_signal(signame, &mut ns);
     }
     // Visit all of our components
