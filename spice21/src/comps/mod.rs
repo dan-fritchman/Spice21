@@ -18,6 +18,7 @@ pub mod mos;
 pub(crate) use mos::*;
 pub mod bsim4;
 pub mod diode;
+pub mod cmath;
 
 /// Constants
 pub mod consts {

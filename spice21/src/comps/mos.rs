@@ -177,7 +177,7 @@ impl Mos1Model {
                     phi = phi.max(0.1);
                 }
                 // Gate-type manipulations
-                let mut fermis = mos_type.p() * 0.5 * phi;
+                let fermis = mos_type.p() * 0.5 * phi;
                 let mut wkfng = 3.2;
                 let gate_type: f64 = if let Some(val) = specs.tpg {
                     if val > 1 || val < -1 {
@@ -204,25 +204,25 @@ impl Mos1Model {
         }
 
         Self {
-            mos_type,
+            mos_type, // Calculated above
             vt0,
             kp,
             cox_per_area,
             gamma,
             phi,
             tnom,
-            lambda: if let Some(val) = specs.lambda { val } else { 0.0 },
+            lambda: if let Some(val) = specs.lambda { val } else { 0.0 }, // More-straightforward default values
+            pb: if let Some(val) = specs.pb { val } else { 0.8 },
             cbd: if let Some(val) = specs.cbd { val } else { 0.0 },
             cbs: if let Some(val) = specs.cbs { val } else { 0.0 },
-            is: if let Some(val) = specs.is { val } else { 1.0e-14 },
-            pb: if let Some(val) = specs.pb { val } else { 0.8 },
             cgso: if let Some(val) = specs.cgso { val } else { 0.0 },
             cgdo: if let Some(val) = specs.cgdo { val } else { 0.0 },
             cgbo: if let Some(val) = specs.cgbo { val } else { 0.0 },
             cj: if let Some(val) = specs.cj { val } else { 0.0 },
-            mj: if let Some(val) = specs.mj { val } else { 0.5 },
             cjsw: if let Some(val) = specs.cjsw { val } else { 0.0 },
+            mj: if let Some(val) = specs.mj { val } else { 0.5 },
             mjsw: if let Some(val) = specs.mjsw { val } else { 0.5 },
+            is: if let Some(val) = specs.is { val } else { 1.0e-14 },
             js: if let Some(val) = specs.js { val } else { 1.0e-8 }, // FIXME
             tox: if let Some(val) = specs.tox { val } else { 1.0e-7 },
             ld: if let Some(val) = specs.ld { val } else { 0.0 },
@@ -322,6 +322,7 @@ struct MosJunction {
     area: f64,
     isat: f64,
     depletion_threshold: f64,
+    bulkpot_t: f64,
     vcrit: f64,
     czb: f64,
     czbsw: f64,
@@ -329,6 +330,27 @@ struct MosJunction {
     f3: f64,
     f4: f64,
     _sd: SourceDrain,
+}
+impl MosJunction {
+    /// Charge and Capacitance Calculations
+    pub(crate) fn qc(&self, v: f64, model: &Mos1Model) -> (f64, f64) {
+        use super::cmath::{exp, log};
+        if self.czb == 0.0 && self.czbsw == 0.0 {
+            return (0.0, 0.0);
+        }
+        if v < self.depletion_threshold {
+            let arg = 1.0 - v / self.bulkpot_t;
+            let sarg = exp(-model.mj * log(arg));
+            let sargsw = exp(-model.mjsw * log(arg));
+            let q = self.bulkpot_t * (self.czb * (1.0 - arg * sarg) / (1.0 - model.mj) + self.czbsw * (1.0 - arg * sargsw) / (1.0 - model.mjsw));
+            let c = self.czb * sarg + self.czbsw * sargsw;
+            (q, c)
+        } else {
+            let q = self.f4 + v * (self.f2 + v * self.f3 / 2.0);
+            let c = self.f2 + v * self.f3;
+            (q, c)
+        }
+    }
 }
 
 /// Mos1 DC & Transient Operating Point
@@ -466,6 +488,7 @@ impl Mos1 {
                 area,
                 isat,
                 depletion_threshold,
+                bulkpot_t,
                 vcrit,
                 czb,
                 czbsw,

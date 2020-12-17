@@ -26,6 +26,7 @@ pub use bsim4solver::*;
 pub use cache::*;
 pub use inst::*;
 pub use model::*;
+pub use super::cmath::*;
 
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
@@ -44,35 +45,6 @@ pub(crate) const DELTA_2: f64 = 0.02;
 pub(crate) const DELTA_3: f64 = 0.02;
 pub(crate) const DELTA_4: f64 = 0.02;
 
-// Some helper math
-// C-style call syntax, e.g. `min(a,b)` instead of `a.min(b)`
-pub(crate) fn sqrt(a: f64) -> f64 {
-    a.sqrt()
-}
-pub(crate) fn log(a: f64) -> f64 {
-    a.ln()
-}
-pub(crate) fn exp(a: f64) -> f64 {
-    a.exp()
-}
-pub(crate) fn MAX(a: f64, b: f64) -> f64 {
-    a.max(b)
-}
-pub(crate) fn MIN(a: f64, b: f64) -> f64 {
-    a.min(b)
-}
-pub(crate) fn abs(a: f64) -> f64 {
-    a.abs()
-}
-pub(crate) fn atan(a: f64) -> f64 {
-    a.atan()
-}
-pub(crate) fn pow(a: f64, b: f64) -> f64 {
-    a.powf(b)
-}
-pub(crate) fn max(a: f64, b: f64) -> f64 {
-    a.max(b)
-}
 pub(crate) fn dexpb(A: f64) -> f64 {
     if A > EXP_THRESHOLD {
         MAX_EXP * (1.0 + (A) - EXP_THRESHOLD)

@@ -914,7 +914,8 @@ fn cmos_ro3() -> Ckt {
               signals: [] 
               comps: 
               - {type: M, name: p, ports: {g: inp, d: out, s: vdd, b: vdd}, params: default, model: pmos }
-              - {type: M, name: p, ports: {g: inp, d: out, s: vss, b: vss}, params: default, model: nmos }
+              - {type: M, name: n, ports: {g: inp, d: out, s: vss, b: vss}, params: default, model: nmos }
+              - {type: C, name: c, p: out, n: vss, c: 1e-14 }
             comps:
               - {type: V, name: v1, p: vdd, n: "", dc: 1.0, acm: 0.0 }
               - {type: X, name: x1, module: inv, ports: {inp: "1",  out: "2", vdd: vdd, vss: "" }, params: {} }
