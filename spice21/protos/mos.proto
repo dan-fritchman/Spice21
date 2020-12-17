@@ -68,9 +68,9 @@ message Mos1Model { // Level One Model Parameters
   google.protobuf.DoubleValue u0 = 25;
   google.protobuf.DoubleValue fc = 26;
   google.protobuf.DoubleValue nsub = 27;
-  bool tpg = 28;
   google.protobuf.DoubleValue nss = 29;
   google.protobuf.DoubleValue tnom = 30;
   google.protobuf.DoubleValue kf = 31;
   google.protobuf.DoubleValue af = 32;
+  google.protobuf.Int64Value tpg = 28; // Gate Type 
 }

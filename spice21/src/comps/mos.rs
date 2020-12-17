@@ -110,6 +110,7 @@ pub struct Mos1Model {
     pub vt0: f64,
     pub kp: f64,
     pub gamma: f64,
+    pub cox_per_area: f64,
     pub phi: f64,
     pub lambda: f64,
     pub cbd: f64,
@@ -126,26 +127,90 @@ pub struct Mos1Model {
     pub js: f64,
     pub tox: f64,
     pub ld: f64,
-    pub u0: f64,
     pub fc: f64,
-    pub nsub: f64,
-    pub nss: f64,
     pub tnom: f64,
     pub kf: f64,
     pub af: f64,
     pub rd: Option<f64>,
     pub rs: Option<f64>,
     pub rsh: Option<f64>,
-    pub tpg: bool,
 }
 impl Mos1Model {
     pub(crate) fn resolve(specs: &proto::Mos1Model) -> Self {
+        use consts::{KB, KB_OVER_Q, KELVIN_TO_C, Q, SIO2_PERMITTIVITY, TEMP_REF};
+
+        // Convert from Proto-encoded enum form
+        let mos_type = if specs.mos_type == 1 { MosType::PMOS } else { MosType::NMOS };
+
+        // Nominal temperature. C to Kelvin conversion happens right here
+        let tnom = if let Some(val) = specs.tnom { val + KELVIN_TO_C } else { TEMP_REF };
+        let fact1 = tnom / TEMP_REF;
+        let vtnom = tnom * KB_OVER_Q;
+        let kt1 = KB * tnom;
+        let egfet1 = 1.16 - (7.02e-4 * tnom.powi(2)) / (tnom + 1108.0);
+        let arg1 = -egfet1 / 2.0 / kt1 + 1.1150877 / (KB * 2.0 * TEMP_REF);
+        let pbfact1 = -2.0 * vtnom * (1.5 * fact1.ln() + Q * arg1);
+
+        // Parameter defaults take very different tracks depending whether `tox` is specified.
+        // First, the no-tox cases:
+        let mut cox_per_area = 0.0;
+        let mut vt0 = if let Some(val) = specs.vt0 { val } else { 0.0 };
+        let mut kp = if let Some(val) = specs.kp { val } else { 2.0e-5 };
+        let mut phi = if let Some(val) = specs.phi { val } else { 0.6 };
+        let mut gamma = if let Some(val) = specs.gamma { val } else { 0.0 };
+
+        // Now, each of these are updated in the (typical) case in which `tox` is provided
+        if let Some(tox) = specs.tox {
+            cox_per_area = SIO2_PERMITTIVITY / tox;
+            if specs.kp.is_none() {
+                let u0 = if let Some(val) = specs.u0 { val } else { 600.0 };
+                kp = u0 * cox_per_area * 1e-4 /*(m**2/cm**2)*/;
+            };
+            // Substrate doping
+            if let Some(nsub) = specs.nsub {
+                if nsub * 1e6 /*(cm**3/m**3)*/ <= 1.45e16 {
+                    // FIXME: do this check for no-tox too?
+                    panic!("Invalid Mos1 Substrate Doping nsub < ni (1.45e16)")
+                }
+                if specs.phi.is_none() {
+                    phi = 2.0 * vtnom * (nsub*1e6/*(cm**3/m**3)*//1.45e16).ln();
+                    phi = phi.max(0.1);
+                }
+                // Gate-type manipulations
+                let mut fermis = mos_type.p() * 0.5 * phi;
+                let mut wkfng = 3.2;
+                let gate_type: f64 = if let Some(val) = specs.tpg {
+                    if val > 1 || val < -1 {
+                        panic!("Invalid Mos1 tps: {}", val);
+                    }
+                    val as f64
+                } else {
+                    1.0
+                };
+                if gate_type != 0.0 {
+                    let fermig = mos_type.p() * gate_type * 0.5 * egfet1;
+                    wkfng = 3.25 + 0.5 * egfet1 - fermig;
+                }
+                if specs.gamma.is_none() {
+                    gamma = (2.0 * 11.70 * 8.854214871e-12 * Q * nsub * 1e6/*(cm**3/m**3)*/).sqrt() / cox_per_area;
+                }
+                if specs.vt0.is_none() {
+                    let nss = if let Some(val) = specs.nss { val } else { 0.0 };
+                    let wkfngs = wkfng - (3.25 + 0.5 * egfet1 + fermis);
+                    let vfb = wkfngs - nss *1e4 /*(cm**2/m**2)*/ *Q / cox_per_area;
+                    vt0 = vfb + mos_type.p() * (gamma * (phi).sqrt() + phi);
+                }
+            }
+        }
+
         Self {
-            mos_type: if specs.mos_type == 1 { MosType::PMOS } else { MosType::NMOS },
-            vt0: if let Some(val) = specs.vt0 { val } else { 0.0 },
-            kp: if let Some(val) = specs.kp { val } else { 2.0e-5 },
-            gamma: if let Some(val) = specs.gamma { val } else { 0.0 },
-            phi: if let Some(val) = specs.phi { val } else { 0.6 },
+            mos_type,
+            vt0,
+            kp,
+            cox_per_area,
+            gamma,
+            phi,
+            tnom,
             lambda: if let Some(val) = specs.lambda { val } else { 0.0 },
             cbd: if let Some(val) = specs.cbd { val } else { 0.0 },
             cbs: if let Some(val) = specs.cbs { val } else { 0.0 },
@@ -160,24 +225,16 @@ impl Mos1Model {
             mjsw: if let Some(val) = specs.mjsw { val } else { 0.5 },
             js: if let Some(val) = specs.js { val } else { 1.0e-8 }, // FIXME
             tox: if let Some(val) = specs.tox { val } else { 1.0e-7 },
-            nsub: if let Some(val) = specs.nsub { val } else { 0.0 },
-            nss: if let Some(val) = specs.nss { val } else { 0.0 },
             ld: if let Some(val) = specs.ld { val } else { 0.0 },
-            u0: if let Some(val) = specs.u0 { val } else { 600.0 },
             fc: if let Some(val) = specs.fc { val } else { 0.5 },
             kf: if let Some(val) = specs.kf { val } else { 0.0 },
             af: if let Some(val) = specs.af { val } else { 1.0 },
-            tnom: if let Some(val) = specs.tnom {
-                val + consts::KELVIN_TO_C
-            } else {
-                consts::TEMP_REF
-            }, // C to Kelvin conversion, right here
             rd: specs.rd, // Options
             rs: specs.rs,
             rsh: specs.rsh,
-            tpg: specs.tpg,
         }
     }
+    /// MosType polarity accessor
     pub(crate) fn p(&self) -> f64 {
         self.mos_type.p()
     }
@@ -271,7 +328,7 @@ struct MosJunction {
     f2: f64,
     f3: f64,
     f4: f64,
-    sd: SourceDrain,
+    _sd: SourceDrain,
 }
 
 /// Mos1 DC & Transient Operating Point
@@ -329,19 +386,14 @@ impl Mos1 {
         }
         let temp = opts.temp; // Note: in Kelvin
 
+        // Nominal temperature params (note: repeated calcs from Model::derive)
         use consts::{KB, KB_OVER_Q, Q, TEMP_REF};
-
-        // FIXME: offload these parts to derived Models
-        let cox_per_area = consts::SIO2_PERMITTIVITY / model.tox;
-        // Nominal temperature params
         let fact1 = model.tnom / TEMP_REF;
         let vtnom = model.tnom * KB_OVER_Q;
         let kt1 = KB * model.tnom;
         let egfet1 = 1.16 - (7.02e-4 * model.tnom.powi(2)) / (model.tnom + 1108.0);
         let arg1 = -egfet1 / 2.0 / kt1 + 1.1150877 / (KB * 2.0 * TEMP_REF);
         let pbfact1 = -2.0 * vtnom * (1.5 * fact1.ln() + Q * arg1);
-
-        // FIXME: more model derivations to come
 
         // Instance temperature params
         let kt = temp * KB;
@@ -390,24 +442,18 @@ impl Mos1 {
         let use_default_isat: bool = jsat_t == 0.0 || inst.a_d == 0.0 || inst.a_s == 0.0;
 
         // MosJunction construction-closure
-        let junc_new = |area: f64, perim: f64, sd: SourceDrain| {
+        let junc_new = |area: f64, perim: f64, _sd: SourceDrain| {
             let isat = if use_default_isat { isat_t } else { jsat_t * area };
             let vcrit = vtherm * (vtherm / (consts::SQRT2 * isat)).ln();
-            let czb = match sd {
-                SourceDrain::D => {
-                    if model.cbd != 0.0 {
-                        cbd_t
-                    } else {
-                        cj_t * area
-                    }
-                }
-                SourceDrain::S => {
-                    if model.cbs != 0.0 {
-                        cbs_t
-                    } else {
-                        cj_t * area
-                    }
-                }
+            let czb = match _sd {
+                SourceDrain::D => match model.cbd {
+                    0.0 => cj_t * area,
+                    _ => cbd_t,
+                },
+                SourceDrain::S => match model.cbs {
+                    0.0 => cj_t * area,
+                    _ => cbs_t,
+                },
             };
             let czbsw = cjsw_t * perim;
             let f2 = czb * (1.0 - model.fc * (1.0 + model.mj)) * sarg / arg + czbsw * (1.0 - model.fc * (1.0 + model.mjsw)) * sargsw / arg;
@@ -426,7 +472,7 @@ impl Mos1 {
                 f2,
                 f3,
                 f4,
-                sd,
+                _sd,
             }
         };
 
@@ -470,7 +516,7 @@ impl Mos1 {
             0.0
         };
 
-        // Temperature-adjusted transconductance 
+        // Temperature-adjusted transconductance
         let kp_t = model.kp / temp_ratio * temp_ratio.sqrt();
         Mos1InternalParams {
             vt0_t,
@@ -478,7 +524,7 @@ impl Mos1 {
             temp,
             vtherm,
             leff,
-            cox: cox_per_area * leff * inst.w,
+            cox: model.cox_per_area * leff * inst.w,
             beta: kp_t * inst.w / leff,
             phi_t,
             drain_junc,
