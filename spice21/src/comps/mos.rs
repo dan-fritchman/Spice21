@@ -1,5 +1,7 @@
 //!
-//! # MOS Solvers
+//! # MOS Solvers Module
+//!
+//! Shared Mos
 //!
 
 use num::Complex;
@@ -11,7 +13,7 @@ use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, ChargeInteg, Options, Stamps, TranState, VarIndex, Variables};
 use crate::sparse21::{Eindex, Matrix};
-use crate::{proto, SpNum};
+use crate::{analysis, proto, SpNum};
 
 /// Mos Terminals, in SPICE order: d, g, s, b
 #[derive(Clone, Copy)]
@@ -21,8 +23,6 @@ pub enum MosTerm {
     S = 2,
     B = 3,
 }
-use MosTerm::{B, D, G, S};
-
 #[derive(Default)]
 pub struct MosPorts<T> {
     pub d: T,
@@ -34,6 +34,7 @@ pub struct MosPorts<T> {
 impl<T> Index<MosTerm> for MosPorts<T> {
     type Output = T;
     fn index(&self, t: MosTerm) -> &T {
+        use MosTerm::{B, D, G, S};
         match t {
             D => &self.d,
             G => &self.g,
@@ -67,17 +68,16 @@ impl<S, T: Clone + Into<S>, U: Clone + Into<S>, V: Clone + Into<S>, W: Clone + I
 }
 
 #[derive(Default)]
-struct MosMatrixPointers([[Option<Eindex>; 4]; 4]);
+struct Mos1MatrixPointers([[Option<Eindex>; 6]; 6]);
 
-impl Index<(MosTerm, MosTerm)> for MosMatrixPointers {
+impl Index<(Mos1Var, Mos1Var)> for Mos1MatrixPointers {
     type Output = Option<Eindex>;
-    fn index(&self, ts: (MosTerm, MosTerm)) -> &Option<Eindex> {
+    fn index(&self, ts: (Mos1Var, Mos1Var)) -> &Option<Eindex> {
         &self.0[ts.0 as usize][ts.1 as usize]
     }
 }
-
-impl IndexMut<(MosTerm, MosTerm)> for MosMatrixPointers {
-    fn index_mut(&mut self, ts: (MosTerm, MosTerm)) -> &mut Self::Output {
+impl IndexMut<(Mos1Var, Mos1Var)> for Mos1MatrixPointers {
+    fn index_mut(&mut self, ts: (Mos1Var, Mos1Var)) -> &mut Self::Output {
         &mut self.0[ts.0 as usize][ts.1 as usize]
     }
 }
@@ -382,16 +382,69 @@ struct Mos1TranState {
     bs: ChargeInteg,
     bd: ChargeInteg,
 }
-/// Mos1 Node Variables
-/// FIXME: replace MosPorts with these 
+/// # Mos1 Node Variables
+/// Including internal drain/source nodes
+/// for inclusion of terminal resistances.
 #[derive(Default)]
 pub struct Mos1Vars<T> {
-    pub dx: T,
-    pub dp: T,
-    pub g: T,
-    pub sx: T,
-    pub sp: T,
-    pub b: T,
+    pub d: T,  // Drain
+    pub dp: T, // Internal drain (prime)
+    pub g: T,  // Gate
+    pub s: T,  // Source
+    pub sp: T, // Internal source (prime)
+    pub b: T,  // Bulk
+}
+#[derive(Clone, Copy)]
+pub enum Mos1Var {
+    D = 0,
+    G = 1,
+    S = 2,
+    B = 3,
+    DP = 4,
+    SP = 5,
+}
+impl<T> Index<Mos1Var> for Mos1Vars<T> {
+    type Output = T;
+    fn index(&self, t: Mos1Var) -> &T {
+        use Mos1Var::*;
+        match t {
+            DP => &self.dp,
+            SP => &self.sp,
+            D => &self.d,
+            G => &self.g,
+            S => &self.s,
+            B => &self.b,
+        }
+    }
+}
+impl Mos1Vars<Option<VarIndex>> {
+    pub(crate) fn from<P: Clone + Into<Option<VarIndex>>, T: SpNum>(
+        path: String,
+        terms: &MosPorts<P>,
+        model: &Mos1Model,
+        vars: &mut Variables<T>,
+    ) -> Self {
+        let dp = if model.rd.is_some() || model.rsh.is_some() {
+            let name = format!("{}.{}", path, "dp");
+            Some(vars.add(name, analysis::VarKind::V))
+        } else {
+            terms.d.clone().into()
+        };
+        let sp = if model.rs.is_some() || model.rsh.is_some() {
+            let name = format!("{}.{}", path, "sp");
+            Some(vars.add(name, analysis::VarKind::V))
+        } else {
+            terms.s.clone().into()
+        };
+        Self {
+            d: terms.d.clone().into(),
+            g: terms.g.clone().into(),
+            s: terms.s.clone().into(),
+            b: terms.b.clone().into(),
+            dp,
+            sp,
+        }
+    }
 }
 ///
 /// # Mos Level 1 Solver
@@ -402,11 +455,11 @@ pub struct Mos1 {
     intparams: Mos1InternalParams,
     op: Mos1OpPoint,
     guess: Mos1OpPoint,
-    ports: MosPorts<Option<VarIndex>>,
-    matps: MosMatrixPointers,
+    ports: Mos1Vars<Option<VarIndex>>,
+    matps: Mos1MatrixPointers,
 }
 impl Mos1 {
-    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: MosPorts<Option<VarIndex>>, opts: &Options) -> Mos1 {
+    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: Mos1Vars<Option<VarIndex>>, opts: &Options) -> Mos1 {
         let intparams = Mos1::derive(&model, &params, opts);
         Mos1 {
             model,
@@ -415,7 +468,7 @@ impl Mos1 {
             ports,
             op: Mos1OpPoint::default(),
             guess: Mos1OpPoint::default(),
-            matps: MosMatrixPointers::default(),
+            matps: Mos1MatrixPointers::default(),
         }
     }
     /// Calculate derived parameters from instance parameters
@@ -577,17 +630,21 @@ impl Mos1 {
         }
     }
     /// Gather the voltages on each of our node-variables from `Variables` `guess`.
-    fn vs(&self, vars: &Variables<f64>) -> MosPorts<f64> {
-        MosPorts {
+    fn vs(&self, vars: &Variables<f64>) -> Mos1Vars<f64> {
+        use Mos1Var::{B, D, DP, G, S, SP};
+        Mos1Vars {
             d: vars.get(self.ports[D]),
             g: vars.get(self.ports[G]),
             s: vars.get(self.ports[S]),
             b: vars.get(self.ports[B]),
+            dp: vars.get(self.ports[DP]),
+            sp: vars.get(self.ports[SP]),
         }
     }
     /// Primary action behind dc & transient loading.
     /// Returns calculated "guess" operating point, plus matrix stamps
-    fn op_stamp(&self, v: MosPorts<f64>, an: &AnalysisInfo, opts: &Options) -> (Mos1OpPoint, Stamps<f64>) {
+    fn op_stamp(&self, v: Mos1Vars<f64>, an: &AnalysisInfo, opts: &Options) -> (Mos1OpPoint, Stamps<f64>) {
+        use Mos1Var::{B, D, DP, G, S, SP};
         let gmin = opts.gmin;
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
@@ -713,7 +770,11 @@ impl Mos1 {
                 } else {
                     (vgs - self.op.vgd) * cgs
                 };
-                let ip = if reversed == self.op.reversed { self.op.tr.gs.i } else { self.op.tr.gd.i };
+                let ip = if reversed == self.op.reversed {
+                    self.op.tr.gs.i
+                } else {
+                    self.op.tr.gd.i
+                };
                 tr.gs = state.integq(dqgs, cgs, vgs, ip);
             }
             {
@@ -722,7 +783,11 @@ impl Mos1 {
                 } else {
                     (vgd - self.op.vgs) * cgd
                 };
-                let ip = if reversed == self.op.reversed { self.op.tr.gd.i } else { self.op.tr.gs.i };
+                let ip = if reversed == self.op.reversed {
+                    self.op.tr.gd.i
+                } else {
+                    self.op.tr.gs.i
+                };
                 tr.gs = state.integq(dqgd, cgd, vgd, ip);
             }
             {
@@ -732,8 +797,8 @@ impl Mos1 {
             }
             {
                 // Bulk Junction Caps
-                let (qbs, cbs) = bs_junc.qc(-vsb, &self.model);
-                let (qbd, cbd) = bd_junc.qc(-vdb, &self.model);
+                let (_qbs, cbs) = bs_junc.qc(-vsb, &self.model);
+                let (_qbd, cbd) = bd_junc.qc(-vdb, &self.model);
 
                 let dqbs = if reversed == self.op.reversed {
                     (-vsb + self.op.vsb) * cbs
@@ -758,7 +823,7 @@ impl Mos1 {
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
         // FIXME: this also needs the "prime" vs "external" source & drains
-        let (sr, sx, dr, dx) = if !reversed { (S, S, D, D) } else { (D, D, S, S) };
+        let (sr, sx, dr, dx) = if !reversed { (SP, S, DP, D) } else { (DP, D, SP, S) };
         // Include our terminal resistances
         let grd = self.intparams.grd;
         let grs = self.intparams.grs;
@@ -815,12 +880,12 @@ impl Mos1 {
         };
         (guess, stamps)
     }
-    fn tran(&self, guess: &mut Mos1OpPoint, state: &TranState) {}
 }
 impl Component for Mos1 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
-        for t1 in [G, D, S, B].iter() {
-            for t2 in [G, D, S, B].iter() {
+        use Mos1Var::{B, D, DP, G, S, SP};
+        for t1 in [G, D, S, B, DP, SP].iter() {
+            for t2 in [G, D, S, B, DP, SP].iter() {
                 self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
             }
         }
@@ -836,6 +901,7 @@ impl Component for Mos1 {
         stamps // And return our matrix stamps
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
+        use Mos1Var::{B, D, DP, G, S, SP};
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(_opts, state) => state.omega,
@@ -861,8 +927,7 @@ impl Component for Mos1 {
         let gcbg = 0.0;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
-        // FIXME: this also needs the "prime" vs "external" source & drains
-        let (sr, sx, dr, dx) = if !self.op.reversed { (S, S, D, D) } else { (D, D, S, S) };
+        let (sr, sx, dr, dx) = if !self.op.reversed { (SP, S, DP, D) } else { (DP, D, SP, S) };
 
         // Include our terminal resistances
         let grd = self.intparams.grd;
@@ -902,7 +967,7 @@ impl Component for Mos1 {
 
 use std::collections::HashMap;
 ///
-/// # Mos1 Model and Instance-Param Definitions
+/// # Mos1 Model and Instance-Param Definitions Depot
 ///
 #[derive(Default)]
 pub struct Mos1Defs {
@@ -932,7 +997,7 @@ impl Default for Mos0Params {
 pub struct Mos0 {
     params: Mos0Params,
     ports: MosPorts<Option<VarIndex>>,
-    matps: MosMatrixPointers,
+    matps: Mos0MatrixPointers,
 }
 impl Mos0 {
     pub(crate) fn new(ports: MosPorts<Option<VarIndex>>, mos_type: MosType) -> Self {
@@ -942,18 +1007,20 @@ impl Mos0 {
                 ..Mos0Params::default()
             },
             ports,
-            matps: MosMatrixPointers([[None; 4]; 4]),
+            matps: Mos0MatrixPointers([[None; 4]; 4]),
         }
     }
 }
 impl Component for Mos0 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
+        use MosTerm::{D, G, S};
         let matps = [(D, D), (S, S), (D, S), (S, D), (D, G), (S, G)];
         for (t1, t2) in matps.iter() {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
     fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+        use MosTerm::{D, G, S};
         let gmin = opts.gmin;
 
         let vg = guess.get(self.ports[G]);
@@ -1000,5 +1067,18 @@ impl Component for Mos0 {
             ],
             b: vec![(self.ports[dr], -p * irhs), (self.ports[sr], p * irhs)],
         };
+    }
+}
+#[derive(Default)]
+struct Mos0MatrixPointers([[Option<Eindex>; 4]; 4]);
+impl Index<(MosTerm, MosTerm)> for Mos0MatrixPointers {
+    type Output = Option<Eindex>;
+    fn index(&self, ts: (MosTerm, MosTerm)) -> &Option<Eindex> {
+        &self.0[ts.0 as usize][ts.1 as usize]
+    }
+}
+impl IndexMut<(MosTerm, MosTerm)> for Mos0MatrixPointers {
+    fn index_mut(&mut self, ts: (MosTerm, MosTerm)) -> &mut Self::Output {
+        &mut self.0[ts.0 as usize][ts.1 as usize]
     }
 }

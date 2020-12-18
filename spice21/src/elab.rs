@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use crate::analysis::{Options, VarIndex, Variables};
-use crate::{circuit, defs};
 use crate::circuit::{Comp, NodeRef};
 use crate::comps::ComponentSolver;
 use crate::SpNum;
+use crate::{circuit, defs};
 
 ///
 /// # Hierarchy Elaborator
@@ -128,10 +128,10 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         self.comps.push(Vsrc::new(vdc, acm, pvar, nvar, ivar).into());
     }
     pub(crate) fn elaborate_mos(&mut self, m: circuit::Mosi, ns: &mut HashMap<String, Option<VarIndex>>) {
-        use crate::comps::mos::MosPorts;
+        use crate::comps::{bsim4, mos};
         let circuit::Mosi { name, ports, model, params } = m;
-        let MosPorts { d, g, s: s_, b } = ports;
-        let ports: MosPorts<Option<VarIndex>> = [
+        let mos::MosPorts { d, g, s: s_, b } = ports;
+        let ports: mos::MosPorts<Option<VarIndex>> = [
             self.node_var(d, self.on_top(), ns),
             self.node_var(g, self.on_top(), ns),
             self.node_var(s_, self.on_top(), ns),
@@ -140,28 +140,30 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         .into();
         // Add the instance-name to our path
         self.path.push(name);
-        // Determine solver-type from defined models
+
+        // Determine solver-type from our `Defs` models
         let c: ComponentSolver = if let Some(_m) = self.defs.bsim4.models.get(&model) {
-            use crate::comps::bsim4::bsim4ports::Bsim4Ports;
-            use crate::comps::bsim4::Bsim4;
             let (model, inst) = self.defs.bsim4.get(&model, &params).unwrap();
-            let ports = Bsim4Ports::from(self.pathstr(), &ports, &model.vals, &inst.intp, &mut self.vars);
-            Bsim4::new(ports, model, inst).into()
+            let ports = bsim4::Bsim4Ports::from(self.pathstr(), &ports, &model.vals, &inst.intp, &mut self.vars);
+            bsim4::Bsim4::new(ports, model, inst).into()
         } else if let Some(model) = self.defs.mos1.models.get(&model) {
-            use crate::comps::{Mos1, Mos1InstanceParams, Mos1Model};
             let params = match self.defs.mos1.insts.get(&params) {
                 Some(p) => p.clone(),
                 None => panic!(format!("Mos1 Instance Parameter-Set not defined: {}", params)),
             };
-            Mos1::new(Mos1Model::resolve(&model), Mos1InstanceParams::resolve(&params), ports.into(), &self.opts).into()
+            let model = mos::Mos1Model::resolve(&model);
+            let intp = mos::Mos1InstanceParams::resolve(&params);
+            let ports = mos::Mos1Vars::from(self.pathstr(), &ports, &model, &mut self.vars);
+            mos::Mos1::new(model, intp, ports, &self.opts).into()
         } else if let Some(mos_type) = self.defs.mos0.get(&model) {
             // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
-            use crate::comps::Mos0;
-            Mos0::new(ports.into(), mos_type.clone()).into()
+            mos::Mos0::new(ports.into(), mos_type.clone()).into()
         } else {
             panic!(format!("Model not defined: {}", model));
         };
+        // Add the ComponentSolver
         self.comps.push(c);
+        // And pop its instance-name
         self.path.pop();
     }
     /// Concatenate our path into a period-separated string
@@ -195,7 +197,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         if self.path.len() > 1024 {
             panic!("Elaboration Error: Too deep a hierarchy (for now)!");
         }
-        self.elaborate_module(&*(mdef.read().unwrap()), &mut inst_ns); 
+        self.elaborate_module(&*(mdef.read().unwrap()), &mut inst_ns);
         self.path.pop();
     }
     /// Create a new Signal at `self.path.signame`, and append it to `ns`.
@@ -216,8 +218,8 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         for signame in signals.into_iter() {
             self.elaborate_signal(signame, ns);
         }
-        // FIXME: handling of instances differs more materially between `Circuit` (top-level) and `Module` 
-        // than we ever intended. 
+        // FIXME: handling of instances differs more materially between `Circuit` (top-level) and `Module`
+        // than we ever intended.
         // Top-levels have a Vec<circuit::Comp> (already converted)
         // Modules have a Vec<proto::Comp> (i.e. the interface objects )
         // FIXME: check port/ param compatibility

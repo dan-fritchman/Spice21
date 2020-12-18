@@ -14,8 +14,8 @@ use super::sparse21::{Eindex, Matrix};
 use crate::{SpNum, SpResult};
 
 // Sub-modules and re-exports
-pub mod mos;
 pub(crate) use mos::*;
+pub mod mos;
 pub mod bsim4;
 pub mod diode;
 pub mod cmath;
