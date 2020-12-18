@@ -921,7 +921,9 @@ impl Component for Mos0 {
             self.matps[(*t1, *t2)] = make_matrix_elem(mat, self.ports[*t1], self.ports[*t2]);
         }
     }
-    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, _opts: &Options) -> Stamps<f64> {
+    fn load(&mut self, guess: &Variables<f64>, _an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+        let gmin = opts.gmin;
+
         let vg = guess.get(self.ports[G]);
         let vd = guess.get(self.ports[D]);
         let vs = guess.get(self.ports[S]);
@@ -957,10 +959,10 @@ impl Component for Mos0 {
         let irhs = ids - gm * vgs - gds * vds;
         return Stamps {
             g: vec![
-                (self.matps[(dr, dr)], gds),
-                (self.matps[(sr, sr)], (gm + gds)),
-                (self.matps[(dr, sr)], -(gm + gds)),
-                (self.matps[(sr, dr)], -gds),
+                (self.matps[(dr, dr)], gds+gmin),
+                (self.matps[(sr, sr)], (gm + gds+gmin)),
+                (self.matps[(dr, sr)], -(gm + gds+gmin)),
+                (self.matps[(sr, dr)], -gds-gmin),
                 (self.matps[(dr, G)], gm),
                 (self.matps[(sr, G)], -gm),
             ],

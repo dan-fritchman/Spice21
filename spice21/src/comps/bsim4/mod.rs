@@ -31,8 +31,6 @@ pub use super::cmath::*;
 use super::consts::*;
 use crate::sparse21::{Eindex, Matrix};
 
-// FIXME: get from circuit/ analysis
-pub(crate) const gmin: f64 = 1e-12;
 
 pub(crate) const EXPL_THRESHOLD: f64 = 100.0;
 pub(crate) const EXP_THRESHOLD: f64 = 34.0;

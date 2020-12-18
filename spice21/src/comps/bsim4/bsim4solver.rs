@@ -135,17 +135,17 @@ impl Bsim4 {
         // Grab our port voltages/ values
         let portvs = self.vs(guess);
         // Calculate an operating point from them
-        let newop = self.op(portvs, an);
+        let newop = self.op(portvs, an, opts);
         // Save it for later
         self.guess = newop;
         // And return the corresponding matrix stamps
         let stamps = self.stamp();
         stamps
     }
-    pub(crate) fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Bsim4OpPoint {
-        //-> Bsim4OpPoint {
-        // Start by declaring about 700 local float variables!
+    pub(crate) fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo, opts: &Options) -> Bsim4OpPoint {
+        let gmin = opts.gmin;
 
+        // Start by declaring about 700 local float variables!
         // Used a lot
         let mut vgs_eff: f64;
         let mut vgd_eff: f64;

@@ -193,7 +193,6 @@ fn test_dcop8() -> TestResult {
                 b: Gnd,
             },
         }),
-        Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
 
@@ -218,7 +217,6 @@ fn test_diode_nmos_tran() -> TestResult {
                 b: Gnd,
             },
         }),
-        Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
     let opts = TranOptions {
@@ -249,7 +247,6 @@ fn test_dcop8b() -> TestResult {
                 b: Gnd,
             },
         }),
-        Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
 
@@ -273,7 +270,6 @@ fn test_diode_pmos_dcop() -> TestResult {
                 b: Gnd,
             },
         }),
-        Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
 
@@ -298,7 +294,6 @@ fn test_diode_pmos_tran() -> TestResult {
                 b: Gnd,
             },
         }),
-        Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
 
@@ -329,7 +324,6 @@ fn test_dcop8d() -> TestResult {
                 b: Gnd,
             },
         }),
-        Comp::r("r1", 1e-12, Num(0), Gnd), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
 
@@ -490,7 +484,6 @@ fn test_dcop10b() -> TestResult {
 fn test_dcop11() -> TestResult {
     let mut ckt = Ckt::from_comps(vec![
         Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-        Comp::r("r1", 1e-9, n("d"), Gnd), // "gmin"
         Comp::Mos(Mosi {
             name: s("p"),
             model: "pmos".into(),
@@ -518,8 +511,8 @@ fn test_dcop11() -> TestResult {
 
     let soln = dcop(ckt)?;
     assert(soln.get("vdd")?).eq(1.0)?;
-    assert(soln.get("d")?).eq(0.0)?;
-    assert(soln.get("v1")?).eq(0.0)?;
+    assert(soln.get("d")?).abs().lt(1e-6)?;
+    assert(soln.get("v1")?).abs().lt(1e-9)?;
     Ok(())
 }
 /// Mos0 CMOS Inverter DC-Op, Vin=Vss
@@ -549,12 +542,13 @@ fn test_dcop11b() -> TestResult {
             },
         }),
         Comp::vdc("v1", 1.0, n("vdd"), Gnd),
-        Comp::r("r1", 1e-9, n("d"), n("vdd")), // "gmin"
     ]);
     add_mos0_defaults(&mut ckt);
 
     let soln = dcop(ckt)?;
-    assert(soln.values).eq(vec![1.0, 1.0, 0.0])?;
+    assert(soln.get("vdd")?).eq(1.0)?;
+    assert(soln.get("d")? - 1.0).abs().lt(1e-6)?;
+    assert(soln.get("v1")?).abs().lt(1e-9)?;
     Ok(())
 }
 /// DCOP, Several Series CMOS Inverters
@@ -777,25 +771,14 @@ fn test_tran2b() -> TestResult {
 fn test_mos0_cmos_ro_tran() -> TestResult {
     // Shared Circuit
     let mut ckt = cmos_ro3();
-    // A reminder that MOS0 has *no* internal capacitance,
-    // so this will (a) run at these crazy speeds:
-    let opts = TranOptions {
-        tstep: 1e-12, // Told you its fast
-        tstop: 1e-9, // See?
-        ic: vec![(Num(1), 0.0)],
-    };
-    // and (b) run at *infinite* speed without adding some caps:
-    let c = 2.5e-50; // Yeah thats small alright.
-    ckt.add(Comp::c("c1", c, Num(1), Gnd));
-    ckt.add(Comp::c("c2", c, Num(2), Gnd));
-    ckt.add(Comp::c("c3", c, Num(3), Gnd));
-    // Mos0 also doesn't have gmins, add them here
-    ckt.add(Comp::r("r1", 1e-9, Num(1), Gnd));
-    ckt.add(Comp::r("r2", 1e-9, Num(2), Gnd));
-    ckt.add(Comp::r("r3", 1e-9, Num(3), Gnd));
     // Add the model definitions
     add_mos0_defaults(&mut ckt);
     // Simulate
+    let opts = TranOptions {
+        tstep: 1e-15,
+        tstop: 1e-12,
+        ic: vec![(Num(1), 0.0)],
+    };
     let soln = tran(ckt, opts)?;
     // Checks
     to_file(&soln, "test_mos0_cmos_ro_tran.json"); // Writes new golden data
@@ -1442,8 +1425,8 @@ fn to_file(soln: &TranResult, fname: &str) {
     #[allow(unused_imports)] // Need these traits in scope
     use serde::ser::{SerializeSeq, Serializer};
     use std::fs::File;
-    use std::path::PathBuf;
     use std::io::prelude::*;
+    use std::path::PathBuf;
 
     // FIXME: "configuration" of when new data written is right here!
     const OVERWRITE: bool = true;
@@ -1510,10 +1493,13 @@ fn add_bsim4_defaults(ckt: &mut Ckt) {
 }
 /// Helper. Modifies `ckt` adding Diode defaults
 fn add_diode_defaults(ckt: &mut Ckt) {
-    use crate::comps::diode::{DiodeModel, DiodeInstParams};
+    use crate::comps::diode::{DiodeInstParams, DiodeModel};
     ckt.defs.diodes.add_model("default".into(), DiodeModel::default());
-    ckt.defs.diodes.add_inst("default".into(), DiodeInstParams{
-        model: "default".into(),
-        ..Default::default()
-    });
+    ckt.defs.diodes.add_inst(
+        "default".into(),
+        DiodeInstParams {
+            model: "default".into(),
+            ..Default::default()
+        },
+    );
 }

@@ -1,8 +1,8 @@
 //
-// # BSIM4 Module Tests 
-// 
+// # BSIM4 Module Tests
+//
 
-use super::{Bsim4, Bsim4InstSpecs, Bsim4ModelSpecs, Bsim4Ports, Bsim4Cache, };
+use super::{Bsim4, Bsim4Cache, Bsim4InstSpecs, Bsim4ModelSpecs, Bsim4Ports};
 // use super::bsim4ports::Bsim4Ports;
 // use super::*;
 
@@ -12,7 +12,7 @@ use super::{Bsim4, Bsim4InstSpecs, Bsim4ModelSpecs, Bsim4Ports, Bsim4Cache, };
 use crate::assert::assert;
 use crate::{sperror, TestResult};
 
-use crate::analysis::{AnalysisInfo,   VarIndex};
+use crate::analysis::{AnalysisInfo, VarIndex};
 // use crate::comps::consts::*;
 use crate::comps::mos::MosType;
 
@@ -46,10 +46,9 @@ fn test_bsim4_load() -> TestResult {
         qNode: 0.0,
     };
 
-    use crate::analysis::AnalysisInfo;
-    let an = AnalysisInfo::OP;
-    let op = solver.op(portvs, &an);
-    println!("op.cd = {:?}", op.cd);
+    use crate::analysis;
+    let op = solver.op(portvs, &analysis::AnalysisInfo::OP, &analysis::Options::default());
+    // FIXME: more checks!
 
     Ok(())
 }
@@ -58,7 +57,7 @@ fn test_bsim4_load() -> TestResult {
 fn test_bsim4_nmos_dcop1() -> TestResult {
     use crate::analysis::dcop;
     use crate::circuit::*;
-    use crate::circuit::{Mosi, Ckt, Comp, NodeRef};
+    use crate::circuit::{Ckt, Comp, Mosi, NodeRef};
     use crate::comps::mos::MosPorts;
     let inst = Bsim4InstSpecs::default();
     let ports = MosPorts {
@@ -92,7 +91,7 @@ fn test_bsim4_nmos_dcop1() -> TestResult {
 fn test_bsim4_pmos_dcop1() -> TestResult {
     use crate::analysis::dcop;
     use crate::circuit::*;
-    use crate::circuit::{Mosi, Ckt, Comp, NodeRef};
+    use crate::circuit::{Ckt, Comp, Mosi, NodeRef};
     use crate::comps::mos::MosPorts;
     use NodeRef::Gnd;
 
@@ -121,7 +120,7 @@ fn test_bsim4_pmos_dcop1() -> TestResult {
 fn test_bsim4_inv_dcop() -> TestResult {
     use crate::analysis::dcop;
     use crate::circuit::*;
-    use crate::circuit::{Mosi, Ckt, Comp, NodeRef};
+    use crate::circuit::{Ckt, Comp, Mosi, NodeRef};
     use crate::comps::mos::{MosPorts, MosType};
     use NodeRef::Gnd;
 
@@ -163,7 +162,7 @@ fn test_bsim4_inv_dcop() -> TestResult {
 fn test_bsim4_tran1() -> TestResult {
     use crate::analysis::{tran, TranOptions};
     use crate::circuit::*;
-    use crate::circuit::{Mosi, Ckt, Comp, NodeRef};
+    use crate::circuit::{Ckt, Comp, Mosi, NodeRef};
     use crate::comps::mos::{MosPorts, MosType};
     use NodeRef::Gnd;
 
