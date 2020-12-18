@@ -1320,9 +1320,9 @@ fn test_ac4() -> TestResult {
         mos_type: MosType::NMOS as i32,
         ..Mos1Model::default()
     };
-    ckt.defs.mos1.models.insert("default".into(), nmos);
+    ckt.defs.mos1.add_model("default".into(), &nmos);
     let params = Mos1InstParams::default();
-    ckt.defs.mos1.insts.insert("default".into(), params);
+    ckt.defs.mos1.add_inst("default", &params);
     ac(ckt, AcOptions::default())?;
     // FIXME: checks on solution
     Ok(())
@@ -1360,9 +1360,9 @@ fn test_ac5() -> TestResult {
         mos_type: MosType::NMOS as i32,
         ..Mos1Model::default()
     };
-    ckt.defs.mos1.models.insert("default".into(), nmos);
+    ckt.defs.mos1.add_model("default".into(), &nmos);
     let params = Mos1InstParams::default();
-    ckt.defs.mos1.insts.insert("default".into(), params);
+    ckt.defs.mos1.add_inst("default".into(), &params);
     ac(ckt, AcOptions::default())?;
     // FIXME: checks on solution
     Ok(())
@@ -1468,16 +1468,15 @@ fn add_mos1_defaults(ckt: &mut Ckt) {
         mos_type: MosType::NMOS as i32,
         ..Mos1Model::default()
     };
-    let default = nmos.clone();
-    ckt.defs.mos1.models.insert("default".into(), default);
-    ckt.defs.mos1.models.insert("nmos".into(), nmos);
+    ckt.defs.mos1.add_model("default".into(), &nmos);
+    ckt.defs.mos1.add_model("nmos".into(), &nmos);
     let pmos = Mos1Model {
         mos_type: MosType::PMOS as i32,
         ..Mos1Model::default()
     };
-    ckt.defs.mos1.models.insert("pmos".into(), pmos);
+    ckt.defs.mos1.add_model("pmos".into(), &pmos);
     let params = Mos1InstParams::default();
-    ckt.defs.mos1.insts.insert("default".into(), params);
+    ckt.defs.mos1.add_inst("default".into(), &params);
 }
 /// Helper. Modifies `ckt` adding Bsim4 default instance-params, plus default NMOS and PMOS
 fn add_bsim4_defaults(ckt: &mut Ckt) {

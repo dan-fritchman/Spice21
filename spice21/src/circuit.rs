@@ -266,10 +266,10 @@ impl Ckt {
                     defs.bsim4.add_model(&x.name, specs);
                 }
                 DefProto::Mos1model(x) => {
-                    defs.mos1.models.insert(x.name.clone(), x);
+                    defs.mos1.add_model(&x.name.clone(), &x);
                 }
                 DefProto::Mos1inst(x) => {
-                    defs.mos1.insts.insert(x.name.clone(), x);
+                    defs.mos1.add_inst(&x.name.clone(), &x);
                 }
                 DefProto::Diodemodel(x) => {
                     use crate::comps::diode::DiodeModel;

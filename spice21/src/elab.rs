@@ -96,12 +96,9 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             Some(e) => e,
             None => panic!(format!("Parameters not defined: {}", params)),
         };
-        let diode::DiodeCacheEntry { model, intp } = ddef;
+        let diode::DiodeCacheEntry { model, intp, .. } = ddef;
         // Derive internal params
-        let ports = {
-            let m = &*(model.read().unwrap());
-            diode::DiodePorts::from(self.pathstr(), m, pvar, nvar, &mut self.vars)
-        };
+        let ports = diode::DiodePorts::from(self.pathstr(), &*model.read(), pvar, nvar, &mut self.vars);
         // And create our solver
         let d = diode::Diode {
             ports,
@@ -120,6 +117,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         // Create or retrieve our node-variables
         let pvar = self.node_var(p, self.on_top(), ns);
         let nvar = self.node_var(n, self.on_top(), ns);
+
         // Create the current variable, named `self.path`
         self.path.push(name);
         let ivar = self.vars.addi(self.pathstr());
@@ -146,15 +144,29 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             let (model, inst) = self.defs.bsim4.get(&model, &params).unwrap();
             let ports = bsim4::Bsim4Ports::from(self.pathstr(), &ports, &model.vals, &inst.intp, &mut self.vars);
             bsim4::Bsim4::new(ports, model, inst).into()
-        } else if let Some(model) = self.defs.mos1.models.get(&model) {
-            let params = match self.defs.mos1.insts.get(&params) {
-                Some(p) => p.clone(),
-                None => panic!(format!("Mos1 Instance Parameter-Set not defined: {}", params)),
+        } else if let Some(m_) = self.defs.mos1.models.get(&model) {
+            // let params = match self.defs.mos1.insts.get(&params) {
+            //     Some(p) => p.clone(),
+            //     None => panic!(format!("Mos1 Instance Parameter-Set not defined: {}", params)),
+            // };
+            // let model = mos::Mos1Model::resolve(&model);
+            // let intp = mos::Mos1InstanceParams::resolve(&params);
+            // Get our model and params from definitions
+            let e = match self.defs.mos1.get(&params.clone(), &model.clone(), &self.opts) {
+                Some(e) => e,
+                None => panic!(format!("Parameters not defined: {}", params)),
             };
-            let model = mos::Mos1Model::resolve(&model);
-            let intp = mos::Mos1InstanceParams::resolve(&params);
-            let ports = mos::Mos1Vars::from(self.pathstr(), &ports, &model, &mut self.vars);
-            mos::Mos1::new(model, intp, ports, &self.opts).into()
+            let mos::Mos1CacheEntry { model, intp, inst } = e;
+            let ports = mos::Mos1Vars::from(self.pathstr(), &ports, &*model.read(), &mut self.vars);
+            // mos::Mos1::new(model, intp, ports, &self.opts).into()
+            mos::Mos1 {
+                model,
+                intparams: intp,
+                _params: inst,
+                ports,
+                ..Default::default()
+            }
+            .into()
         } else if let Some(mos_type) = self.defs.mos0.get(&model) {
             // Mos0 has no instance params, and only the PMOS/NMOS type as a "model"
             mos::Mos0::new(ports.into(), mos_type.clone()).into()
@@ -197,7 +209,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
         if self.path.len() > 1024 {
             panic!("Elaboration Error: Too deep a hierarchy (for now)!");
         }
-        self.elaborate_module(&*(mdef.read().unwrap()), &mut inst_ns);
+        self.elaborate_module(&*mdef.read(), &mut inst_ns);
         self.path.pop();
     }
     /// Create a new Signal at `self.path.signame`, and append it to `ns`.

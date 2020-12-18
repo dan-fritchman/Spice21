@@ -12,6 +12,7 @@ use std::ops::{Index, IndexMut};
 use super::consts;
 use super::{make_matrix_elem, Component};
 use crate::analysis::{AnalysisInfo, ChargeInteg, Options, Stamps, TranState, VarIndex, Variables};
+use crate::defs::DefPtr;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{analysis, proto, SpNum};
 
@@ -68,7 +69,7 @@ impl<S, T: Clone + Into<S>, U: Clone + Into<S>, V: Clone + Into<S>, W: Clone + I
 }
 
 #[derive(Default)]
-struct Mos1MatrixPointers([[Option<Eindex>; 6]; 6]);
+pub(crate) struct Mos1MatrixPointers([[Option<Eindex>; 6]; 6]);
 
 impl Index<(Mos1Var, Mos1Var)> for Mos1MatrixPointers {
     type Output = Option<Eindex>;
@@ -296,182 +297,26 @@ impl Default for Mos1InstanceParams {
 
 /// Mos1 Internal "Parameters", derived at instance-construction
 /// and updated only on changes in temperature
-struct Mos1InternalParams {
-    temp: f64,
-    vtherm: f64,
-    vt0_t: f64,
-    kp_t: f64,
-    phi_t: f64,
-    beta: f64,
-    cox: f64,
-    cgs_ov: f64,
-    cgd_ov: f64,
-    cgb_ov: f64,
-    leff: f64,
-    drain_junc: MosJunction,
-    source_junc: MosJunction,
-    grd: f64,
-    grs: f64,
-}
-
-enum SourceDrain {
-    S,
-    D,
-}
-struct MosJunction {
-    area: f64,
-    isat: f64,
-    depletion_threshold: f64,
-    bulkpot_t: f64,
-    vcrit: f64,
-    czb: f64,
-    czbsw: f64,
-    f2: f64,
-    f3: f64,
-    f4: f64,
-    _sd: SourceDrain,
-}
-impl MosJunction {
-    /// Charge and Capacitance Calculations
-    pub(crate) fn qc(&self, v: f64, model: &Mos1Model) -> (f64, f64) {
-        use super::cmath::{exp, log};
-        if self.czb == 0.0 && self.czbsw == 0.0 {
-            return (0.0, 0.0);
-        }
-        if v < self.depletion_threshold {
-            let arg = 1.0 - v / self.bulkpot_t;
-            let sarg = exp(-model.mj * log(arg));
-            let sargsw = exp(-model.mjsw * log(arg));
-            let q = self.bulkpot_t * (self.czb * (1.0 - arg * sarg) / (1.0 - model.mj) + self.czbsw * (1.0 - arg * sargsw) / (1.0 - model.mjsw));
-            let c = self.czb * sarg + self.czbsw * sargsw;
-            (q, c)
-        } else {
-            let q = self.f4 + v * (self.f2 + v * self.f3 / 2.0);
-            let c = self.f2 + v * self.f3;
-            (q, c)
-        }
-    }
-}
-
-/// Mos1 DC & Transient Operating Point
-#[derive(Default, Clone)]
-struct Mos1OpPoint {
-    ids: f64,
-    vgs: f64,
-    vds: f64,
-    vgd: f64,
-    vgb: f64,
-    vdb: f64,
-    vsb: f64,
-    gm: f64,
-    gds: f64,
-    gmbs: f64,
-    cgs: f64,
-    cgd: f64,
-    cgb: f64,
-    reversed: bool,
-    tr: Mos1TranState,
-}
-/// Local structure for transient results,
-/// in the form of numerical-integration (conductance, current, rhs)'s
-#[derive(Default, Clone)]
-struct Mos1TranState {
-    gs: ChargeInteg,
-    gd: ChargeInteg,
-    gb: ChargeInteg,
-    bs: ChargeInteg,
-    bd: ChargeInteg,
-}
-/// # Mos1 Node Variables
-/// Including internal drain/source nodes
-/// for inclusion of terminal resistances.
 #[derive(Default)]
-pub struct Mos1Vars<T> {
-    pub d: T,  // Drain
-    pub dp: T, // Internal drain (prime)
-    pub g: T,  // Gate
-    pub s: T,  // Source
-    pub sp: T, // Internal source (prime)
-    pub b: T,  // Bulk
+pub(crate) struct Mos1InternalParams {
+    pub(crate) temp: f64,
+    pub(crate) vtherm: f64,
+    pub(crate) vt0_t: f64,
+    pub(crate) kp_t: f64,
+    pub(crate) phi_t: f64,
+    pub(crate) beta: f64,
+    pub(crate) cox: f64,
+    pub(crate) cgs_ov: f64,
+    pub(crate) cgd_ov: f64,
+    pub(crate) cgb_ov: f64,
+    pub(crate) leff: f64,
+    pub(crate) drain_junc: MosJunction,
+    pub(crate) source_junc: MosJunction,
+    pub(crate) grd: f64,
+    pub(crate) grs: f64,
 }
-#[derive(Clone, Copy)]
-pub enum Mos1Var {
-    D = 0,
-    G = 1,
-    S = 2,
-    B = 3,
-    DP = 4,
-    SP = 5,
-}
-impl<T> Index<Mos1Var> for Mos1Vars<T> {
-    type Output = T;
-    fn index(&self, t: Mos1Var) -> &T {
-        use Mos1Var::*;
-        match t {
-            DP => &self.dp,
-            SP => &self.sp,
-            D => &self.d,
-            G => &self.g,
-            S => &self.s,
-            B => &self.b,
-        }
-    }
-}
-impl Mos1Vars<Option<VarIndex>> {
-    pub(crate) fn from<P: Clone + Into<Option<VarIndex>>, T: SpNum>(
-        path: String,
-        terms: &MosPorts<P>,
-        model: &Mos1Model,
-        vars: &mut Variables<T>,
-    ) -> Self {
-        let dp = if model.rd.is_some() || model.rsh.is_some() {
-            let name = format!("{}.{}", path, "dp");
-            Some(vars.add(name, analysis::VarKind::V))
-        } else {
-            terms.d.clone().into()
-        };
-        let sp = if model.rs.is_some() || model.rsh.is_some() {
-            let name = format!("{}.{}", path, "sp");
-            Some(vars.add(name, analysis::VarKind::V))
-        } else {
-            terms.s.clone().into()
-        };
-        Self {
-            d: terms.d.clone().into(),
-            g: terms.g.clone().into(),
-            s: terms.s.clone().into(),
-            b: terms.b.clone().into(),
-            dp,
-            sp,
-        }
-    }
-}
-///
-/// # Mos Level 1 Solver
-///
-pub struct Mos1 {
-    model: Mos1Model,
-    _params: Mos1InstanceParams,
-    intparams: Mos1InternalParams,
-    op: Mos1OpPoint,
-    guess: Mos1OpPoint,
-    ports: Mos1Vars<Option<VarIndex>>,
-    matps: Mos1MatrixPointers,
-}
-impl Mos1 {
-    pub(crate) fn new(model: Mos1Model, params: Mos1InstanceParams, ports: Mos1Vars<Option<VarIndex>>, opts: &Options) -> Mos1 {
-        let intparams = Mos1::derive(&model, &params, opts);
-        Mos1 {
-            model,
-            _params: params,
-            intparams,
-            ports,
-            op: Mos1OpPoint::default(),
-            guess: Mos1OpPoint::default(),
-            matps: Mos1MatrixPointers::default(),
-        }
-    }
-    /// Calculate derived parameters from instance parameters
+impl Mos1InternalParams {
+    /// Calculate derived parameters from instance and model parameters
     fn derive(model: &Mos1Model, inst: &Mos1InstanceParams, opts: &Options) -> Mos1InternalParams {
         if let Some(t) = inst.temp {
             panic!("Mos1 Instance Temperatures Are Not Supported");
@@ -629,6 +474,164 @@ impl Mos1 {
             grd,
         }
     }
+}
+
+enum SourceDrain {
+    S,
+    D,
+}
+impl Default for SourceDrain {
+    fn default() -> Self {
+        SourceDrain::S
+    }
+}
+#[derive(Default)]
+pub(crate) struct MosJunction {
+    area: f64,
+    isat: f64,
+    depletion_threshold: f64,
+    bulkpot_t: f64,
+    vcrit: f64,
+    czb: f64,
+    czbsw: f64,
+    f2: f64,
+    f3: f64,
+    f4: f64,
+    _sd: SourceDrain,
+}
+impl MosJunction {
+    /// Charge and Capacitance Calculations
+    pub(crate) fn qc(&self, v: f64, model: &Mos1Model) -> (f64, f64) {
+        use super::cmath::{exp, log};
+        if self.czb == 0.0 && self.czbsw == 0.0 {
+            return (0.0, 0.0);
+        }
+        if v < self.depletion_threshold {
+            let arg = 1.0 - v / self.bulkpot_t;
+            let sarg = exp(-model.mj * log(arg));
+            let sargsw = exp(-model.mjsw * log(arg));
+            let q = self.bulkpot_t * (self.czb * (1.0 - arg * sarg) / (1.0 - model.mj) + self.czbsw * (1.0 - arg * sargsw) / (1.0 - model.mjsw));
+            let c = self.czb * sarg + self.czbsw * sargsw;
+            (q, c)
+        } else {
+            let q = self.f4 + v * (self.f2 + v * self.f3 / 2.0);
+            let c = self.f2 + v * self.f3;
+            (q, c)
+        }
+    }
+}
+
+/// Mos1 DC & Transient Operating Point
+#[derive(Default, Clone)]
+pub(crate) struct Mos1OpPoint {
+    ids: f64,
+    vgs: f64,
+    vds: f64,
+    vgd: f64,
+    vgb: f64,
+    vdb: f64,
+    vsb: f64,
+    gm: f64,
+    gds: f64,
+    gmbs: f64,
+    gbs: f64,
+    gbd: f64,
+    cgs: f64,
+    cgd: f64,
+    cgb: f64,
+    cbs: f64,
+    cbd: f64,
+    reversed: bool,
+    tr: Mos1TranState,
+}
+/// Local structure for transient results,
+/// in the form of numerical-integration (conductance, current, rhs)'s
+#[derive(Default, Clone)]
+struct Mos1TranState {
+    gs: ChargeInteg,
+    gd: ChargeInteg,
+    gb: ChargeInteg,
+    bs: ChargeInteg,
+    bd: ChargeInteg,
+}
+/// # Mos1 Node Variables
+/// Including internal drain/source nodes
+/// for inclusion of terminal resistances.
+#[derive(Default)]
+pub struct Mos1Vars<T> {
+    pub d: T,  // Drain
+    pub dp: T, // Internal drain (prime)
+    pub g: T,  // Gate
+    pub s: T,  // Source
+    pub sp: T, // Internal source (prime)
+    pub b: T,  // Bulk
+}
+#[derive(Clone, Copy)]
+pub enum Mos1Var {
+    D = 0,
+    G = 1,
+    S = 2,
+    B = 3,
+    DP = 4,
+    SP = 5,
+}
+impl<T> Index<Mos1Var> for Mos1Vars<T> {
+    type Output = T;
+    fn index(&self, t: Mos1Var) -> &T {
+        use Mos1Var::*;
+        match t {
+            DP => &self.dp,
+            SP => &self.sp,
+            D => &self.d,
+            G => &self.g,
+            S => &self.s,
+            B => &self.b,
+        }
+    }
+}
+impl Mos1Vars<Option<VarIndex>> {
+    pub(crate) fn from<P: Clone + Into<Option<VarIndex>>, T: SpNum>(
+        path: String,
+        terms: &MosPorts<P>,
+        model: &Mos1Model,
+        vars: &mut Variables<T>,
+    ) -> Self {
+        let dp = if model.rd.is_some() || model.rsh.is_some() {
+            let name = format!("{}.{}", path, "dp");
+            Some(vars.add(name, analysis::VarKind::V))
+        } else {
+            terms.d.clone().into()
+        };
+        let sp = if model.rs.is_some() || model.rsh.is_some() {
+            let name = format!("{}.{}", path, "sp");
+            Some(vars.add(name, analysis::VarKind::V))
+        } else {
+            terms.s.clone().into()
+        };
+        Self {
+            d: terms.d.clone().into(),
+            g: terms.g.clone().into(),
+            s: terms.s.clone().into(),
+            b: terms.b.clone().into(),
+            dp,
+            sp,
+        }
+    }
+}
+///
+/// # Mos Level 1 Solver
+///
+#[derive(Default)]
+pub struct Mos1 {
+    pub(crate) model: DefPtr<Mos1Model>,
+    pub(crate) intparams: DefPtr<Mos1InternalParams>,
+    pub(crate) _params: DefPtr<Mos1InstanceParams>,
+    pub(crate) ports: Mos1Vars<Option<VarIndex>>,
+    pub(crate) op: Mos1OpPoint,
+    pub(crate) guess: Mos1OpPoint,
+    pub(crate) matps: Mos1MatrixPointers,
+}
+impl Mos1 { 
     /// Gather the voltages on each of our node-variables from `Variables` `guess`.
     fn vs(&self, vars: &Variables<f64>) -> Mos1Vars<f64> {
         use Mos1Var::{B, D, DP, G, S, SP};
@@ -644,12 +647,14 @@ impl Mos1 {
     /// Primary action behind dc & transient loading.
     /// Returns calculated "guess" operating point, plus matrix stamps
     fn op_stamp(&self, v: Mos1Vars<f64>, an: &AnalysisInfo, opts: &Options) -> (Mos1OpPoint, Stamps<f64>) {
-        use Mos1Var::{B, D, DP, G, S, SP};
+        let model = &*self.model.read();
+        let intp = &*self.intparams.read();
         let gmin = opts.gmin;
+        use Mos1Var::{B, D, DP, G, S, SP};
         // Initially factor out polarity of NMOS/PMOS and source/drain swapping
         // All math after this block uses increasing vgs,vds <=> increasing ids,
         // i.e. the polarities typically expressed for NMOS
-        let p = self.model.mos_type.p();
+        let p = model.mos_type.p();
         let reversed = p * (v.d - v.s) < 0.0;
         // FIXME: add inter-step limiting
         let (vd, vs) = if reversed { (v.s, v.d) } else { (v.d, v.s) };
@@ -663,9 +668,9 @@ impl Mos1 {
 
         // Threshold & body effect calcs
         let von = if vsb > 0.0 {
-            self.intparams.vt0_t + self.model.gamma * ((self.intparams.phi_t + vsb).sqrt() - self.intparams.phi_t.sqrt())
+            intp.vt0_t + model.gamma * ((intp.phi_t + vsb).sqrt() - intp.phi_t.sqrt())
         } else {
-            self.intparams.vt0_t // FIXME: body effect for Vsb < 0
+            intp.vt0_t // FIXME: body effect for Vsb < 0
         };
         let vov = vgs - von;
         let vdsat = vov.max(0.0);
@@ -679,17 +684,17 @@ impl Mos1 {
         if vov > 0.0 {
             if vds >= vov {
                 // Sat
-                ids = self.intparams.beta / 2.0 * vov.powi(2) * (1.0 + self.model.lambda * vds);
-                gm = self.intparams.beta * vov * (1.0 + self.model.lambda * vds);
-                gds = self.model.lambda * self.intparams.beta / 2.0 * vov.powi(2);
+                ids = intp.beta / 2.0 * vov.powi(2) * (1.0 + model.lambda * vds);
+                gm = intp.beta * vov * (1.0 + model.lambda * vds);
+                gds = model.lambda * intp.beta / 2.0 * vov.powi(2);
             } else {
                 // Triode
-                ids = self.intparams.beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + self.model.lambda * vds);
-                gm = self.intparams.beta * vds * (1.0 + self.model.lambda * vds);
-                gds = self.intparams.beta * ((vov - vds) * (1.0 + self.model.lambda * vds) + self.model.lambda * ((vov * vds) - vds.powi(2) / 2.0));
+                ids = intp.beta * (vov * vds - vds.powi(2) / 2.0) * (1.0 + model.lambda * vds);
+                gm = intp.beta * vds * (1.0 + model.lambda * vds);
+                gds = intp.beta * ((vov - vds) * (1.0 + model.lambda * vds) + model.lambda * ((vov * vds) - vds.powi(2) / 2.0));
             }
-            gmbs = if self.intparams.phi_t + vsb > 0.0 {
-                gm * self.model.gamma / 2.0 / (self.intparams.phi_t + vsb).sqrt()
+            gmbs = if intp.phi_t + vsb > 0.0 {
+                gm * model.gamma / 2.0 / (intp.phi_t + vsb).sqrt()
             } else {
                 0.0
             };
@@ -701,7 +706,7 @@ impl Mos1 {
             ref source_junc,
             ref drain_junc,
             ..
-        } = self.intparams;
+        } = intp;
         let (bs_junc, bd_junc) = if !reversed {
             (source_junc, drain_junc)
         } else {
@@ -717,21 +722,21 @@ impl Mos1 {
         let ibd_rhs = ibd + vdb * gbd;
 
         // Capacitance Calculations
-        let cox = self.intparams.cox;
+        let cox = intp.cox;
         let cgs1: f64;
         let cgd1: f64;
         let cgb1: f64;
-        if vov <= -self.intparams.phi_t {
+        if vov <= -intp.phi_t {
             cgb1 = cox / 2.0;
             cgs1 = 0.0;
             cgd1 = 0.0;
-        } else if vov <= -self.intparams.phi_t / 2.0 {
-            cgb1 = -vov * cox / (2.0 * self.intparams.phi_t);
+        } else if vov <= -intp.phi_t / 2.0 {
+            cgb1 = -vov * cox / (2.0 * intp.phi_t);
             cgs1 = 0.0;
             cgd1 = 0.0;
         } else if vov <= 0.0 {
-            cgb1 = -vov * cox / (2.0 * self.intparams.phi_t);
-            cgs1 = vov * cox / (1.5 * self.intparams.phi_t) + cox / 3.0;
+            cgb1 = -vov * cox / (2.0 * intp.phi_t);
+            cgs1 = vov * cox / (1.5 * intp.phi_t) + cox / 3.0;
             cgd1 = 0.0;
         } else if vdsat <= vds {
             cgs1 = cox / 3.0;
@@ -757,10 +762,15 @@ impl Mos1 {
         } else {
             self.op.cgd
         };
-        let cgs = cgs1 + cgs2 + self.intparams.cgs_ov;
-        let cgd = cgd1 + self.intparams.cgd_ov + if reversed == self.op.reversed { self.op.cgd } else { self.op.cgs };
-        let cgb = cgb1 + self.intparams.cgb_ov + self.op.cgb;
+        let cgs = cgs1 + cgs2 + intp.cgs_ov;
+        let cgd = cgd1 + intp.cgd_ov + if reversed == self.op.reversed { self.op.cgd } else { self.op.cgs };
+        let cgb = cgb1 + intp.cgb_ov + self.op.cgb;
 
+        // Bulk Junction Caps
+        let (_qbs, cbs) = bs_junc.qc(-vsb, model);
+        let (_qbd, cbd) = bd_junc.qc(-vdb, model);
+
+        // Transient Updates, Numerically Integrating each Cap
         let mut tr = Mos1TranState::default();
         if let AnalysisInfo::TRAN(_, state) = an {
             // Numerical integrations for cap currents and impedances
@@ -797,9 +807,6 @@ impl Mos1 {
             }
             {
                 // Bulk Junction Caps
-                let (_qbs, cbs) = bs_junc.qc(-vsb, &self.model);
-                let (_qbd, cbd) = bd_junc.qc(-vdb, &self.model);
-
                 let dqbs = if reversed == self.op.reversed {
                     (-vsb + self.op.vsb) * cbs
                 } else {
@@ -825,8 +832,8 @@ impl Mos1 {
         // FIXME: this also needs the "prime" vs "external" source & drains
         let (sr, sx, dr, dx) = if !reversed { (SP, S, DP, D) } else { (DP, D, SP, S) };
         // Include our terminal resistances
-        let grd = self.intparams.grd;
-        let grs = self.intparams.grs;
+        let grd = intp.grd;
+        let grs = intp.grs;
         // Collect up our matrix contributions
         let stamps = Stamps {
             g: vec![
@@ -872,10 +879,14 @@ impl Mos1 {
             gm,
             gds,
             gmbs,
+            gbs,
+            gbd,
             reversed,
             cgs: cgs1,
             cgd: cgd1,
             cgb: cgb1,
+            cbs,
+            cbd,
             tr,
         };
         (guess, stamps)
@@ -901,43 +912,35 @@ impl Component for Mos1 {
         stamps // And return our matrix stamps
     }
     fn load_ac(&mut self, _guess: &Variables<Complex<f64>>, an: &AnalysisInfo, _opts: &Options) -> Stamps<Complex<f64>> {
-        use Mos1Var::{B, D, DP, G, S, SP};
+        let intp = &*self.intparams.read();
+
         // Grab the frequency-variable from our analysis
         let omega = match an {
             AnalysisInfo::AC(_opts, state) => state.omega,
             _ => panic!("Invalid AC AnalysisInfo"),
         };
-
         // Short-hand the conductances from our op-point.
         // (Rustc should be smart enough not to copy these.)
-        let (gm, gds, gmbs) = (self.op.gm, self.op.gds, self.op.gmbs);
-
+        let Mos1OpPoint { gm, gds, gmbs, gbs, gbd, .. } = self.op;
         // Cap admittances
         let gcgs = omega * self.op.cgs;
         let gcgd = omega * self.op.cgd;
         let gcgb = omega * self.op.cgb;
-
-        // FIXME: bulk junction diodes
-        let _cbs = 0.0;
-        let _cbd = 0.0;
-        let gbd = 1e-9;
-        let gbs = 1e-9;
-        let _gcbd = 0.0;
-        let _gcbs = 0.0;
-        let gcbg = 0.0;
+        let gcbs = omega * self.op.cbs;
+        let gcbd = omega * self.op.cbd;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
+        use Mos1Var::{B, D, DP, G, S, SP};
         let (sr, sx, dr, dx) = if !self.op.reversed { (SP, S, DP, D) } else { (DP, D, SP, S) };
 
         // Include our terminal resistances
-        let grd = self.intparams.grd;
-        let grs = self.intparams.grs;
+        // let Mos1InternalParams { intp.grs, intp.grd, .. } = intp;
 
         // And finally, send back our AC-matrix contributions
         return Stamps {
             g: vec![
-                (self.matps[(dr, dr)], Complex::new(gds + grd + gbd, gcgd)),
-                (self.matps[(sr, sr)], Complex::new(gm + gds + grs + gbs + gmbs, gcgs)),
+                (self.matps[(dr, dr)], Complex::new(gds + intp.grd + gbd, gcgd)),
+                (self.matps[(sr, sr)], Complex::new(gm + gds + intp.grs + gbs + gmbs, gcgs)),
                 (self.matps[(dr, sr)], Complex::new(-gm - gds - gmbs, 0.0)),
                 (self.matps[(sr, dr)], Complex::new(-gds, 0.0)),
                 (self.matps[(dr, G)], Complex::new(gm, -gcgd)),
@@ -947,18 +950,18 @@ impl Component for Mos1 {
                 (self.matps[(G, B)], Complex::new(0.0, -gcgb)),
                 (self.matps[(G, dr)], Complex::new(0.0, -gcgd)),
                 (self.matps[(G, sr)], Complex::new(0.0, -gcgs)),
-                (self.matps[(B, G)], Complex::new(0.0, -gcbg)),
+                (self.matps[(B, G)], Complex::new(0.0, -gcgb)),
                 (self.matps[(G, dr)], Complex::new(0.0, -gcgd)),
                 (self.matps[(B, dr)], Complex::new(-gbd, 0.0)),
                 (self.matps[(B, sr)], Complex::new(-gbs, 0.0)),
                 (self.matps[(dr, B)], Complex::new(-gbd + gmbs, 0.0)),
                 (self.matps[(sr, B)], Complex::new(-gbs - gmbs, 0.0)),
-                (self.matps[(dx, dr)], Complex::new(-grd, 0.0)),
-                (self.matps[(dr, dx)], Complex::new(-grd, 0.0)),
-                (self.matps[(dx, dx)], Complex::new(grd, 0.0)),
-                (self.matps[(sx, sr)], Complex::new(-grs, 0.0)),
-                (self.matps[(sr, sx)], Complex::new(-grs, 0.0)),
-                (self.matps[(sx, sx)], Complex::new(grs, 0.0)),
+                (self.matps[(dx, dr)], Complex::new(-intp.grd, 0.0)),
+                (self.matps[(dr, dx)], Complex::new(-intp.grd, 0.0)),
+                (self.matps[(dx, dx)], Complex::new(intp.grd, 0.0)),
+                (self.matps[(sx, sr)], Complex::new(-intp.grs, 0.0)),
+                (self.matps[(sr, sx)], Complex::new(-intp.grs, 0.0)),
+                (self.matps[(sx, sx)], Complex::new(intp.grs, 0.0)),
             ],
             b: vec![],
         };
@@ -970,9 +973,56 @@ use std::collections::HashMap;
 /// # Mos1 Model and Instance-Param Definitions Depot
 ///
 #[derive(Default)]
-pub struct Mos1Defs {
-    pub(crate) models: HashMap<String, proto::Mos1Model>,
-    pub(crate) insts: HashMap<String, proto::Mos1InstParams>,
+pub(crate) struct Mos1Defs {
+    pub(crate) models: HashMap<String, DefPtr<Mos1Model>>,
+    pub(crate) insts: HashMap<String, DefPtr<Mos1InstanceParams>>,
+    pub(crate) cache: HashMap<(String, String), Mos1CacheEntry>,
+}
+pub(crate) struct Mos1CacheEntry {
+    pub(crate) model: DefPtr<Mos1Model>,
+    pub(crate) inst: DefPtr<Mos1InstanceParams>,
+    pub(crate) intp: DefPtr<Mos1InternalParams>,
+}
+impl Mos1CacheEntry {
+    fn clone(&self) -> Self {
+        Self {
+            model: DefPtr::clone(&self.model),
+            inst: DefPtr::clone(&self.inst),
+            intp: DefPtr::clone(&self.intp),
+        }
+    }
+}
+impl Mos1Defs {
+    pub(crate) fn add_model(&mut self, name: &str, specs: &proto::Mos1Model) {
+        self.models.insert(name.to_string(), DefPtr::new(Mos1Model::resolve(specs)));
+    }
+    pub(crate) fn add_inst(&mut self, name: &str, inst: &proto::Mos1InstParams) {
+        self.insts.insert(name.to_string(), DefPtr::new(Mos1InstanceParams::resolve(inst)));
+    }
+    pub(crate) fn get(&mut self, inst: &str, model: &str, opts: &Options) -> Option<Mos1CacheEntry> {
+        // If we've already derived these parameters, clone a new pointer to them
+        if let Some(e) = self.cache.get(&(inst.to_string(), model.to_string())) {
+            return Some(e.clone());
+        }
+
+        // Not in cache, check whether we have definitions.
+        let instptr = self.insts.get(inst)?;
+        let modelptr = self.models.get(model)?;
+
+        // If we get here, we found definitions of both instance and model params.
+        // Now derive the internal ones, including any circuit options.
+        let intp = Mos1InternalParams::derive(&*modelptr.read(), &*instptr.read(), opts);
+
+        // Create new pointers and a new cache entry for the new combo.
+        let intp = DefPtr::new(intp);
+        let entry = Mos1CacheEntry {
+            intp,
+            inst: DefPtr::clone(&instptr),
+            model: DefPtr::clone(&modelptr),
+        };
+        self.cache.insert((inst.to_string(), model.to_string()), entry.clone());
+        Some(entry)
+    }
 }
 
 /// Mos Level-Zero Instance Parameters
