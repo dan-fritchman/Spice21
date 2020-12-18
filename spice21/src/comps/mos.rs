@@ -631,7 +631,7 @@ pub struct Mos1 {
     pub(crate) guess: Mos1OpPoint,
     pub(crate) matps: Mos1MatrixPointers,
 }
-impl Mos1 { 
+impl Mos1 {
     /// Gather the voltages on each of our node-variables from `Variables` `guess`.
     fn vs(&self, vars: &Variables<f64>) -> Mos1Vars<f64> {
         use Mos1Var::{B, D, DP, G, S, SP};
@@ -968,22 +968,20 @@ impl Component for Mos1 {
     }
 }
 
-use std::collections::HashMap;
+use crate::defs::{CacheEntry, ModelInstanceCache};
+
 ///
 /// # Mos1 Model and Instance-Param Definitions Depot
 ///
+pub(crate) type Mos1Defs = ModelInstanceCache<Mos1Model, Mos1InstanceParams, Mos1CacheEntry>;
+
 #[derive(Default)]
-pub(crate) struct Mos1Defs {
-    pub(crate) models: HashMap<String, DefPtr<Mos1Model>>,
-    pub(crate) insts: HashMap<String, DefPtr<Mos1InstanceParams>>,
-    pub(crate) cache: HashMap<(String, String), Mos1CacheEntry>,
-}
 pub(crate) struct Mos1CacheEntry {
     pub(crate) model: DefPtr<Mos1Model>,
     pub(crate) inst: DefPtr<Mos1InstanceParams>,
     pub(crate) intp: DefPtr<Mos1InternalParams>,
 }
-impl Mos1CacheEntry {
+impl Clone for Mos1CacheEntry {
     fn clone(&self) -> Self {
         Self {
             model: DefPtr::clone(&self.model),
@@ -992,36 +990,17 @@ impl Mos1CacheEntry {
         }
     }
 }
-impl Mos1Defs {
-    pub(crate) fn add_model(&mut self, name: &str, specs: &proto::Mos1Model) {
-        self.models.insert(name.to_string(), DefPtr::new(Mos1Model::resolve(specs)));
-    }
-    pub(crate) fn add_inst(&mut self, name: &str, inst: &proto::Mos1InstParams) {
-        self.insts.insert(name.to_string(), DefPtr::new(Mos1InstanceParams::resolve(inst)));
-    }
-    pub(crate) fn get(&mut self, inst: &str, model: &str, opts: &Options) -> Option<Mos1CacheEntry> {
-        // If we've already derived these parameters, clone a new pointer to them
-        if let Some(e) = self.cache.get(&(inst.to_string(), model.to_string())) {
-            return Some(e.clone());
+impl CacheEntry for Mos1CacheEntry {
+    type Model = Mos1Model;
+    type Instance = Mos1InstanceParams;
+
+    fn new(model: &DefPtr<Self::Model>, inst: &DefPtr<Self::Instance>, opts: &Options) -> Self {
+        let intp = Mos1InternalParams::derive(&*model.read(), &*inst.read(), opts);
+        Self {
+            intp: DefPtr::new(intp),
+            inst: DefPtr::clone(inst),
+            model: DefPtr::clone(model),
         }
-
-        // Not in cache, check whether we have definitions.
-        let instptr = self.insts.get(inst)?;
-        let modelptr = self.models.get(model)?;
-
-        // If we get here, we found definitions of both instance and model params.
-        // Now derive the internal ones, including any circuit options.
-        let intp = Mos1InternalParams::derive(&*modelptr.read(), &*instptr.read(), opts);
-
-        // Create new pointers and a new cache entry for the new combo.
-        let intp = DefPtr::new(intp);
-        let entry = Mos1CacheEntry {
-            intp,
-            inst: DefPtr::clone(&instptr),
-            model: DefPtr::clone(&modelptr),
-        };
-        self.cache.insert((inst.to_string(), model.to_string()), entry.clone());
-        Some(entry)
     }
 }
 

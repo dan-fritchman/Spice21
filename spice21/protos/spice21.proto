@@ -71,6 +71,7 @@ message Diode {
     string name = 1; 
     string p = 2;
     string n = 3;
+    string model = 4;  // Model name
     string params = 5; // Instance parameter-set name
 }
 // message Diode {

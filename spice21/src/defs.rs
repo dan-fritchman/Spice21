@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
+use crate::analysis;
+
 ///
 /// # Definition Pointer
 ///
@@ -51,6 +53,64 @@ impl ModuleDefs {
             Some(ptr) => Some(DefPtr::clone(ptr)),
             None => None,
         }
+    }
+}
+
+//
+// Shared Model & Instance Caching Infrastructure
+//
+// Each of the components with `model`/`instance` parameter separation uses
+// a version of `ModelInstanceCache` to store its model-parameters, instance-parameters,
+// and combinations thereof, typically including some derived information
+// and simulator option-specifics.
+//
+// The `ModelInstanceCache` struct and `CacheEntry` trait comprise most
+// code for searching these caches, and where necessary creating
+// and adding the derived data.
+//
+
+pub trait CacheEntry: Clone {
+    type Model;
+    type Instance;
+    fn new(model: &DefPtr<Self::Model>, inst: &DefPtr<Self::Instance>, opts: &analysis::Options) -> Self;
+}
+
+#[derive(Default)]
+pub struct ModelInstanceCache<Model, Instance, Entry>
+where
+    Entry: CacheEntry<Model = Model, Instance = Instance>,
+{
+    pub(crate) models: HashMap<String, DefPtr<Model>>,
+    pub(crate) insts: HashMap<String, DefPtr<Instance>>,
+    pub(crate) cache: HashMap<(String, String), Entry>,
+}
+impl<Model, Instance, Entry> ModelInstanceCache<Model, Instance, Entry>
+where
+    Entry: CacheEntry<Model = Model, Instance = Instance>,
+{
+    pub(crate) fn add_model(&mut self, name: &str, model: Model) {
+        self.models.insert(name.to_string(), DefPtr::new(model));
+    }
+    pub(crate) fn add_inst(&mut self, name: &str, inst: Instance) {
+        self.insts.insert(name.to_string(), DefPtr::new(inst));
+    }
+    pub(crate) fn get(&mut self, inst: &str, model: &str, opts: &analysis::Options) -> Option<Entry> {
+        // If we've already derived these parameters, clone a new pointer to them
+        if let Some(e) = self.cache.get(&(inst.to_string(), model.to_string())) {
+            return Some(e.clone());
+        }
+
+        // Not in cache, check whether we have definitions.
+        let instptr = self.insts.get(inst)?;
+        let modelptr = self.models.get(model)?;
+
+        // If we get here, we found definitions of both instance and model params.
+        // Now derive the internal ones, including any circuit options.
+        let e = Entry::new(modelptr, instptr, opts);
+
+        // Insert a copy in our cache, and return the original
+        self.cache.insert((inst.to_string(), model.to_string()), e.clone());
+        Some(e)
     }
 }
 

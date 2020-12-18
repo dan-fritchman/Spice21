@@ -388,6 +388,8 @@ impl Component for Diode0 {
     }
 }
 
+use crate::defs::{CacheEntry, ModelInstanceCache};
+
 ///
 /// # Diode Model and Instance-Param Definitions
 ///
@@ -397,21 +399,20 @@ impl Component for Diode0 {
 /// internal parameters (`DiodeInternalParams`) are derived,
 /// and stored alongside pointers to their models in the `cache` Hash.
 ///
-#[derive(Default)]
-pub struct DiodeDefs {
-    models: HashMap<String, DefPtr<DiodeModel>>,
-    insts: HashMap<String, DefPtr<DiodeInstParams>>,
-    cache: HashMap<String, DiodeCacheEntry>,
-}
-/// Diode Cache Entry
+pub(crate) type DiodeDefs = ModelInstanceCache<DiodeModel, DiodeInstParams, DiodeCacheEntry>;
+
+///
+/// # Diode Cache Entry
 /// Includes the internal/ derived, instance, and model parameters
 /// that fully characterize a Diode instance
+///
+#[derive(Default)]
 pub(crate) struct DiodeCacheEntry {
     pub(crate) model: DefPtr<DiodeModel>,
     pub(crate) inst: DefPtr<DiodeInstParams>,
     pub(crate) intp: DefPtr<DiodeIntParams>,
 }
-impl DiodeCacheEntry {
+impl Clone for DiodeCacheEntry {
     fn clone(&self) -> Self {
         Self {
             model: DefPtr::clone(&self.model),
@@ -420,36 +421,15 @@ impl DiodeCacheEntry {
         }
     }
 }
-impl DiodeDefs {
-    pub(crate) fn add_model(&mut self, name: &str, specs: DiodeModel) {
-        self.models.insert(name.to_string(), DefPtr::new(specs));
-    }
-    pub(crate) fn add_inst(&mut self, name: &str, inst: DiodeInstParams) {
-        self.insts.insert(name.to_string(), DefPtr::new(inst));
-    }
-    pub(crate) fn get(&mut self, inst_name: &str, opts: &Options) -> Option<DiodeCacheEntry> {
-        // If we've already derived these parameters, clone a new pointer to them 
-        if let Some(e) = self.cache.get(inst_name) {
-            return Some(e.clone());
+impl CacheEntry for DiodeCacheEntry {
+    type Model = DiodeModel;
+    type Instance = DiodeInstParams;
+    fn new(model: &DefPtr<Self::Model>, inst: &DefPtr<Self::Instance>, opts: &Options) -> Self {
+        let intp = DiodeIntParams::derive(&*model.read(), &*inst.read(), opts);
+        Self {
+            intp: DefPtr::new(intp),
+            inst: DefPtr::clone(inst),
+            model: DefPtr::clone(model),
         }
-
-        // Not in cache, check whether we have definitions.
-        let instptr = self.insts.get(inst_name)?;
-        let inst = &*instptr.read();
-        let modelptr = self.models.get(&inst.model)?;
-
-        // If we get here, we found definitions of both instance and model params.
-        // Now derive the internal ones, including any circuit options.
-        let intp = DiodeIntParams::derive(&*modelptr.read(), inst, opts);
-
-        // Create new pointers and a new cache entry for the new combo.
-        let intp = DefPtr::new(intp);
-        let entry = DiodeCacheEntry {
-            intp,
-            inst: DefPtr::clone(&instptr),
-            model: DefPtr::clone(&modelptr),
-        };
-        self.cache.insert(inst_name.to_string(), entry.clone());
-        Some(entry)
     }
 }

@@ -85,14 +85,14 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
     pub(crate) fn elaborate_diode(&mut self, d: circuit::DiodeI, ns: &mut HashMap<String, Option<VarIndex>>) {
         use crate::comps::diode;
         // Destruct the key parser-diode attributes
-        let circuit::DiodeI { name, params, p, n, .. } = d;
+        let circuit::DiodeI { name, model, params, p, n, .. } = d;
         // Create or retrive the solver node-variables
         // FIXME: note no auto-noding here
         let pvar = ns.get(&p).unwrap().clone();
         let nvar = ns.get(&n).unwrap().clone();
         self.path.push(name.clone());
         // Get our model and params from definitions
-        let ddef = match self.defs.diodes.get(&params.clone(), &self.opts) {
+        let ddef = match self.defs.diodes.get(&params, &model, &self.opts) {
             Some(e) => e,
             None => panic!(format!("Parameters not defined: {}", params)),
         };
@@ -144,13 +144,7 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             let (model, inst) = self.defs.bsim4.get(&model, &params).unwrap();
             let ports = bsim4::Bsim4Ports::from(self.pathstr(), &ports, &model.vals, &inst.intp, &mut self.vars);
             bsim4::Bsim4::new(ports, model, inst).into()
-        } else if let Some(m_) = self.defs.mos1.models.get(&model) {
-            // let params = match self.defs.mos1.insts.get(&params) {
-            //     Some(p) => p.clone(),
-            //     None => panic!(format!("Mos1 Instance Parameter-Set not defined: {}", params)),
-            // };
-            // let model = mos::Mos1Model::resolve(&model);
-            // let intp = mos::Mos1InstanceParams::resolve(&params);
+        } else if let Some(m_) = self.defs.mos1.models.get(&model) { 
             // Get our model and params from definitions
             let e = match self.defs.mos1.get(&params.clone(), &model.clone(), &self.opts) {
                 Some(e) => e,
@@ -158,12 +152,11 @@ impl<'a, NumT: SpNum> Elaborator<'a, NumT> {
             };
             let mos::Mos1CacheEntry { model, intp, inst } = e;
             let ports = mos::Mos1Vars::from(self.pathstr(), &ports, &*model.read(), &mut self.vars);
-            // mos::Mos1::new(model, intp, ports, &self.opts).into()
             mos::Mos1 {
+                ports,
                 model,
                 intparams: intp,
                 _params: inst,
-                ports,
                 ..Default::default()
             }
             .into()
