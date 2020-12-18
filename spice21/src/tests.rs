@@ -780,8 +780,8 @@ fn test_mos0_cmos_ro_tran() -> TestResult {
     // A reminder that MOS0 has *no* internal capacitance,
     // so this will (a) run at these crazy speeds:
     let opts = TranOptions {
-        tstep: 1e-50, // Told you its fast
-        tstop: 1e-47, // See?
+        tstep: 1e-12, // Told you its fast
+        tstop: 1e-9, // See?
         ic: vec![(Num(1), 0.0)],
     };
     // and (b) run at *infinite* speed without adding some caps:
@@ -915,7 +915,7 @@ fn cmos_ro3() -> Ckt {
               comps: 
               - {type: M, name: p, ports: {g: inp, d: out, s: vdd, b: vdd}, params: default, model: pmos }
               - {type: M, name: n, ports: {g: inp, d: out, s: vss, b: vss}, params: default, model: nmos }
-              - {type: C, name: c, p: out, n: vss, c: 1e-14 }
+              - {type: C, name: c, p: out, n: vss, c: 1e-15 }
             comps:
               - {type: V, name: v1, p: vdd, n: "", dc: 1.0, acm: 0.0 }
               - {type: X, name: x1, module: inv, ports: {inp: "1",  out: "2", vdd: vdd, vss: "" }, params: {} }
@@ -990,9 +990,9 @@ fn nmos_ro3() -> Ckt {
               params: {}
               signals: [] 
               comps: 
-              - {type: C, name: c, p: out, n: vdd, c: 1e-16 }
-              - {type: R, name: r, p: out, n: vdd, g: 1e-6 }
               - {type: M, name: m, ports: {g: inp, d: out, s: vss, b: vss}, params: default, model: nmos }
+              - {type: R, name: r, p: out, n: vdd, g: 1e-6 }
+              - {type: C, name: c, p: out, n: vdd, c: 0.5e-15 }
             comps:
             - {type: V, name: v1, p: vdd, n: "", dc: 1.0, acm: 0.0 }
             - {type: X, name: x1, module: stg, ports: {inp: "1",  out: "2", vdd: vdd, vss: "" }, params: {} }
@@ -1442,12 +1442,17 @@ fn to_file(soln: &TranResult, fname: &str) {
     #[allow(unused_imports)] // Need these traits in scope
     use serde::ser::{SerializeSeq, Serializer};
     use std::fs::File;
+    use std::path::PathBuf;
     use std::io::prelude::*;
 
     // FIXME: "configuration" of when new data written is right here!
     const OVERWRITE: bool = true;
     if OVERWRITE {
-        let mut rfj = File::create(fname).unwrap();
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("testdata/");
+        d.push(fname);
+
+        let mut rfj = File::create(d).unwrap();
         let s = serde_json::to_string(&soln.map).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
     }

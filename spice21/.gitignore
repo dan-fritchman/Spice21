@@ -1,4 +1,5 @@
 
+testdata
 *.ipynb
 .ipynb_checkpoints/
 *.json
