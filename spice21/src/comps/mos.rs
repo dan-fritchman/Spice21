@@ -9,7 +9,7 @@ use std::ops::{Index, IndexMut};
 
 use super::consts;
 use super::{make_matrix_elem, Component};
-use crate::analysis::{AnalysisInfo, Options, Stamps, VarIndex, Variables};
+use crate::analysis::{AnalysisInfo, ChargeInteg, Options, Stamps, TranState, VarIndex, Variables};
 use crate::sparse21::{Eindex, Matrix};
 use crate::{proto, SpNum};
 
@@ -361,21 +361,38 @@ struct Mos1OpPoint {
     vds: f64,
     vgd: f64,
     vgb: f64,
+    vdb: f64,
+    vsb: f64,
     gm: f64,
     gds: f64,
     gmbs: f64,
     cgs: f64,
     cgd: f64,
     cgb: f64,
-    qgs: f64,
-    qgd: f64,
-    qgb: f64,
-    icgs: f64,
-    icgd: f64,
-    icgb: f64,
     reversed: bool,
+    tr: Mos1TranState,
 }
-
+/// Local structure for transient results,
+/// in the form of numerical-integration (conductance, current, rhs)'s
+#[derive(Default, Clone)]
+struct Mos1TranState {
+    gs: ChargeInteg,
+    gd: ChargeInteg,
+    gb: ChargeInteg,
+    bs: ChargeInteg,
+    bd: ChargeInteg,
+}
+/// Mos1 Node Variables
+/// FIXME: replace MosPorts with these 
+#[derive(Default)]
+pub struct Mos1Vars<T> {
+    pub dx: T,
+    pub dp: T,
+    pub g: T,
+    pub sx: T,
+    pub sp: T,
+    pub b: T,
+}
 ///
 /// # Mos Level 1 Solver
 ///
@@ -622,16 +639,24 @@ impl Mos1 {
         }
 
         // Bulk Junction Diodes
-        let vtherm = self.intparams.vtherm;
-        let isat_bs = self.intparams.source_junc.isat;
-        let isat_bd = self.intparams.drain_junc.isat;
+        let Mos1InternalParams {
+            vtherm,
+            ref source_junc,
+            ref drain_junc,
+            ..
+        } = self.intparams;
+        let (bs_junc, bd_junc) = if !reversed {
+            (source_junc, drain_junc)
+        } else {
+            (drain_junc, source_junc)
+        };
         // Source-Bulk
-        let ibs = isat_bs * ((-vsb / vtherm).exp() - 1.0);
-        let gbs = (isat_bs / vtherm) * (-vsb / vtherm).exp() + gmin;
+        let ibs = bs_junc.isat * ((-vsb / vtherm).exp() - 1.0);
+        let gbs = (bs_junc.isat / vtherm) * (-vsb / vtherm).exp() + gmin;
         let ibs_rhs = ibs + vsb * gbs;
         // Drain-Bulk
-        let ibd = isat_bd * ((-vdb / vtherm).exp() - 1.0);
-        let gbd = (isat_bd / vtherm) * (-vdb / vtherm).exp() + gmin;
+        let ibd = bd_junc.isat * ((-vdb / vtherm).exp() - 1.0);
+        let gbd = (bd_junc.isat / vtherm) * (-vdb / vtherm).exp() + gmin;
         let ibd_rhs = ibd + vdb * gbd;
 
         // Capacitance Calculations
@@ -679,67 +704,56 @@ impl Mos1 {
         let cgd = cgd1 + self.intparams.cgd_ov + if reversed == self.op.reversed { self.op.cgd } else { self.op.cgs };
         let cgb = cgb1 + self.intparams.cgb_ov + self.op.cgb;
 
-        // Numerical integrations for cap currents and impedances
-        let (gcgs, icgs, rhsgs) = if let AnalysisInfo::TRAN(_, state) = an {
-            let dqgs = if reversed == self.op.reversed {
-                (vgs - self.op.vgs) * cgs
-            } else {
-                (vgs - self.op.vgd) * cgs
-            };
-            let ip = if reversed == self.op.reversed { self.op.icgs } else { self.op.icgd };
-            state.integrate(dqgs, cgs, vgs, ip)
-        } else {
-            (0.0, 0.0, 0.0)
-        };
-        let (gcgd, icgd, rhsgd) = if let AnalysisInfo::TRAN(_, state) = an {
-            let dqgd = if reversed == self.op.reversed {
-                (vgd - self.op.vgd) * cgd
-            } else {
-                (vgd - self.op.vgs) * cgd
-            };
-            let ip = if reversed == self.op.reversed { self.op.icgd } else { self.op.icgs };
-            state.integrate(dqgd, cgd, vgd, ip)
-        } else {
-            (0.0, 0.0, 0.0)
-        };
-        let (gcgb, icgb, rhsgb) = if let AnalysisInfo::TRAN(_, state) = an {
-            let dqgb = (vgb - self.op.vgb) * cgb;
-            state.integrate(dqgb, cgb, vgb, self.op.icgb)
-        } else {
-            (0.0, 0.0, 0.0)
-        };
+        let mut tr = Mos1TranState::default();
+        if let AnalysisInfo::TRAN(_, state) = an {
+            // Numerical integrations for cap currents and impedances
+            {
+                let dqgs = if reversed == self.op.reversed {
+                    (vgs - self.op.vgs) * cgs
+                } else {
+                    (vgs - self.op.vgd) * cgs
+                };
+                let ip = if reversed == self.op.reversed { self.op.tr.gs.i } else { self.op.tr.gd.i };
+                tr.gs = state.integq(dqgs, cgs, vgs, ip);
+            }
+            {
+                let dqgd = if reversed == self.op.reversed {
+                    (vgd - self.op.vgd) * cgd
+                } else {
+                    (vgd - self.op.vgs) * cgd
+                };
+                let ip = if reversed == self.op.reversed { self.op.tr.gd.i } else { self.op.tr.gs.i };
+                tr.gs = state.integq(dqgd, cgd, vgd, ip);
+            }
+            {
+                // Gate-Bulk Cap
+                let dqgb = (vgb - self.op.vgb) * cgb;
+                tr.gb = state.integq(dqgb, cgb, vgb, self.op.tr.gb.i);
+            }
+            {
+                // Bulk Junction Caps
+                let (qbs, cbs) = bs_junc.qc(-vsb, &self.model);
+                let (qbd, cbd) = bd_junc.qc(-vdb, &self.model);
 
-        // FIXME: bulk junction diode caps
-        let _cbs = 0.0;
-        let _cbd = 0.0;
-        let _gcbd = 0.0;
-        let _gcbs = 0.0;
-
-        // Store as our op point for next time
-        let guess = Mos1OpPoint {
-            ids,
-            vgs,
-            vds,
-            vgd,
-            vgb,
-            cgs: cgs1,
-            cgd: cgd1,
-            cgb: cgb1,
-            qgs: 0.0, // FIXME: unused
-            qgd: 0.0,
-            qgb: 0.0,
-            icgs,
-            icgd,
-            icgb,
-            gm,
-            gds,
-            gmbs,
-            reversed,
-        };
-
-        // FIXME: Bulk junction caps RHS adjustment
-        // let _ceqbs = p * (cbs + gbs * vsb);
-        // let _ceqbd = 0.0; //p * (cbd + gbd * vdb);
+                let dqbs = if reversed == self.op.reversed {
+                    (-vsb + self.op.vsb) * cbs
+                } else {
+                    (-vsb + self.op.vdb) * cbs
+                };
+                let dqbd = if reversed == self.op.reversed {
+                    (-vdb + self.op.vdb) * cbd
+                } else {
+                    (-vdb + self.op.vsb) * cbd
+                };
+                let (isp, idp) = if reversed == self.op.reversed {
+                    (self.op.tr.gs.i, self.op.tr.gd.i)
+                } else {
+                    (self.op.tr.gd.i, self.op.tr.gs.i)
+                };
+                tr.bs = state.integq(dqbs, cbs, -vsb, isp);
+                tr.bd = state.integq(dqbd, cbd, -vdb, idp);
+            }
+        }
         let irhs = ids - gm * vgs - gds * vds;
 
         // Sort out which are the "reported" drain and source terminals (sr, dr)
@@ -748,21 +762,21 @@ impl Mos1 {
         // Include our terminal resistances
         let grd = self.intparams.grd;
         let grs = self.intparams.grs;
-        // And finally send back our matrix contributions
+        // Collect up our matrix contributions
         let stamps = Stamps {
             g: vec![
-                (self.matps[(dr, dr)], gds + grd + gbd + gcgd),
-                (self.matps[(sr, sr)], gm + gds + grs + gbs + gmbs + gcgs),
+                (self.matps[(dr, dr)], gds + grd + gbd + tr.gd.g),
+                (self.matps[(sr, sr)], gm + gds + grs + gbs + gmbs + tr.gs.g),
                 (self.matps[(dr, sr)], -gm - gds - gmbs),
                 (self.matps[(sr, dr)], -gds),
-                (self.matps[(dr, G)], gm - gcgd),
-                (self.matps[(sr, G)], -gm - gcgs),
-                (self.matps[(G, G)], (gcgd + gcgs + gcgb)),
-                (self.matps[(B, B)], (gbd + gbs + gcgb)),
-                (self.matps[(G, B)], -gcgb),
-                (self.matps[(G, dr)], -gcgd),
-                (self.matps[(G, sr)], -gcgs),
-                (self.matps[(B, G)], -gcgb),
+                (self.matps[(dr, G)], gm - tr.gd.g),
+                (self.matps[(sr, G)], -gm - tr.gs.g),
+                (self.matps[(G, G)], (tr.gd.g + tr.gs.g + tr.gb.g)),
+                (self.matps[(B, B)], (gbd + gbs + tr.gb.g)),
+                (self.matps[(G, B)], -tr.gb.g),
+                (self.matps[(G, dr)], -tr.gd.g),
+                (self.matps[(G, sr)], -tr.gs.g),
+                (self.matps[(B, G)], -tr.gb.g),
                 (self.matps[(B, dr)], -gbd),
                 (self.matps[(B, sr)], -gbs),
                 (self.matps[(dr, B)], -gbd + gmbs),
@@ -775,16 +789,34 @@ impl Mos1 {
                 (self.matps[(sx, sx)], grs),
             ],
             b: vec![
-                (self.ports[dr], p * (-irhs + ibd_rhs + rhsgd)),
-                (self.ports[sr], p * (irhs + ibs_rhs + rhsgs)),
-                (self.ports[G], -p * (rhsgs + rhsgb + rhsgd)),
-                (self.ports[B], -p * (ibd_rhs + ibs_rhs - rhsgb)),
+                (self.ports[dr], p * (-irhs + ibd_rhs + tr.gd.rhs)),
+                (self.ports[sr], p * (irhs + ibs_rhs + tr.gs.rhs)),
+                (self.ports[G], -p * (tr.gs.rhs + tr.gb.rhs + tr.gd.rhs)),
+                (self.ports[B], -p * (ibd_rhs + ibs_rhs - tr.gb.rhs)),
             ],
+        };
+        // Collect up an OpPoint for inter-iteration storage
+        let guess = Mos1OpPoint {
+            ids,
+            vgs,
+            vds,
+            vgd,
+            vgb,
+            vdb,
+            vsb,
+            gm,
+            gds,
+            gmbs,
+            reversed,
+            cgs: cgs1,
+            cgd: cgd1,
+            cgb: cgb1,
+            tr,
         };
         (guess, stamps)
     }
+    fn tran(&self, guess: &mut Mos1OpPoint, state: &TranState) {}
 }
-
 impl Component for Mos1 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         for t1 in [G, D, S, B].iter() {
@@ -959,10 +991,10 @@ impl Component for Mos0 {
         let irhs = ids - gm * vgs - gds * vds;
         return Stamps {
             g: vec![
-                (self.matps[(dr, dr)], gds+gmin),
-                (self.matps[(sr, sr)], (gm + gds+gmin)),
-                (self.matps[(dr, sr)], -(gm + gds+gmin)),
-                (self.matps[(sr, dr)], -gds-gmin),
+                (self.matps[(dr, dr)], gds + gmin),
+                (self.matps[(sr, sr)], (gm + gds + gmin)),
+                (self.matps[(dr, sr)], -(gm + gds + gmin)),
+                (self.matps[(sr, dr)], -gds - gmin),
                 (self.matps[(dr, G)], gm),
                 (self.matps[(sr, G)], -gm),
             ],

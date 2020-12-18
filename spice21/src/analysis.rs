@@ -11,9 +11,9 @@ use crate::defs;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{sperror, SpNum, SpResult};
 
-/// 
-/// # Matrix Stamps 
-/// 
+///
+/// # Matrix Stamps
+///
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.g`
@@ -433,8 +433,18 @@ impl TranState {
             }
         }
     }
+    pub fn integq(&self, dq: f64, dq_dv: f64, vguess: f64, _ip: f64) -> ChargeInteg {
+        let (g, i, rhs) = self.integrate(dq, dq_dv, vguess, _ip);
+        ChargeInteg { g, i, rhs }
+    }
 }
-
+/// Result of numerical integration for a charge-element
+#[derive(Default, Clone)]
+pub(crate) struct ChargeInteg {
+    pub(crate) g: f64,
+    pub(crate) i: f64,
+    pub(crate) rhs: f64,
+}
 /// Transient Analysis Options
 #[derive(Debug)]
 pub struct TranOptions {
