@@ -368,6 +368,18 @@ impl OpResult {
             None => Err(sperror("Signal Not Found")),
         }
     }
+    pub fn encode(&self) -> Vec<u8> {
+        #[allow(unused_imports)]
+        use prost::Message;
+        use crate::proto::OpResult;
+        let c = OpResult {
+            vals: self.map.clone()
+        };
+        let mut buf = Vec::<u8>::new();
+        buf.reserve(c.encoded_len());
+        c.encode(&mut buf).unwrap();
+        buf
+    }
 }
 /// Maintain much (most?) of our original vector-result-format
 /// via enabling integer indexing
@@ -620,6 +632,23 @@ impl TranResult {
             None => Err(sperror(format!("Signal Not Found: {}", name))),
         }
     }
+    pub fn encode(self) -> Vec<u8> {
+        #[allow(unused_imports)]
+        use prost::Message;
+        use crate::proto;
+        let mut vals: HashMap<String, proto::DoubleArray> = HashMap::new();
+        for (name, vec) in self.map {
+            vals.insert(name, proto::DoubleArray{vals:vec});
+        }
+        let c = proto::TranResult {
+            time: Some(proto::DoubleArray{vals:self.time}),
+            vals,
+        };
+        let mut buf = Vec::<u8>::new();
+        buf.reserve(c.encoded_len());
+        c.encode(&mut buf).unwrap();
+        buf
+    }
 }
 /// Maintain much (most?) of our original vector-result-format
 /// via enabling integer indexing
@@ -740,6 +769,31 @@ impl AcResult {
     }
     pub fn len(&self) -> usize {
         self.freq.len()
+    }
+    pub fn encode(self) -> Vec<u8> {
+        #[allow(unused_imports)]
+        use prost::Message;
+        use crate::proto;
+
+        let mut vals: HashMap<String, proto::ComplexArray> = HashMap::new();
+        for (name, vec) in self.map {
+            // Map each signal's data into proto-versions 
+            let v = vec.iter().map(|&c| 
+                proto::ComplexNum {
+                    re: c.re, 
+                    im: c.im,
+                }
+            ).collect(); 
+            vals.insert(name, proto::ComplexArray{ vals: v });
+        }
+        let c = proto::AcResult {
+            freq: Some(proto::DoubleArray{vals:self.freq}),
+            vals,
+        };
+
+        let mut buf = Vec::<u8>::with_capacity(c.encoded_len());
+        c.encode(&mut buf).unwrap();
+        buf
     }
 }
 
