@@ -1,0 +1,10 @@
+
+.git 
+.github 
+Dockerfile
+.dockerignore
+**/node_modules
+**/*.log
+**/target
+**/.vscode
+**/test*.json
