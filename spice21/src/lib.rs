@@ -44,8 +44,8 @@ pub(crate) mod macros {
     }
     }
 
-    /// The `from_opt_type` derives a type of the form `struct { x: X }` from `struct { x: Option<X> }`, 
-    /// given an existing type `from_type`, and default values for each field. 
+    /// The `from_opt_type` derives a type of the form `struct { x: X }` from `struct { x: Option<X> }`,
+    /// given an existing type `from_type`, and default values for each field.
     #[macro_export]
     macro_rules! from_opt_type {
     ( $dest_type:ident, $from_type:ident, $struct_desc:literal, [
@@ -57,7 +57,7 @@ pub(crate) mod macros {
         pub struct $dest_type {
             $( #[doc=$desc]
                 pub $attr_name : $attr_type ),*
-        } 
+        }
         impl From<$from_type> for $dest_type {
             pub fn from(specs: $from_type) -> Self {
                 Self {
@@ -154,13 +154,13 @@ pub(crate) mod macros {
 
 // Modules
 pub mod analysis;
-pub mod elab;
-pub mod comps;
 pub mod circuit;
+pub mod comps;
 pub mod defs;
+pub mod elab;
 pub mod proto;
-pub mod spresult;
 pub mod sparse21;
+pub mod spresult;
 
 // Re-exports
 pub use analysis::*;
@@ -176,3 +176,8 @@ mod spnum;
 
 #[cfg(test)]
 mod tests;
+
+// Use our internal friend-crate(s)
+// Note macro-import *must* be here at crate-root, *not* down-hierarchy 
+#[macro_use]
+extern crate spice21procs;

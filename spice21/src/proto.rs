@@ -2,10 +2,14 @@
 //! # Spice21 Protobuf Definitions
 //!
 
+// These are used by the macro-expanded code
 #[allow(unused_imports)]
 use prost::Message;
-#[allow(unused_imports)] // These are used by the macro-expanded code
+#[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use spice21int::SpProto;
+
 
 // Error Conversion
 use crate::SpError;
