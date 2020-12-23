@@ -9,7 +9,19 @@ use prost_build;
 fn main() {
     let mut config = prost_build::Config::new();
     // Add our custom trait
-    config.type_attribute("spice21.*", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Circuit", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Module", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Def", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Defs", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Sim", "#[derive(SpProto)]");
+    config.type_attribute("spice21.SimOptions", "#[derive(SpProto)]");
+    config.type_attribute("spice21.SimResult", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Op", "#[derive(SpProto)]");
+    config.type_attribute("spice21.OpResult", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Tran", "#[derive(SpProto)]");
+    config.type_attribute("spice21.TranResult", "#[derive(SpProto)]");
+    config.type_attribute("spice21.Ac", "#[derive(SpProto)]");
+    config.type_attribute("spice21.AcResult", "#[derive(SpProto)]");
 
     // Add serde traits
     config.type_attribute(".", "#[derive(serde_derive::Serialize, serde_derive::Deserialize)]");

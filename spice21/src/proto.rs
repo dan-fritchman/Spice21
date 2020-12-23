@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
 use spice21int::SpProto;
 
-
 // Error Conversion
 use crate::SpError;
 impl From<prost::DecodeError> for SpError {
@@ -183,39 +182,35 @@ mod tests {
             ],
         };
 
-        use std::fs::{create_dir_all, File};
+        use std::fs::File;
         use std::io::prelude::*;
-        use std::io::Cursor;
+        use std::path::Path;
 
-        // Make sure we have a `scratch/` directory
-        create_dir_all("scratch").unwrap();
+        // Grab a Path to our `scratch dir`
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("scratch");
 
         // Prost/ Protobuf Serialization Round-Trip
-        let mut buf = Vec::<u8>::new();
-        buf.reserve(c.encoded_len());
-        c.encode(&mut buf).unwrap();
-        let mut file = File::create("scratch/ckt.bin").unwrap();
-        file.write_all(&buf).unwrap();
-        let d = Circuit::decode(&mut Cursor::new(buf)).unwrap();
-        assert(&c.name).eq(&d.name)?;
+        let bytes = c.to_bytes();
+        let rckt = Circuit::from_bytes(&bytes)?;
+        assert(&c).eq(&rckt)?;
 
         // Serde-JSON Round-Trip
         let s = serde_json::to_string(&c).unwrap();
-        let mut rfj = File::create("scratch/ckt.json").unwrap();
+        let mut rfj = File::create(dir.join("ckt.json")).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = serde_json::from_str(&s).unwrap();
         assert(&c.name).eq(&d.name)?;
 
         // Serde-YAML Round-Trip
         let s = serde_yaml::to_string(&c).unwrap();
-        let mut rfj = File::create("scratch/ckt.yaml").unwrap();
+        let mut rfj = File::create(dir.join("ckt.yaml")).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = serde_yaml::from_str(&s).unwrap();
         assert(&c.name).eq(&d.name)?;
 
         // Serde-TOML Round-Trip
         let s = toml::to_string(&c).unwrap();
-        let mut rfj = File::create("scratch/ckt.toml").unwrap();
+        let mut rfj = File::create(dir.join("ckt.toml")).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = toml::from_str(&s).unwrap();
 

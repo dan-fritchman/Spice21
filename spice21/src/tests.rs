@@ -721,7 +721,10 @@ fn test_tran1() -> TestResult {
 #[ignore]
 fn test_tran2() -> TestResult {
     use NodeRef::{Gnd, Num};
-    let ckt = Ckt::from_comps(vec![Comp::idc("i1", 1e-3, Num(0), Gnd), Comp::c("c1", 4e-12, Num(0), Gnd)]);
+    let ckt = Ckt::from_comps(vec![
+        Comp::idc("i1", 1e-3, Num(0), Gnd),
+        Comp::c("c1", 4e-12, Num(0), Gnd),
+    ]);
 
     let opts = TranOptions {
         tstep: 1e-18,
@@ -747,7 +750,10 @@ fn test_tran2() -> TestResult {
 #[ignore] // FIXME: failing values to be debugged
 fn test_tran2b() -> TestResult {
     use NodeRef::{Gnd, Num};
-    let ckt = Ckt::from_comps(vec![Comp::idc("i1", 1e-6, Num(0), Gnd), Comp::c("c1", 100e-9, Num(0), Gnd)]);
+    let ckt = Ckt::from_comps(vec![
+        Comp::idc("i1", 1e-6, Num(0), Gnd),
+        Comp::c("c1", 100e-9, Num(0), Gnd),
+    ]);
 
     let opts = TranOptions {
         tstep: 1e-21,
@@ -1318,7 +1324,7 @@ fn test_ac4() -> TestResult {
     ]);
     // Define our models & params
     add_mos1_defaults(&mut ckt);
-    // Simulate 
+    // Simulate
     ac(ckt, AcOptions::default())?;
     // FIXME: checks on solution
     Ok(())
@@ -1420,16 +1426,13 @@ fn to_file(soln: &TranResult, fname: &str) {
     use serde::ser::{SerializeSeq, Serializer};
     use std::fs::File;
     use std::io::prelude::*;
-    use std::path::PathBuf;
+    use std::path::Path;
 
     // FIXME: "configuration" of when new data written is right here!
     const OVERWRITE: bool = true;
     if OVERWRITE {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("testdata/");
-        d.push(fname);
-
-        let mut rfj = File::create(d).unwrap();
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("scratch");
+        let mut rfj = File::create(dir.join(fname)).unwrap();
         let s = serde_json::to_string(&soln.map).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
     }
@@ -1439,12 +1442,10 @@ fn to_file(soln: &TranResult, fname: &str) {
 fn load_golden(fname: &str) -> HashMap<String, Vec<f64>> {
     use std::fs::File;
     use std::io::BufReader;
-    use std::path::PathBuf;
+    use std::path::Path;
 
-    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    d.push("resources/");
-    d.push(fname);
-    let file = File::open(d).unwrap();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("scratch");
+    let file = File::open(dir.join(fname)).unwrap();
     let reader = BufReader::new(file);
     let golden: HashMap<String, Vec<f64>> = serde_json::from_reader(reader).unwrap();
     golden
@@ -1458,13 +1459,13 @@ fn add_mos0_defaults(ckt: &mut Ckt) {
 /// Helper. Modifies `ckt` adding Mos1 default instance-params, plus default NMOS and PMOS
 fn add_mos1_defaults(ckt: &mut Ckt) {
     use crate::comps::mos;
-    let nmos = mos::Mos1Model::default(); 
+    let nmos = mos::Mos1Model::default();
     ckt.defs.mos1.add_model("default".into(), nmos.clone());
     ckt.defs.mos1.add_model("nmos".into(), nmos);
     let pmos = mos::Mos1Model {
         mos_type: MosType::PMOS,
         ..Default::default()
-    }; 
+    };
     ckt.defs.mos1.add_model("pmos".into(), pmos);
     let params = mos::Mos1InstanceParams::default();
     ckt.defs.mos1.add_inst("default".into(), params);
@@ -1484,7 +1485,9 @@ fn add_bsim4_defaults(ckt: &mut Ckt) {
 /// Helper. Modifies `ckt` adding Diode defaults
 fn add_diode_defaults(ckt: &mut Ckt) {
     use crate::comps::diode::{DiodeInstParams, DiodeModel};
-    ckt.defs.diodes.add_model("default".into(), DiodeModel::default());
+    ckt.defs
+        .diodes
+        .add_model("default".into(), DiodeModel::default());
     ckt.defs.diodes.add_inst(
         "default".into(),
         DiodeInstParams {

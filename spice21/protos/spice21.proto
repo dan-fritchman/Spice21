@@ -62,7 +62,7 @@ message DiodeModel {
 // Diode Instance Parameters 
 message DiodeInstParams {
     string name = 1;  // Param-set Name 
-    string model = 2; // Model Name
+    string model = 2; // FIXME: removing Model Name 
     google.protobuf.DoubleValue area = 4;
     google.protobuf.DoubleValue temp = 5;
 }
@@ -73,13 +73,7 @@ message Diode {
     string n = 3;
     string model = 4;  // Model name
     string params = 5; // Instance parameter-set name
-}
-// message Diode {
-//   string name = 1; // Instance Name 
-//   string params = 3; // Instance parameter-set name
-//   TwoTerms ports = 4; // Port connections
-// }
-
+} 
 // Instance Enumeration 
 // Includes variants for all simulator-defined primitives, 
 // plus custom-defined Modules. 
@@ -124,6 +118,10 @@ message Def {
         Mos1Model mos1model = 6;
         Mos1InstParams mos1inst = 7;
     }
+}
+// Array of Definitions 
+message Defs {
+    repeated Def defs = 1;
 }
 // Circuit 
 // A "top-level" combination of definitions and component instances
