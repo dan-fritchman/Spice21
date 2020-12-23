@@ -3,7 +3,7 @@
 // # Spice21 Simulation Server 
 // 
 
-const spice21 = require('../spice21js');
+const spice21js = require('../spice21js');
 
 const bodyParser = require('body-parser');
 const express = require('express');
@@ -25,6 +25,33 @@ app.post('/echo', (req, res) => {
   // Echo the request back 
   res.setHeader('content-type', CONTENT_TYPE);
   res.send(req.body);
+});
+
+app.post('/sim', (req, res) => {
+  let rv = spice21js._sim(req.body);
+  res.setHeader('content-type', CONTENT_TYPE);
+  res.send(rv);
+});
+
+app.post('/op', (req, res) => {
+  console.log(req);
+  let ckt = spice21js.protos.Circuit.decode(req.body);
+  console.log(ckt);
+  let rv = spice21js._dcop(req.body);
+  res.setHeader('content-type', CONTENT_TYPE);
+  res.send(rv);
+});
+
+app.post('/tran', (req, res) => {
+  let rv = spice21js._tran(req.body);
+  res.setHeader('content-type', CONTENT_TYPE);
+  res.send(rv);
+});
+
+app.post('/ac', (req, res) => {
+  let rv = spice21js._ac(req.body);
+  res.setHeader('content-type', CONTENT_TYPE);
+  res.send(rv);
 });
 
 const port = process.env.PORT || 8080;

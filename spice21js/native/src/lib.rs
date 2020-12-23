@@ -60,19 +60,20 @@ fn tran_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
     // Extract the Circuit and Options binary-encoded arguments
     let mut buffer = cx.argument::<JsBuffer>(0)?;
     let ckt_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
-    let mut buffer = cx.argument::<JsBuffer>(1)?;
-    let opts_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
+    // let mut buffer = cx.argument::<JsBuffer>(1)?;
+    // let opts_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
 
     // Decode the proto-encoded circuit
     let ckt = Ckt::decode(ckt_).unwrap();
 
     // Decode options, if any are provided
     use spice21::analysis::{tran, TranOptions};
-    let opts = if opts_.len() > 0 {
-        TranOptions::decode(opts_).unwrap()
-    } else {
-        TranOptions::default()
-    };
+    // let opts = if opts_.len() > 0 {
+    //     TranOptions::decode(opts_).unwrap()
+    // } else {
+    //     TranOptions::default()
+    // };
+    let opts = TranOptions::default();
     // Run the transient analysis
     let res = tran(ckt, opts).unwrap(); //.map_err(TempError::from)?;
 
