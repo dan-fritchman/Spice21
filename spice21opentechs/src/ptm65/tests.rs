@@ -65,6 +65,6 @@ fn test1() -> TestResult {
         tstop: 3e-7,
         ic: vec![(NodeRef::Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     Ok(())
 }

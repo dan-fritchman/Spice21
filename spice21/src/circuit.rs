@@ -10,17 +10,18 @@
 
 use enum_dispatch::enum_dispatch;
 
-use crate::{SpError, SpResult};
+use super::comps::mos::MosPorts;
 use super::defs::Defs;
-use super::comps::mos::{MosPorts};
+use crate::{SpError, SpResult};
 
+use super::proto;
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 
 // Re-exports
+pub use super::proto::Diode as DiodeI;
 pub use super::proto::Module as ModuleDef;
 pub use super::proto::ModuleInstance as ModuleI;
-pub use super::proto::Diode as DiodeI;
 
 /// Node Reference
 #[derive(Debug, Clone)]
@@ -89,7 +90,7 @@ pub struct Ci {
     pub c: f64,
     pub p: NodeRef,
     pub n: NodeRef,
-} 
+}
 
 /// Mos Instance
 pub struct Mosi {
@@ -243,8 +244,41 @@ impl Ckt {
             defs: Defs::default(),
         }
     }
+    /// Decode from bytes, via proto definitions
+    pub fn decode(bytes_: &[u8]) -> SpResult<Self> { 
+        use prost::Message;
+        use std::io::Cursor;
+
+        // Decode the protobuf version
+        let proto = CircuitProto::decode(&mut Cursor::new(bytes_))?;
+        // And convert into a Circuit
+        Self::from_proto(proto)
+    }
+    /// Add anything convertible into `Comp`,
+    /// typically the enum-associated structs `Vi` et al.
+    pub fn add<C: Into<Comp>>(&mut self, comp: C) {
+        self.comps.push(comp.into());
+    }
+    /// Convert from YAML string  
+    pub fn from_yaml(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = serde_yaml::from_str(&dedent(y)).unwrap();
+        Self::from_proto(proto)
+    }
+    /// Convert from TOML string  
+    pub fn from_toml(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = toml::from_str(&dedent(y)).unwrap();
+        Self::from_proto(proto)
+    }
+    /// Convert from JSON string  
+    pub fn from_json(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = serde_json::from_str(&dedent(y)).unwrap();
+        Self::from_proto(proto)
+    }
     /// Create from a protobuf-generated circuit
-    pub fn from(c: CircuitProto) -> SpResult<Self> {
+    pub fn from_proto(c: proto::Circuit) -> SpResult<Ckt> {
         let CircuitProto {
             name,
             comps: cs_,
@@ -277,9 +311,7 @@ impl Ckt {
                     use crate::comps::diode::DiodeModel;
                     defs.diodes.add_model(&x.name.clone(), DiodeModel::from(x))
                 }
-                DefProto::Diodeinst(x) => {
-                    defs.diodes.add_inst(&x.name.clone(), x)
-                }
+                DefProto::Diodeinst(x) => defs.diodes.add_inst(&x.name.clone(), x),
                 DefProto::Module(x) => {
                     defs.modules.add(x);
                 }
@@ -294,40 +326,7 @@ impl Ckt {
                 return Err(SpError::new("Invalid Component"));
             }
         }
-        Ok(Self { comps, defs, name, signals })
-    }
-    /// Decode from bytes, via proto definitions
-    pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
-        use prost::Message;
-        use std::io::Cursor;
-
-        // Decode the protobuf version
-        let ckt_proto = CircuitProto::decode(&mut Cursor::new(bytes_))?;
-        // And convert into a Circuit
-        Self::from(ckt_proto)
-    }
-    /// Add anything convertible into `Comp`,
-    /// typically the enum-associated structs `Vi` et al.
-    pub fn add<C: Into<Comp>>(&mut self, comp: C) {
-        self.comps.push(comp.into());
-    }
-    /// Convert from YAML string  
-    pub fn from_yaml(y: &str) -> SpResult<Self> {
-        use textwrap::dedent;
-        let proto: CircuitProto = serde_yaml::from_str(&dedent(y)).unwrap();
-        Self::from(proto)
-    }
-    /// Convert from TOML string  
-    pub fn from_toml(y: &str) -> SpResult<Self> {
-        use textwrap::dedent;
-        let proto: CircuitProto = toml::from_str(&dedent(y)).unwrap();
-        Self::from(proto)
-    }
-    /// Convert from JSON string  
-    pub fn from_json(y: &str) -> SpResult<Self> {
-        use textwrap::dedent;
-        let proto: CircuitProto = serde_json::from_str(&dedent(y)).unwrap();
-        Self::from(proto)
+        Ok(Ckt { comps, defs, name, signals })
     }
 }
 

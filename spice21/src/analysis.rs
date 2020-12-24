@@ -1,4 +1,4 @@
-//! 
+//!
 //! # Spice21 Analyses
 //!
 use num::{Complex, Float, Zero};
@@ -369,18 +369,6 @@ impl OpResult {
             None => Err(sperror("Signal Not Found")),
         }
     }
-    pub fn encode(&self) -> Vec<u8> {
-        #[allow(unused_imports)]
-        use prost::Message;
-        use crate::proto::OpResult;
-        let c = OpResult {
-            vals: self.map.clone()
-        };
-        let mut buf = Vec::<u8>::new();
-        buf.reserve(c.encoded_len());
-        c.encode(&mut buf).unwrap();
-        buf
-    }
 }
 /// Maintain much (most?) of our original vector-result-format
 /// via enabling integer indexing
@@ -392,8 +380,9 @@ impl Index<usize> for OpResult {
 }
 
 /// Dc Operating Point Analysis
-pub fn dcop(ckt: Ckt) -> SpResult<OpResult> {
-    let mut s = Solver::<f64>::new(ckt, Options::default());
+pub fn dcop(ckt: Ckt, opts: Option<Options>) -> SpResult<OpResult> {
+    let o = if let Some(o) = opts { o } else { Options::default() };
+    let mut s = Solver::<f64>::new(ckt, o);
     let _r = s.solve(&AnalysisInfo::OP)?;
     return Ok(OpResult::from(s.vars));
 }
@@ -465,37 +454,35 @@ pub struct TranOptions {
     pub tstop: f64,
     pub ic: Vec<(NodeRef, f64)>,
 }
-use super::proto::TranOptions as OptsProto;
 impl TranOptions {
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
+        // FIXME: remove
         use prost::Message;
         use std::io::Cursor;
 
         // Decode the protobuf version
-        let proto = OptsProto::decode(&mut Cursor::new(bytes_))?;
+        let proto = proto::TranOptions::decode(&mut Cursor::new(bytes_))?;
         // And convert into the real thing
         Ok(Self::from(proto))
     }
-    pub fn from(proto: OptsProto) -> Self {
+}
+impl From<proto::TranOptions> for TranOptions {
+    fn from(i: proto::TranOptions) -> Self {
         use super::circuit::n;
         let mut ic: Vec<(NodeRef, f64)> = vec![];
-        for (name, val) in &proto.ic {
+        for (name, val) in &i.ic {
             ic.push((n(name), val.clone()));
         }
         Self {
-            tstep: proto.tstep,
-            tstop: proto.tstop,
+            tstep: i.tstep,
+            tstop: i.tstop,
             ic,
         }
     }
 }
 impl Default for TranOptions {
     fn default() -> TranOptions {
-        TranOptions {
-            tstep: 1e-6,
-            tstop: 1e-3,
-            ic: vec![],
-        }
+        Self::from(proto::TranOptions::default())
     }
 }
 
@@ -506,11 +493,12 @@ pub(crate) struct Tran<'a> {
 }
 
 impl<'a> Tran<'a> {
-    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran<'a> {
-        let ics = opts.ic.clone();
+    pub fn new(ckt: Ckt, opts: Options, args: TranOptions) -> Tran<'a> {
+        let solver = Solver::new(ckt, opts);
+        let ics = args.ic.clone();
         let mut t = Tran {
-            solver: Solver::new(ckt, Options::default()),
-            opts,
+            solver,
+            opts: args,
             state: TranState::default(),
         };
         for (node, val) in &ics {
@@ -633,23 +621,6 @@ impl TranResult {
             None => Err(sperror(format!("Signal Not Found: {}", name))),
         }
     }
-    pub fn encode(self) -> Vec<u8> {
-        #[allow(unused_imports)]
-        use prost::Message;
-        use crate::proto;
-        let mut vals: HashMap<String, proto::DoubleArray> = HashMap::new();
-        for (name, vec) in self.map {
-            vals.insert(name, proto::DoubleArray{vals:vec});
-        }
-        let c = proto::TranResult {
-            time: Some(proto::DoubleArray{vals:self.time}),
-            vals,
-        };
-        let mut buf = Vec::<u8>::new();
-        buf.reserve(c.encoded_len());
-        c.encode(&mut buf).unwrap();
-        buf
-    }
 }
 /// Maintain much (most?) of our original vector-result-format
 /// via enabling integer indexing
@@ -661,8 +632,10 @@ impl Index<usize> for TranResult {
 }
 
 /// Transient Analysis
-pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<TranResult> {
-    return Tran::new(ckt, opts).solve();
+pub fn tran(ckt: Ckt, opts: Option<Options>, args: Option<TranOptions>) -> SpResult<TranResult> {
+    let o = if let Some(val) = opts { val } else { Options::default() };
+    let a = if let Some(val) = args { val } else { TranOptions::default() };
+    return Tran::new(ckt, o, a).solve();
 }
 
 /// Simulation Options
@@ -687,14 +660,16 @@ pub struct Options {
     pub diag_gmin: f64,
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            temp: 300.15,
-            tnom: 300.15,
-            gmin: 1e-12,
-            iabstol: 1e-12,
-            reltol: 1e-3,
+use crate::proto;
+
+impl From<proto::SimOptions> for Options {
+    fn from(i: proto::SimOptions) -> Self {
+        Self {
+            temp: if let Some(val) = i.temp { val } else { 300.15 },
+            tnom: if let Some(val) = i.tnom { val } else { 300.15 },
+            gmin: if let Some(val) = i.gmin { val } else { 1e-12 },
+            iabstol: if let Some(val) = i.iabstol { val } else { 1e-12 },
+            reltol: if let Some(val) = i.reltol { val } else { 1e-3 },
             chgtol: 1e-14,
             volt_tol: 1e-6,
             trtol: 7,
@@ -711,6 +686,11 @@ impl Default for Options {
         }
     }
 }
+impl Default for Options {
+    fn default() -> Self {
+        Self::from(proto::SimOptions::default())
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct AcState {
@@ -723,14 +703,18 @@ pub struct AcOptions {
     pub fstop: usize,
     pub npts: usize, // Total, not "per decade"
 }
-
+impl From<proto::AcOptions> for AcOptions {
+    fn from(i: proto::AcOptions) -> Self {
+        Self {
+            fstart: i.fstart as usize,
+            fstop: i.fstop as usize,
+            npts: i.npts as usize,
+        }
+    }
+}
 impl Default for AcOptions {
     fn default() -> Self {
-        Self {
-            fstart: 1,
-            fstop: 1e15 as usize,
-            npts: 1000,
-        }
+        Self::from(proto::AcOptions::default())
     }
 }
 
@@ -771,35 +755,10 @@ impl AcResult {
     pub fn len(&self) -> usize {
         self.freq.len()
     }
-    pub fn encode(self) -> Vec<u8> {
-        #[allow(unused_imports)]
-        use prost::Message;
-        use crate::proto;
-
-        let mut vals: HashMap<String, proto::ComplexArray> = HashMap::new();
-        for (name, vec) in self.map {
-            // Map each signal's data into proto-versions 
-            let v = vec.iter().map(|&c| 
-                proto::ComplexNum {
-                    re: c.re, 
-                    im: c.im,
-                }
-            ).collect(); 
-            vals.insert(name, proto::ComplexArray{ vals: v });
-        }
-        let c = proto::AcResult {
-            freq: Some(proto::DoubleArray{vals:self.freq}),
-            vals,
-        };
-
-        let mut buf = Vec::<u8>::with_capacity(c.encoded_len());
-        c.encode(&mut buf).unwrap();
-        buf
-    }
 }
 
 /// AC Analysis
-pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
+pub fn ac(ckt: Ckt, opts: Option<Options>, args: Option<AcOptions>) -> SpResult<AcResult> {
     /// FIXME: result saving is in flux, and essentially on three tracks:
     /// * The in-memory format used by unit-tests returns vectors of complex numbers
     /// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
@@ -808,8 +767,11 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     use serde::ser::{SerializeSeq, Serializer};
     use std::fs::File;
 
+    let opts = if let Some(val) = opts { val } else { Options::default() };
+    let args = if let Some(val) = args { val } else { AcOptions::default() };
+
     // Initial DCOP solver and solution
-    let mut solver = Solver::<f64>::new(ckt, Options::default());
+    let mut solver = Solver::<f64>::new(ckt, opts);
     let _dc_soln = solver.solve(&AnalysisInfo::OP)?;
 
     // Convert to an AC solver
@@ -827,15 +789,15 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     results.signals(&solver.vars);
 
     // Set up frequency sweep
-    let mut f = opts.fstart as f64;
-    let fstop = opts.fstop as f64;
-    let fstep = (10.0).powf(f64::log10(fstop / f) / opts.npts as f64);
+    let mut f = args.fstart as f64;
+    let fstop = args.fstop as f64;
+    let fstep = (10.0).powf(f64::log10(fstop / f) / args.npts as f64);
 
     // Main Frequency Loop
     while f <= fstop {
         use std::f64::consts::PI;
         state.omega = 2.0 * PI * f;
-        let an = AnalysisInfo::AC(&opts, &state);
+        let an = AnalysisInfo::AC(&args, &state);
         let fsoln = solver.solve(&an)?;
 
         // Push to our in-mem data

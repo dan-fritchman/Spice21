@@ -54,7 +54,7 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
         // Decode the proto-encoded circuit
         let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
         // Run DCOP
-        let res = dcop(ckt).map_err(TempError::from)?;
+        let res = dcop(ckt, None).map_err(TempError::from)?;
         // And return the mapping signal <-> value
         Ok(res.map)
     }

@@ -2,6 +2,8 @@
 //! # Spice21 Protobuf Definitions
 //!
 
+use std::error::Error;
+
 // These are used by the macro-expanded code
 #[allow(unused_imports)]
 use prost::Message;
@@ -20,6 +22,129 @@ impl From<prost::DecodeError> for SpError {
 
 // Include the prost-expanded proto-file content
 include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
+
+///
+/// # Callable Protobuf Trait
+///
+/// Defines an RPC-like single-argument, single-return type trait-interface
+/// used by many of the Spice21 Protos, particulaly those dealing with simulation.
+/// Think of `Self` as the *input* type to the call, and associated type
+/// `Self::Output` as its return type.
+///
+pub trait CallableProto: SpProto {
+    type Output: SpProto;
+
+    /// Primary trait method: perform the call
+    fn call(self) -> Result<Self::Output, Box<dyn Error>>;
+
+    /// Wrap our call in a decode-call-encode cycle,
+    /// Traversing bytes => Self => Output => bytes
+    fn call_bytes(bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+        let s = Self::from_bytes(bytes)?;
+        let r = s.call()?;
+        Ok(r.to_bytes())
+    }
+}
+
+use crate::analysis as sim; // Note `analysis` is also a generated module-name!
+use crate::circuit;
+use std::collections::HashMap;
+
+/// Dc Operating Point
+/// Proto-based calling
+impl CallableProto for Op {
+    type Output = OpResult;
+
+    fn call(self) -> Result<OpResult, Box<dyn Error>> {
+        // Unpack & convert arguments
+        let Self { ckt, opts } = self;
+        let ckt = if let Some(c) = ckt {
+            circuit::Ckt::from_proto(c)?
+        } else {
+            return Err(SpError::boxed("No Circuit Provided"));
+        };
+        let opts = if let Some(o) = opts { Some(o.into()) } else { None };
+        // Do the real work
+        let rv = sim::dcop(ckt, opts)?;
+        // And convert result to our output type
+        Ok(rv.into())
+    }
+}
+impl From<sim::OpResult> for OpResult {
+    fn from(i: sim::OpResult) -> Self {
+        Self { vals: i.map }
+    }
+}
+
+/// Transient Analysis
+/// Proto-based calling
+impl CallableProto for Tran {
+    type Output = TranResult;
+
+    fn call(self) -> Result<TranResult, Box<dyn Error>> {
+        // Unpack & convert arguments
+        let Self { ckt, opts, args } = self;
+        let ckt = if let Some(c) = ckt {
+            circuit::Ckt::from_proto(c)?
+        } else {
+            return Err(SpError::boxed("No Circuit Provided"));
+        };
+        let opts = if let Some(o) = opts { Some(o.into()) } else { None };
+        let args = if let Some(a) = args { Some(a.into()) } else { None };
+        // Do the real work
+        let rv = sim::tran(ckt, opts, args)?;
+        // And convert result to our output type
+        Ok(rv.into())
+    }
+}
+impl From<sim::TranResult> for TranResult {
+    fn from(i: sim::TranResult) -> Self {
+        let mut vals: HashMap<String, DoubleArray> = HashMap::new();
+        for (name, vec) in i.map {
+            vals.insert(name, DoubleArray { vals: vec });
+        }
+        TranResult {
+            time: Some(DoubleArray { vals: i.time }),
+            vals,
+        }
+    }
+}
+
+/// Ac Analysis
+/// Proto-based calling
+impl CallableProto for Ac {
+    type Output = AcResult;
+
+    fn call(self) -> Result<Self::Output, Box<dyn Error>> {
+        // Unpack & convert arguments
+        let Self { ckt, opts, args } = self;
+        let ckt = if let Some(c) = ckt {
+            circuit::Ckt::from_proto(c)?
+        } else {
+            return Err(SpError::boxed("No Circuit Provided"));
+        };
+        let opts = if let Some(o) = opts { Some(o.into()) } else { None };
+        let args = if let Some(a) = args { Some(a.into()) } else { None };
+        // Do the real work
+        let rv = sim::ac(ckt, opts, args)?;
+        // And convert result to our output type
+        Ok(rv.into())
+    }
+}
+impl From<sim::AcResult> for AcResult {
+    fn from(i: sim::AcResult) -> Self {
+        let mut vals: HashMap<String, ComplexArray> = HashMap::new();
+        for (name, vec) in i.map {
+            // Map each signal's data into proto-versions
+            let v = vec.iter().map(|&c| ComplexNum { re: c.re, im: c.im }).collect();
+            vals.insert(name, ComplexArray { vals: v });
+        }
+        AcResult {
+            freq: Some(DoubleArray { vals: i.freq }),
+            vals,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

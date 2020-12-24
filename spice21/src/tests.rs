@@ -21,7 +21,7 @@ fn test_ckt() -> TestResult {
 #[test]
 fn test_dcop1() -> TestResult {
     let ckt = Ckt::from_yaml(r#"comps: [{type: R, name: r1, p: a, n: "", g: 0.001 } ]"#)?;
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert_eq!(soln.values, vec![0.0]);
     Ok(())
 }
@@ -38,7 +38,7 @@ fn test_dcop2() -> TestResult {
               - {type: R, name: r1, p: vdd, n: "", g: 1e-3 }
         "#,
     )?;
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("vdd")?).eq(1.0)?;
     Ok(())
 }
@@ -56,7 +56,7 @@ fn test_dcop3() -> TestResult {
               - {type: R, name: r2, p: div, n: "",  g: 1e-3 }
         "#,
     )?;
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("div")? - 1.0).abs().lt(1e-4)?;
     assert(soln.get("vdd")? - 2.0).abs().lt(1e-4)?;
     Ok(())
@@ -75,7 +75,7 @@ fn test_dcop4() -> TestResult {
               - {type: R, name: r2, p: "", n: div, g: 2e-3 }
         "#,
     )?;
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("vdd")?).eq(1.0)?;
     assert(soln.get("div")?).eq(0.5)?;
     assert(soln.get("v1")?).eq(-1e-3)?;
@@ -106,7 +106,7 @@ fn test_dcop5() -> TestResult {
         vdc: v,
         acm: 0.0,
     });
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     let i = soln.get("vin")?.abs();
     // Some broad bounds checks
     assert(i).gt(1e-3)?;
@@ -126,7 +126,7 @@ fn test_dcop5() -> TestResult {
     ckt.add(Comp::idc("i1", i, n("p"), Gnd));
 
     // Check the voltage matches our initial v-bias
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("p")?).isclose(v, 1e-3)?;
     assert(soln.get("p")? - v).abs().lt(1e-3)?; // (same thing really)
     Ok(())
@@ -148,7 +148,7 @@ fn test_dcop6() -> TestResult {
     )?;
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("g")?).eq(1.0)?;
     assert(soln.get("d")?).eq(1.0)?;
     assert(soln.get("v1")?).eq(0.0)?;
@@ -171,7 +171,7 @@ fn test_dcop7() -> TestResult {
     )?;
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("g")?).eq(-1.0)?;
     assert(soln.get("d")?).eq(-1.0)?;
     assert(soln.get("v1")?).eq(0.0)?;
@@ -198,7 +198,7 @@ fn test_dcop8() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")? - 0.697).abs().lt(1e-3)?;
     Ok(())
 }
@@ -226,7 +226,7 @@ fn test_diode_nmos_tran() -> TestResult {
         tstop: 100e-12,
         ..Default::default()
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     for point in soln.data.iter() {
         assert(point[0] - 0.697).abs().lt(1e-3)?;
     }
@@ -252,7 +252,7 @@ fn test_dcop8b() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")? - 0.697).abs().lt(1e-3)?;
     Ok(())
 }
@@ -275,7 +275,7 @@ fn test_diode_pmos_dcop() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")? + 0.697).abs().lt(1e-3)?;
     Ok(())
 }
@@ -304,7 +304,7 @@ fn test_diode_pmos_tran() -> TestResult {
         tstop: 100e-12,
         ..Default::default()
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     for point in soln.data.iter() {
         assert!((point[0] + 0.697).abs() < 1e-3);
     }
@@ -329,7 +329,7 @@ fn test_dcop8d() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")? + 0.697).abs().lt(1e-3)?;
     Ok(())
 }
@@ -352,7 +352,7 @@ fn test_dcop9() -> TestResult {
         }),
     ]);
     add_mos0_defaults(&mut ckt);
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
@@ -376,7 +376,7 @@ fn test_dcop9b() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
@@ -401,7 +401,7 @@ fn test_dcop9c() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
@@ -425,7 +425,7 @@ fn test_dcop9d() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("0")?).eq(0.0)?;
     Ok(())
 }
@@ -449,7 +449,7 @@ fn test_dcop10() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("vdd")?).eq(1.0)?;
     assert(soln[1]).lt(50e-3)?;
     assert(soln[2] + 1e-3).abs().lt(0.1e-3)?;
@@ -475,7 +475,7 @@ fn test_dcop10b() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert_eq!(soln[0], -1.0);
     assert!(soln[1].abs() < 50e-3);
     assert!((soln[2] - 1e-3).abs() < 0.1e-3);
@@ -511,7 +511,7 @@ fn test_dcop11() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("vdd")?).eq(1.0)?;
     assert(soln.get("d")?).abs().lt(1e-6)?;
     assert(soln.get("v1")?).abs().lt(1e-9)?;
@@ -547,7 +547,7 @@ fn test_dcop11b() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln.get("vdd")?).eq(1.0)?;
     assert(soln.get("d")? - 1.0).abs().lt(1e-6)?;
     assert(soln.get("v1")?).abs().lt(1e-9)?;
@@ -655,7 +655,7 @@ fn test_dcop12() -> TestResult {
     ]);
     add_mos0_defaults(&mut ckt);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert(soln[0]).eq(1.0)?;
     assert!(soln[1].abs() < 1e-3);
     assert!((soln[2] - 1.0).abs() < 1e-3);
@@ -673,7 +673,7 @@ fn test_dcop13() -> TestResult {
         Comp::c("c1", 1e-9, Num(1), Gnd),
         Comp::vdc("v1", 1.0, Num(0), Gnd),
     ]);
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert_eq!(soln.values, vec![1.0, 1.0, 0.0]);
     Ok(())
 }
@@ -686,7 +686,7 @@ fn test_dcop13b() -> TestResult {
         Comp::vdc("v1", 1.0, n("i"), Gnd),
     ]);
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     assert_eq!(soln.values, vec![1.0, 0.0, 0.0]);
     Ok(())
 }
@@ -705,7 +705,7 @@ fn test_tran1() -> TestResult {
         tstop: 10e-6,
         ic: vec![(n("out"), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     // Checks
     let inp = soln.get("inp")?;
     assert(inp).is().constant(1.0)?;
@@ -721,17 +721,14 @@ fn test_tran1() -> TestResult {
 #[ignore]
 fn test_tran2() -> TestResult {
     use NodeRef::{Gnd, Num};
-    let ckt = Ckt::from_comps(vec![
-        Comp::idc("i1", 1e-3, Num(0), Gnd),
-        Comp::c("c1", 4e-12, Num(0), Gnd),
-    ]);
+    let ckt = Ckt::from_comps(vec![Comp::idc("i1", 1e-3, Num(0), Gnd), Comp::c("c1", 4e-12, Num(0), Gnd)]);
 
     let opts = TranOptions {
         tstep: 1e-18,
         tstop: 1e-15,
         ..Default::default()
     };
-    let mut tran = Tran::new(ckt, opts);
+    let mut tran = Tran::new(ckt, Options::default(), opts);
     tran.ic(Num(0), 0.0);
     let soln = tran.solve()?;
 
@@ -750,17 +747,14 @@ fn test_tran2() -> TestResult {
 #[ignore] // FIXME: failing values to be debugged
 fn test_tran2b() -> TestResult {
     use NodeRef::{Gnd, Num};
-    let ckt = Ckt::from_comps(vec![
-        Comp::idc("i1", 1e-6, Num(0), Gnd),
-        Comp::c("c1", 100e-9, Num(0), Gnd),
-    ]);
+    let ckt = Ckt::from_comps(vec![Comp::idc("i1", 1e-6, Num(0), Gnd), Comp::c("c1", 100e-9, Num(0), Gnd)]);
 
     let opts = TranOptions {
         tstep: 1e-21,
         tstop: 1e-18,
         ..Default::default()
     };
-    let mut tran = Tran::new(ckt, opts);
+    let mut tran = Tran::new(ckt, Options::default(), opts);
     tran.ic(Num(0), 0.0);
     let soln = tran.solve()?;
 
@@ -787,7 +781,7 @@ fn test_mos0_cmos_ro_tran() -> TestResult {
         tstop: 1e-12,
         ic: vec![(Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     // Checks
     to_file(&soln, "test_mos0_cmos_ro_tran.json"); // Writes new golden data
     let golden = load_golden("test_mos0_cmos_ro_tran.json");
@@ -812,7 +806,7 @@ fn test_mos1_op() -> TestResult {
     ]);
     add_mos1_defaults(&mut ckt);
     // Simulate
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     // Checks
     assert(soln[0]).eq(1.0)?;
     assert(soln[1]).lt(0.0)?;
@@ -843,7 +837,7 @@ fn test_mos1_tran() -> TestResult {
         tstop: 100e-9,
         ..Default::default()
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     // Checks
     for k in 1..soln.len() {
         assert(soln[k][0]).eq(1.0)?;
@@ -859,7 +853,7 @@ fn test_mos1_inv_dcop() -> TestResult {
     // Define our models & params
     add_mos1_defaults(&mut ckt);
     // Simulate
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     // Checks
     assert(soln.get("vdd")?).eq(1.0)?;
     assert(soln.get("vss")?).eq(0.0)?;
@@ -922,7 +916,7 @@ fn test_mos1_cmos_ro_dcop() -> TestResult {
     let mut ckt = cmos_ro3();
     add_mos1_defaults(&mut ckt);
     // Simulate
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     // Checks
     assert(soln.get("vdd")?).eq(1.0)?;
     assert(soln.get("1")?).gt(0.45)?;
@@ -944,7 +938,7 @@ fn test_mos1_cmos_ro_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "test_mos1_cmos_ro_tran.json"); // Writes new golden data
                                                    // Checks
     let golden = load_golden("test_mos1_cmos_ro_tran.json");
@@ -962,7 +956,7 @@ fn test_bsim4_cmos_ro_tran() -> TestResult {
         tstop: 3e-7,
         ic: vec![(Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "test_bsim4_cmos_ro_tran.json"); // Writes new golden data
                                                     // Checks
     let golden = load_golden("test_bsim4_cmos_ro_tran.json");
@@ -1005,7 +999,7 @@ fn test_mos1_nmos_ro_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "test_mos1_nmos_ro_tran.json"); // Writes new golden data
                                                    // Checks
     let golden = load_golden("test_mos1_nmos_ro_tran.json");
@@ -1048,7 +1042,7 @@ fn test_mos1_pmos_ro_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "test_mos1_pmos_ro_tran.json"); // Writes new golden data
                                                    // Checks
     let golden = load_golden("test_mos1_pmos_ro_tran.json");
@@ -1067,7 +1061,7 @@ fn test_bsim4_pmos_ro_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(Num(1), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "test_bsim4_pmos_ro_tran.json"); // Writes new golden data
                                                     // Checks
     let golden = load_golden("test_bsim4_pmos_ro_tran.json");
@@ -1102,7 +1096,7 @@ fn test_mos1_pmos_rload_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(n("inp"), 0.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     // Checks
     let inp = soln.get("inp")?;
     assert(inp[0]).isclose(0.0, 1e-6)?;
@@ -1139,7 +1133,7 @@ fn test_mos1_pmos_rg_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(n("g"), -1.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     // Checks
     let g = soln.get("g")?;
     assert(g[0]).isclose(-1.0, 1e-3)?;
@@ -1172,7 +1166,7 @@ fn test_bsim4_pmos_rg_tran() -> TestResult {
         tstop: 1e-7,
         ic: vec![(n("g"), -1.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "rg.json");
     // Checks
     let g = soln.get("g")?;
@@ -1205,7 +1199,7 @@ fn test_mos1_nmos_rg_tran() -> TestResult {
         tstop: 1e-8,
         ic: vec![(n("g"), 1.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     // Checks
     let g = soln.get("g")?;
     assert(g[0]).isclose(1.0, 1e-3)?;
@@ -1238,7 +1232,7 @@ fn test_bsim4_nmos_rg_tran() -> TestResult {
         tstop: 1e-7,
         ic: vec![(n("g"), 1.0)],
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "rg.json");
     // Checks
     let g = soln.get("g")?;
@@ -1249,7 +1243,7 @@ fn test_bsim4_nmos_rg_tran() -> TestResult {
 #[test]
 fn test_ac1() -> TestResult {
     let ckt = Ckt::from_comps(vec![Comp::r("r1", 1.0, Num(0), Gnd)]);
-    ac(ckt, AcOptions::default())?;
+    ac(ckt, None, None)?;
     // FIXME: checks on solution
     Ok(())
 }
@@ -1267,7 +1261,7 @@ fn test_ac2() -> TestResult {
             n: Gnd,
         }),
     ]);
-    ac(ckt, AcOptions::default())?;
+    ac(ckt, None, None)?;
     // FIXME: checks on solution
     Ok(())
 }
@@ -1292,7 +1286,7 @@ fn test_ac3() -> TestResult {
         }),
     ]);
     add_mos0_defaults(&mut ckt);
-    ac(ckt, AcOptions::default())?;
+    ac(ckt, None, None)?;
     // FIXME: checks on solution
     Ok(())
 }
@@ -1325,7 +1319,7 @@ fn test_ac4() -> TestResult {
     // Define our models & params
     add_mos1_defaults(&mut ckt);
     // Simulate
-    ac(ckt, AcOptions::default())?;
+    ac(ckt, None, None)?;
     // FIXME: checks on solution
     Ok(())
 }
@@ -1357,13 +1351,8 @@ fn test_ac5() -> TestResult {
     ]);
 
     // Define our models & params
-    use crate::proto::{Mos1InstParams, Mos1Model};
-    let nmos = Mos1Model {
-        mos_type: MosType::NMOS as i32,
-        ..Mos1Model::default()
-    };
     add_mos1_defaults(&mut ckt);
-    ac(ckt, AcOptions::default())?;
+    ac(ckt, None, None)?;
     // FIXME: checks on solution
     Ok(())
 }
@@ -1379,7 +1368,7 @@ fn test_bsim4_nmos_ro_tran() -> TestResult {
         ic: vec![(Num(1), 0.0)],
     };
     add_bsim4_defaults(&mut ckt);
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     to_file(&soln, "test_bsim4_nmos_ro_tran.json"); // Writes new golden data
                                                     // Checks
     let golden = load_golden("test_bsim4_nmos_ro_tran.json");
@@ -1485,9 +1474,7 @@ fn add_bsim4_defaults(ckt: &mut Ckt) {
 /// Helper. Modifies `ckt` adding Diode defaults
 fn add_diode_defaults(ckt: &mut Ckt) {
     use crate::comps::diode::{DiodeInstParams, DiodeModel};
-    ckt.defs
-        .diodes
-        .add_model("default".into(), DiodeModel::default());
+    ckt.defs.diodes.add_model("default".into(), DiodeModel::default());
     ckt.defs.diodes.add_inst(
         "default".into(),
         DiodeInstParams {

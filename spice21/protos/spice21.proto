@@ -189,8 +189,8 @@ message ComplexArray {
 }
 /// AC Analysis Options
 message AcOptions {
-    double fstart = 1; // Start (min) frequency in Hz 
-    double fstop = 2; // Stop (max) frequency in Hz 
+    uint64 fstart = 1; // Start (min) frequency in Hz 
+    uint64 fstop = 2; // Stop (max) frequency in Hz 
     uint64 npts = 3; // Number of points. Total, not "per decade". 
 }
 // AC Sim Inputs 

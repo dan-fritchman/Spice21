@@ -79,7 +79,7 @@ fn test_bsim4_nmos_dcop1() -> TestResult {
     let p = 1.0;
     ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
     ckt.add(Comp::r("r1", 1e-10, n("gd"), NodeRef::Gnd));
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     let vgd = soln.get("gd")?;
     assert(vgd).eq(1.0)?;
     let id = soln.get("v1")?;
@@ -108,7 +108,7 @@ fn test_bsim4_pmos_dcop1() -> TestResult {
     let p = -1.0;
     ckt.add(Comp::vdc("v1", p, n("gd"), NodeRef::Gnd));
     ckt.add(Comp::r("r1", 1e-10, n("gd"), NodeRef::Gnd));
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     let vgd = soln.get("gd")?;
     assert(vgd).eq(-1.0)?;
     let id = soln.get("v1")?;
@@ -144,7 +144,7 @@ fn test_bsim4_inv_dcop() -> TestResult {
     ckt.add(Comp::vdc("vinp", 0.0, n("inp"), NodeRef::Gnd));
     ckt.add(Comp::vdc("vvdd", 1.0, n("vdd"), NodeRef::Gnd));
 
-    let soln = dcop(ckt)?;
+    let soln = dcop(ckt, None)?;
     let vd = soln.get("vdd")?;
     assert(vd).eq(1.0)?;
     let vd = soln.get("inp")?;
@@ -191,7 +191,7 @@ fn test_bsim4_tran1() -> TestResult {
         ic: vec![(n("inp"), 1.0)],
         ..Default::default()
     };
-    let soln = tran(ckt, opts)?;
+    let soln = tran(ckt, None, Some(opts))?;
     println!("{:?}", soln.map);
 
     Ok(())

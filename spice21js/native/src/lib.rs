@@ -31,8 +31,7 @@ impl<T: BinaryViewType + Copy> ToBuffer for &[T] {
     }
 }
 
-use spice21::analysis;
-use spice21::circuit::Ckt;
+use spice21::proto::{CallableProto, Ac, Tran, Op};
 
 /// "Health Check"
 fn health_js(mut cx: FunctionContext) -> JsResult<JsString> {
@@ -41,64 +40,40 @@ fn health_js(mut cx: FunctionContext) -> JsResult<JsString> {
 
 /// DC Operating Point
 fn dcop_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
-    // Extract the Circuit and Options binary-encoded arguments
+    // Extract the binary-encoded argument
     let mut buffer = cx.argument::<JsBuffer>(0)?;
-    let ckt_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
+    let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
 
-    // Decode the proto-encoded circuit
-    let ckt = Ckt::decode(ckt_).unwrap();
-    // Run DCOP
-    let res = analysis::dcop(ckt).unwrap();
-    // Convert the result back to bytes
-    let rv = res.encode();
-    // And return them as a Node Buffer/ byte-array
+    // Do our real work 
+    let rv = Op::call_bytes(bytes)?;
+
+    // And return the result as a Node Buffer/ byte-array
     rv.as_slice().to_buffer(&mut cx) 
 }
 
 /// Transient
 fn tran_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
-    // Extract the Circuit and Options binary-encoded arguments
+    // Extract the binary-encoded argument
     let mut buffer = cx.argument::<JsBuffer>(0)?;
-    let ckt_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
-    // let mut buffer = cx.argument::<JsBuffer>(1)?;
-    // let opts_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
+    let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
 
-    // Decode the proto-encoded circuit
-    let ckt = Ckt::decode(ckt_).unwrap();
+    // Do our real work 
+    let rv = Tran::call_bytes(bytes)?;
 
-    // Decode options, if any are provided
-    use spice21::analysis::{tran, TranOptions};
-    // let opts = if opts_.len() > 0 {
-    //     TranOptions::decode(opts_).unwrap()
-    // } else {
-    //     TranOptions::default()
-    // };
-    let opts = TranOptions::default();
-    // Run the transient analysis
-    let res = tran(ckt, opts).unwrap(); //.map_err(TempError::from)?;
-
-    // Convert the result back to bytes
-    let rv = res.encode();
-    // And return them as a Node Buffer/ byte-array
+    // And return the result as a Node Buffer/ byte-array
     rv.as_slice().to_buffer(&mut cx) 
 }
 
 /// AC Analysis
 fn ac_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
-    // Extract the Circuit and Options binary-encoded arguments
+    // Extract the binary-encoded argument
     let mut buffer = cx.argument::<JsBuffer>(0)?;
-    let ckt_ = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
+    let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
 
-    // Decode the proto-encoded circuit
-    let ckt = Ckt::decode(ckt_).unwrap();
+    // Do our real work 
+    let rv = Ac::call_bytes(bytes)?;
 
-    // TODO: include an AcOptions argument
-    use spice21::analysis::{ac, AcOptions};
-    let res = ac(ckt, AcOptions::default()).unwrap();
-
-    // Convert the result back to bytes
-    let rv = res.encode();
-    // And return them as a Node Buffer/ byte-array
+    // And return the result as a Node Buffer/ byte-array
     rv.as_slice().to_buffer(&mut cx) 
 }
 
