@@ -18,8 +18,8 @@ const post = (path, data) => {
 }
 
 describe('spice21js', function () {
-    const { Circuit, OpResult, TranResult, AcResult } = spice21.protos;
-    const c = Circuit.create({
+    const { Circuit, Op, OpResult, Tran, TranResult, Ac, AcResult } = spice21.protos;
+    const ckt = Circuit.create({
         name: "ckt1",
         signals: ["a"],
         defs: [],
@@ -31,8 +31,8 @@ describe('spice21js', function () {
         ]
     });
     it('runs dcop', async () => {
-
-        const buf = Circuit.encode(c).finish();
+        const op = Op.create({ ckt });
+        const buf = Op.encode(op).finish();
         const resp = await post('op', buf);
         const r = OpResult.decode(resp.data);
 
@@ -42,8 +42,8 @@ describe('spice21js', function () {
         assert(res.vv > -1.11e-7);
     });
     it('runs tran', async () => {
-
-        const buf = Circuit.encode(c).finish();
+        const tr = Tran.create({ ckt });
+        const buf = Tran.encode(tr).finish();
         const resp = await post('tran', buf);
         const r = TranResult.decode(resp.data);
 
@@ -53,16 +53,17 @@ describe('spice21js', function () {
         assert(res.vv.vals[0] > -1.11e-7);
     });
     it('runs ac', async () => {
-        const c = Circuit.create({
+        const ckt = Circuit.create({
             name: "ckt1",
             signals: ["a"],
             defs: [],
             comps: [
-                { v: { name: "vv", p: "a", n: "", dc: 1.11, acm: 1.0} }, // A pretty simple circuit for now
+                { v: { name: "vv", p: "a", n: "", dc: 1.11, acm: 1.0 } }, // A pretty simple circuit for now
             ]
         });
 
-        const buf = Circuit.encode(c).finish();
+        const ac = Ac.create({ ckt });
+        const buf = Ac.encode(ac).finish();
         const resp = await post('ac', buf);
         const r = AcResult.decode(resp.data);
 

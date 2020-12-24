@@ -5,6 +5,11 @@
 use neon::prelude::*;
 use neon::types::BinaryViewType;
 
+/// "Health Check"
+fn health_js(mut cx: FunctionContext) -> JsResult<JsString> {
+    Ok(cx.string("alive"))
+}
+
 ///
 /// Node-Buffer Conversion Trait
 ///
@@ -31,57 +36,31 @@ impl<T: BinaryViewType + Copy> ToBuffer for &[T] {
     }
 }
 
-use spice21::proto::{CallableProto, Ac, Tran, Op};
+use spice21::proto::{Ac, CallableProto, Op, Tran};
 
-/// "Health Check"
-fn health_js(mut cx: FunctionContext) -> JsResult<JsString> {
-    Ok(cx.string("alive"))
+trait JsCall: CallableProto {
+    /// JavaScript call-wrapper for `CallableProto` types
+    fn js_call(mut cx: FunctionContext) -> JsResult<JsBuffer> {
+        // Extract the binary-encoded argument
+        let mut buffer = cx.argument::<JsBuffer>(0)?;
+        let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
+        // Do our real work
+        let rv = Self::call_bytes(bytes).unwrap();
+        // And return the result as a Node Buffer/ byte-array
+        rv.as_slice().to_buffer(&mut cx)
+    }
 }
 
-/// DC Operating Point
-fn dcop_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
-    // Extract the binary-encoded argument
-    let mut buffer = cx.argument::<JsBuffer>(0)?;
-    let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
-
-    // Do our real work 
-    let rv = Op::call_bytes(bytes)?;
-
-    // And return the result as a Node Buffer/ byte-array
-    rv.as_slice().to_buffer(&mut cx) 
-}
-
-/// Transient
-fn tran_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
-    // Extract the binary-encoded argument
-    let mut buffer = cx.argument::<JsBuffer>(0)?;
-    let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
-
-    // Do our real work 
-    let rv = Tran::call_bytes(bytes)?;
-
-    // And return the result as a Node Buffer/ byte-array
-    rv.as_slice().to_buffer(&mut cx) 
-}
-
-/// AC Analysis
-fn ac_js(mut cx: FunctionContext) -> JsResult<JsBuffer> {
-    // Extract the binary-encoded argument
-    let mut buffer = cx.argument::<JsBuffer>(0)?;
-    let bytes = cx.borrow_mut(&mut buffer, |slice| slice.as_mut_slice::<u8>());
-
-    // Do our real work 
-    let rv = Ac::call_bytes(bytes)?;
-
-    // And return the result as a Node Buffer/ byte-array
-    rv.as_slice().to_buffer(&mut cx) 
-}
+// Apply `JsCall` to each of Spice21's proto-callable types
+impl JsCall for Op {}
+impl JsCall for Ac {}
+impl JsCall for Tran {}
 
 // JavaScript Exports
 register_module!(mut cx, {
     cx.export_function("_health", health_js)?;
-    cx.export_function("_dcop", dcop_js)?;
-    cx.export_function("_tran", tran_js)?;
-    cx.export_function("_ac", ac_js)?;
+    cx.export_function("_dcop", Op::js_call)?;
+    cx.export_function("_tran", Tran::js_call)?;
+    cx.export_function("_ac", Ac::js_call)?;
     Ok(())
 });

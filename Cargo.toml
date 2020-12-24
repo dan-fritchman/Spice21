@@ -2,4 +2,4 @@
 # Spice21 Cargo Workspace 
 
 [workspace]
-members = ["spice21", "spice21int", "spice21procs"]
+members = ["spice21", "spice21int", "spice21procs", "spice21js/native"]

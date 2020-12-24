@@ -2,35 +2,36 @@
 // Spice21 JavaScript Bindings 
 // 
 
-let native = require('../native'); // Native Rust Code 
-let protos = require('./protos').spice21; // Protobuf-driven Type Definitions 
+const native = require('../native'); // Native Rust Code 
+const protos = require('./protos').spice21; // Protobuf-driven Type Definitions 
 
-function dcop(ckt) {
-    protos.Circuit.verify(ckt);
-    let buffer = protos.Circuit.encode(ckt).finish();
-    let res = native._dcop(buffer);
-    let rv = protos.OpResult.decode(res);
+const { Op, OpResult, Tran, TranResult, Ac, AcResult, Sim, SimResult } = protos;
+
+// Coming soon: multi-argument forms, 
+// allowing provided the circuit, options, and/or arguments separately 
+
+function dcop(arg) {
+    const buffer = Op.encode(arg).finish();
+    const res = native._dcop(buffer);
+    const rv = OpResult.decode(res);
     return rv.vals;
 }
-function tran(ckt) {
-    protos.Circuit.verify(ckt);
-    let buffer = protos.Circuit.encode(ckt).finish();
-    let res = native._tran(buffer);
-    let rv = protos.TranResult.decode(res);
+function tran(arg) {
+    const buffer = Tran.encode(arg).finish();
+    const res = native._tran(buffer);
+    const rv = TranResult.decode(res);
     return rv.vals;
 }
-function ac(ckt) {
-    protos.Circuit.verify(ckt);
-    let buffer = protos.Circuit.encode(ckt).finish();
-    let res = native._ac(buffer);
-    let rv = protos.AcResult.decode(res);
+function ac(arg) {
+    const buffer = Ac.encode(arg).finish();
+    const res = native._ac(buffer);
+    const rv = AcResult.decode(res);
     return rv.vals;
 }
-function sim(ckt) {
-    protos.Circuit.verify(ckt);
-    let buffer = protos.Sim.encode(ckt).finish();
-    let res = native._sim(buffer);
-    let rv = protos.SimResult.decode(res);
+function sim(arg) {
+    const buffer = Sim.encode(arg).finish();
+    const res = native._sim(buffer);
+    const rv = SimResult.decode(res);
     return rv.vals;
 }
 // Public Exports 
