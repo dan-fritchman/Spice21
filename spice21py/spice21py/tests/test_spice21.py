@@ -20,9 +20,11 @@ def test_health():
 
 def test_dcop1():
     from spice21py import dcop
+    from spice21py.protos import Op
 
-    c = circuit([Resistor(p="1", g=1e-3), Capacitor(p="1"), Isrc(p="1", dc=1e-3),])
-    res = dcop(c)
+    ckt = circuit([Resistor(p="1", g=1e-3), Capacitor(p="1"), Isrc(p="1", dc=1e-3),])
+    op = Op(ckt=ckt)
+    res = dcop(op)
     assert isinstance(res, dict)
     assert res["1"] == 1.0
 

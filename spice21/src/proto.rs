@@ -2,8 +2,6 @@
 //! # Spice21 Protobuf Definitions
 //!
 
-use std::error::Error;
-
 // These are used by the macro-expanded code
 #[allow(unused_imports)]
 use prost::Message;
@@ -13,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use spice21int::SpProto;
 
 // Error Conversion
-use crate::SpError;
+use crate::{SpError, SpResult};
 impl From<prost::DecodeError> for SpError {
-    fn from(_e: prost::DecodeError) -> Self {
-        SpError::new("Error Decoding Circuit Binary")
+    fn from(e: prost::DecodeError) -> Self {
+        SpError::new(format!("Decode Error: {}", e.to_string()))
     }
 }
 
@@ -35,11 +33,11 @@ pub trait CallableProto: SpProto {
     type Output: SpProto;
 
     /// Primary trait method: perform the call
-    fn call(self) -> Result<Self::Output, Box<dyn Error>>;
+    fn call(self) -> SpResult<Self::Output>;
 
     /// Wrap our call in a decode-call-encode cycle,
     /// Traversing bytes => Self => Output => bytes
-    fn call_bytes(bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn call_bytes(bytes: &[u8]) -> SpResult<Vec<u8>> {
         let s = Self::from_bytes(bytes)?;
         let r = s.call()?;
         Ok(r.to_bytes())
@@ -55,13 +53,13 @@ use std::collections::HashMap;
 impl CallableProto for Op {
     type Output = OpResult;
 
-    fn call(self) -> Result<OpResult, Box<dyn Error>> {
+    fn call(self) -> SpResult<Self::Output> {
         // Unpack & convert arguments
         let Self { ckt, opts } = self;
         let ckt = if let Some(c) = ckt {
             circuit::Ckt::from_proto(c)?
         } else {
-            return Err(SpError::boxed("No Circuit Provided"));
+            return Err(SpError::new("No Circuit Provided"));
         };
         let opts = if let Some(o) = opts { Some(o.into()) } else { None };
         // Do the real work
@@ -81,13 +79,13 @@ impl From<sim::OpResult> for OpResult {
 impl CallableProto for Tran {
     type Output = TranResult;
 
-    fn call(self) -> Result<TranResult, Box<dyn Error>> {
+    fn call(self) -> SpResult<Self::Output> {
         // Unpack & convert arguments
         let Self { ckt, opts, args } = self;
         let ckt = if let Some(c) = ckt {
             circuit::Ckt::from_proto(c)?
         } else {
-            return Err(SpError::boxed("No Circuit Provided"));
+            return Err(SpError::new("No Circuit Provided"));
         };
         let opts = if let Some(o) = opts { Some(o.into()) } else { None };
         let args = if let Some(a) = args { Some(a.into()) } else { None };
@@ -115,13 +113,13 @@ impl From<sim::TranResult> for TranResult {
 impl CallableProto for Ac {
     type Output = AcResult;
 
-    fn call(self) -> Result<Self::Output, Box<dyn Error>> {
+    fn call(self) -> SpResult<Self::Output> {
         // Unpack & convert arguments
         let Self { ckt, opts, args } = self;
         let ckt = if let Some(c) = ckt {
             circuit::Ckt::from_proto(c)?
         } else {
-            return Err(SpError::boxed("No Circuit Provided"));
+            return Err(SpError::new("No Circuit Provided"));
         };
         let opts = if let Some(o) = opts { Some(o.into()) } else { None };
         let args = if let Some(a) = args { Some(a.into()) } else { None };

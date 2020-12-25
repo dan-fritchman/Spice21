@@ -13,12 +13,14 @@ from .protos import Bsim4Model, Bsim4InstParams
 from .spice21py import health
 
 
-def dcop(ckt: protos.Circuit) -> Dict[str, float]:
+def dcop(arg: protos.Op) -> Dict[str, float]:
     """ DC Operating Point """
     from .spice21py import _dcop
 
-    enc = ckt.SerializeToString()
-    return _dcop(enc)
+    enc = bytes(arg)
+    rb = _dcop(enc)
+    rv = protos.OpResult().parse(rb)
+    return rv.vals
 
 
 def tran(
