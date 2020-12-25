@@ -15,7 +15,6 @@ documentation = "https://github.com/HW21/Spice21"
 
 [dependencies]
 protobuf = "^3.13.0"
-betterproto = {version= "^1.2.5", features=["compiler"]}
 [build-system]
 requires = ["maturin"]
 build-backend = "maturin"

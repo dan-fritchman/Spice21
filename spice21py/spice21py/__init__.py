@@ -13,37 +13,99 @@ from .protos import Bsim4Model, Bsim4InstParams
 from .spice21py import health
 
 
-def dcop(arg: protos.Op) -> Dict[str, float]:
+def dcop(
+    arg: Optional[Union[protos.Circuit, protos.Op]] = None,
+    *,
+    ckt: Optional[protos.Circuit] = None,
+    opts: Optional[protos.SimOptions] = None,
+) -> Dict[str, float]:
     """ DC Operating Point """
     from .spice21py import _dcop
 
-    enc = bytes(arg)
+    # Discern whether our primary argument is an `Op` or a `Circuit`
+    if arg is None:
+        op = protos.Op(ckt=ckt, opts=opts)
+    elif isinstance(arg, protos.Circuit):
+        op = protos.Op(ckt=arg, opts=opts)
+    elif isinstance(arg, protos.Op):
+        op = arg
+    else:
+        raise TypeError
+
+    # Encode
+    enc = op.SerializeToString()
+    # Do the real work
     rb = _dcop(enc)
-    rv = protos.OpResult().parse(rb)
-    return rv.vals
+    # Decode results
+    rv = protos.OpResult()
+    rv.ParseFromString(rb)
+    # And return something in nicer dict-form
+    return dict(rv.vals)
 
 
 def tran(
-    ckt: protos.Circuit, opts: Optional[protos.TranOptions] = None
+    arg: Optional[Union[protos.Circuit, protos.Tran]] = None,
+    *,
+    ckt: Optional[protos.Circuit] = None,
+    opts: Optional[protos.SimOptions] = None,
+    args: Optional[protos.TranOptions] = None,
 ) -> Dict[str, List[float]]:
     """ Transient Analysis """
     from .spice21py import _tran
 
-    # Serialize our circuit 
-    ckt_enc = ckt.SerializeToString()
-    # Serialize options, if provided. Otherwise we provide empty `bytes`. 
-    opts_enc = bytes() if opts is None else opts.SerializeToString()
-    return _tran(ckt_enc, opts_enc)
+    # Discern whether our primary argument is a `Tran` or a `Circuit`
+    if arg is None:
+        tr = protos.Tran(ckt=ckt, opts=opts, args=args)
+    elif isinstance(arg, protos.Circuit):
+        tr = protos.Tran(ckt=arg, opts=opts, args=args)
+    elif isinstance(arg, protos.Tran):
+        tr = arg
+    else:
+        raise TypeError
+
+    # Encode
+    enc = tr.SerializeToString()
+    # Do the real work
+    rb = _tran(enc)
+    # Decode results
+    rv = protos.TranResult()
+    rv.ParseFromString(rb)
+    # And return something in nicer dict-form
+    return {name: list(arr.vals) for name, arr in dict(rv.vals).items()}
 
 
-def ac(ckt: protos.Circuit) -> Dict[str, List[complex]]:
+def ac(
+    arg: Optional[Union[protos.Circuit, protos.Ac]] = None,
+    *,
+    ckt: Optional[protos.Circuit] = None,
+    opts: Optional[protos.SimOptions] = None,
+    args: Optional[protos.AcOptions] = None,
+) -> Dict[str, List[complex]]:
     """ AC Analysis """
     from .spice21py import _ac
 
-    enc = ckt.SerializeToString()
-    res = _ac(enc)
-    # Here we decode into Python `complex` values
-    return {name: [complex(*v) for v in vals] for name, vals in res.items()}
+    # Discern whether our primary argument is a `Tran` or a `Circuit`
+    if arg is None:
+        ac = protos.Ac(ckt=ckt, opts=opts, args=args)
+    elif isinstance(arg, protos.Circuit):
+        ac = protos.Ac(ckt=arg, opts=opts, args=args)
+    elif isinstance(arg, protos.Ac):
+        ac = arg
+    else:
+        raise TypeError
+
+    # Encode
+    enc = ac.SerializeToString()
+    # Do the real work
+    rb = _ac(enc)
+    # Decode results
+    rv = protos.AcResult()
+    rv.ParseFromString(rb)
+    # And return something in nicer dict-form
+    return {
+        name: [complex(c.re, c.im) for c in list(arr.vals)]
+        for name, arr in dict(rv.vals).items()
+    }
 
 
 def add(ckt: protos.Circuit, comp: Any) -> None:
