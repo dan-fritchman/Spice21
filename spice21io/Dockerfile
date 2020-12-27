@@ -19,7 +19,7 @@ RUN apt update && apt upgrade && \
 # Create a user to run this thing, rather than `root`
 RUN useradd --create-home dummy
 USER dummy 
-WORKDIR /home/dummy/Spice21
+WORKDIR /home/dummy
 
 # Copy local code to the container image.
 COPY --chown=dummy:dummy . ./
