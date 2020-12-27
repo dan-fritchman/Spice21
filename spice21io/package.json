@@ -1,0 +1,28 @@
+{
+  "name": "spice21io",
+  "version": "0.1.5",
+  "description": "Spice21 Server",
+  "main": "index.js",
+  "repository": "https://github.com/HW21/Spice21",
+  "author": "Dan Fritchman",
+  "license": "BSD-3-Clause",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "test": "mocha",
+    "system-test": "NAME=Cloud mocha test/system.test.js --timeout=180000",
+    "lint": "eslint '**/*.js'",
+    "fix": "eslint --fix '**/*.js'"
+  },
+  "engines": {
+    "node": ">= 12.0.0"
+  },
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "express": "^4.17.1"
+  },
+  "devDependencies": {
+    "axios": "^0.21.1",
+    "mocha": "^8.2.1"
+  }
+}
