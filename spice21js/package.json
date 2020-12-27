@@ -11,8 +11,9 @@
     "protobufjs": "^6.10.2"
   },
   "scripts": {
-    "protoc": "mkdir -p lib/protos && pbjs -t static-module -w commonjs ../spice21/src/*.proto -o lib/protos/index.js",
-    "install": "neon build",
+    "protoc": "mkdir -p lib/protos && pbjs -t static-module -w commonjs ../spice21/protos/*.proto -o lib/protos/index.js",
+    "dev": "neon build",
+    "install": "neon build --release",
     "test": "mocha"
   }
 }

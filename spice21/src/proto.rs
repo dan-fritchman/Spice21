@@ -2,21 +2,147 @@
 //! # Spice21 Protobuf Definitions
 //!
 
+// These are used by the macro-expanded code
 #[allow(unused_imports)]
 use prost::Message;
-#[allow(unused_imports)] // These are used by the macro-expanded code
+#[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use spice21int::SpProto;
 
 // Error Conversion
-use crate::SpError;
+use crate::{SpError, SpResult};
 impl From<prost::DecodeError> for SpError {
-    fn from(_e: prost::DecodeError) -> Self {
-        SpError::new("Error Decoding Circuit Binary")
+    fn from(e: prost::DecodeError) -> Self {
+        SpError::new(format!("Decode Error: {}", e.to_string()))
     }
 }
 
 // Include the prost-expanded proto-file content
 include!(concat!(env!("OUT_DIR"), "/spice21.rs"));
+
+///
+/// # Callable Protobuf Trait
+///
+/// Defines an RPC-like single-argument, single-return type trait-interface
+/// used by many of the Spice21 Protos, particulaly those dealing with simulation.
+/// Think of `Self` as the *input* type to the call, and associated type
+/// `Self::Output` as its return type.
+///
+pub trait CallableProto: SpProto {
+    type Output: SpProto;
+
+    /// Primary trait method: perform the call
+    fn call(self) -> SpResult<Self::Output>;
+
+    /// Wrap our call in a decode-call-encode cycle,
+    /// Traversing bytes => Self => Output => bytes
+    fn call_bytes(bytes: &[u8]) -> SpResult<Vec<u8>> {
+        let s = Self::from_bytes(bytes)?;
+        let r = s.call()?;
+        Ok(r.to_bytes())
+    }
+}
+
+use crate::analysis as sim; // Note `analysis` is also a generated module-name!
+use crate::circuit;
+use std::collections::HashMap;
+
+/// Dc Operating Point
+/// Proto-based calling
+impl CallableProto for Op {
+    type Output = OpResult;
+
+    fn call(self) -> SpResult<Self::Output> {
+        // Unpack & convert arguments
+        let Self { ckt, opts } = self;
+        let ckt = if let Some(c) = ckt {
+            circuit::Ckt::from_proto(c)?
+        } else {
+            return Err(SpError::new("No Circuit Provided"));
+        };
+        let opts = if let Some(o) = opts { Some(o.into()) } else { None };
+        // Do the real work
+        let rv = sim::dcop(ckt, opts)?;
+        // And convert result to our output type
+        Ok(rv.into())
+    }
+}
+impl From<sim::OpResult> for OpResult {
+    fn from(i: sim::OpResult) -> Self {
+        Self { vals: i.map }
+    }
+}
+
+/// Transient Analysis
+/// Proto-based calling
+impl CallableProto for Tran {
+    type Output = TranResult;
+
+    fn call(self) -> SpResult<Self::Output> {
+        // Unpack & convert arguments
+        let Self { ckt, opts, args } = self;
+        let ckt = if let Some(c) = ckt {
+            circuit::Ckt::from_proto(c)?
+        } else {
+            return Err(SpError::new("No Circuit Provided"));
+        };
+        let opts = if let Some(o) = opts { Some(o.into()) } else { None };
+        let args = if let Some(a) = args { Some(a.into()) } else { None };
+        // Do the real work
+        let rv = sim::tran(ckt, opts, args)?;
+        // And convert result to our output type
+        Ok(rv.into())
+    }
+}
+impl From<sim::TranResult> for TranResult {
+    fn from(i: sim::TranResult) -> Self {
+        let mut vals: HashMap<String, DoubleArray> = HashMap::new();
+        for (name, vec) in i.map {
+            vals.insert(name, DoubleArray { vals: vec });
+        }
+        TranResult {
+            time: Some(DoubleArray { vals: i.time }),
+            vals,
+        }
+    }
+}
+
+/// Ac Analysis
+/// Proto-based calling
+impl CallableProto for Ac {
+    type Output = AcResult;
+
+    fn call(self) -> SpResult<Self::Output> {
+        // Unpack & convert arguments
+        let Self { ckt, opts, args } = self;
+        let ckt = if let Some(c) = ckt {
+            circuit::Ckt::from_proto(c)?
+        } else {
+            return Err(SpError::new("No Circuit Provided"));
+        };
+        let opts = if let Some(o) = opts { Some(o.into()) } else { None };
+        let args = if let Some(a) = args { Some(a.into()) } else { None };
+        // Do the real work
+        let rv = sim::ac(ckt, opts, args)?;
+        // And convert result to our output type
+        Ok(rv.into())
+    }
+}
+impl From<sim::AcResult> for AcResult {
+    fn from(i: sim::AcResult) -> Self {
+        let mut vals: HashMap<String, ComplexArray> = HashMap::new();
+        for (name, vec) in i.map {
+            // Map each signal's data into proto-versions
+            let v = vec.iter().map(|&c| ComplexNum { re: c.re, im: c.im }).collect();
+            vals.insert(name, ComplexArray { vals: v });
+        }
+        AcResult {
+            freq: Some(DoubleArray { vals: i.freq }),
+            vals,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -81,8 +207,8 @@ mod tests {
                         name: s("dtbd"),
                         p: s("a"),
                         n: s("b"),
-                        area: 1.0,
-                        temp: 300.0,
+                        model: "default".into(),
+                        params: "default".into(),
                     })),
                 },
                 Instance {
@@ -156,8 +282,8 @@ mod tests {
                                     name: s("dtbd"),
                                     p: s("a"),
                                     n: s("b"),
-                                    area: 1.0,
-                                    temp: 300.0,
+                                    model: "default".into(),
+                                    params: "default".into(),
                                 })),
                             },
                             Instance {
@@ -179,39 +305,35 @@ mod tests {
             ],
         };
 
-        use std::fs::{create_dir_all, File};
+        use std::fs::File;
         use std::io::prelude::*;
-        use std::io::Cursor;
+        use std::path::Path;
 
-        // Make sure we have a `scratch/` directory
-        create_dir_all("scratch").unwrap();
+        // Grab a Path to our `scratch dir`
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("scratch");
 
         // Prost/ Protobuf Serialization Round-Trip
-        let mut buf = Vec::<u8>::new();
-        buf.reserve(c.encoded_len());
-        c.encode(&mut buf).unwrap();
-        let mut file = File::create("scratch/ckt.bin").unwrap();
-        file.write_all(&buf).unwrap();
-        let d = Circuit::decode(&mut Cursor::new(buf)).unwrap();
-        assert(&c.name).eq(&d.name)?;
+        let bytes = c.to_bytes();
+        let rckt = Circuit::from_bytes(&bytes)?;
+        assert(&c).eq(&rckt)?;
 
         // Serde-JSON Round-Trip
         let s = serde_json::to_string(&c).unwrap();
-        let mut rfj = File::create("scratch/ckt.json").unwrap();
+        let mut rfj = File::create(dir.join("ckt.json")).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = serde_json::from_str(&s).unwrap();
         assert(&c.name).eq(&d.name)?;
 
         // Serde-YAML Round-Trip
         let s = serde_yaml::to_string(&c).unwrap();
-        let mut rfj = File::create("scratch/ckt.yaml").unwrap();
+        let mut rfj = File::create(dir.join("ckt.yaml")).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = serde_yaml::from_str(&s).unwrap();
         assert(&c.name).eq(&d.name)?;
 
         // Serde-TOML Round-Trip
         let s = toml::to_string(&c).unwrap();
-        let mut rfj = File::create("scratch/ckt.toml").unwrap();
+        let mut rfj = File::create(dir.join("ckt.toml")).unwrap();
         rfj.write_all(s.as_bytes()).unwrap();
         let d: Circuit = toml::from_str(&s).unwrap();
 

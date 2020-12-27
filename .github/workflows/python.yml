@@ -29,11 +29,10 @@ jobs:
         working-directory: ./spice21py 
         run: |
           conda install -y pip cffi pytest protobuf 
-          pip install maturin 
+          pip install maturin betterproto[compiler]
       - name: protoc
-        run: |
-          protoc -I=spice21/src --python_out=spice21py/spice21py spice21/src/*.proto 
-          2to3 -wn -f import spice21py/spice21py/*pb2* 
+        working-directory: ./spice21py 
+        run: ./build.sh 
       - name: build 
         working-directory: ./spice21py 
         run: maturin develop

@@ -1,0 +1,234 @@
+syntax = "proto3";
+package spice21;
+import "google/protobuf/wrappers.proto";
+import "mos.proto";
+import "bsim4.proto";
+
+
+message Resistor {
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double g = 4;
+}
+
+message Capacitor {
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double c = 4;
+}
+
+message Isrc {
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double dc = 4;
+}
+
+message Vsrc {
+    string name = 1;
+    string p = 2;
+    string n = 3;
+    double dc = 4;
+    double acm = 5;
+}
+
+// Terminal Structure for Two-Terminal Devices
+// All such devices have terminal-names "p" and "n". 
+message TwoTerms {
+    string p = 2; // Positive Terminal 
+    string n = 3; // Negative Terminal 
+}
+// Diode Model Parameters 
+message DiodeModel {
+    string name = 1;
+    google.protobuf.DoubleValue tnom = 2;
+    google.protobuf.DoubleValue is = 3;
+    google.protobuf.DoubleValue n = 4;
+    google.protobuf.DoubleValue tt = 5;
+    google.protobuf.DoubleValue vj = 6;
+    google.protobuf.DoubleValue m = 7;
+    google.protobuf.DoubleValue eg = 8;
+    google.protobuf.DoubleValue xti = 9;
+    google.protobuf.DoubleValue kf = 10;
+    google.protobuf.DoubleValue af = 11;
+    google.protobuf.DoubleValue fc = 12;
+    google.protobuf.DoubleValue bv = 13;
+    google.protobuf.DoubleValue ibv = 14;
+    google.protobuf.DoubleValue rs = 15;
+    google.protobuf.DoubleValue cj0 = 16;
+}
+// Diode Instance Parameters 
+message DiodeInstParams {
+    string name = 1;  // Param-set Name 
+    string model = 2; // FIXME: removing Model Name 
+    google.protobuf.DoubleValue area = 4;
+    google.protobuf.DoubleValue temp = 5;
+}
+// Diode Instance 
+message Diode {
+    string name = 1; 
+    string p = 2;
+    string n = 3;
+    string model = 4;  // Model name
+    string params = 5; // Instance parameter-set name
+} 
+// Instance Enumeration 
+// Includes variants for all simulator-defined primitives, 
+// plus custom-defined Modules. 
+message Instance {
+    oneof comp {
+        Resistor r = 1;
+        Capacitor c = 2;
+        Mos m = 3;
+        Isrc i = 4;
+        Vsrc v = 5;
+        Diode d = 6;
+        ModuleInstance x = 7;
+    }
+}
+// Module Definition 
+message Module {
+    string name = 1; // Module Name 
+    repeated string ports = 2; // Port Names 
+    repeated string signals = 4; // Internal Signals
+    repeated Instance comps = 5; // Component Instances
+    map <string, double> params = 9; // Parameters and Default Values
+}
+// Module Instance
+message ModuleInstance {
+    string name = 1; // Instance Name
+    string module = 2; // Module Name 
+    map <string, string> ports = 3; // Port Connections 
+    map <string, double> params = 4; // Parameter Values
+}
+// Definition Enum
+// Includes all variants of things to define, including:
+// * Module Definitions 
+// * Models 
+// * Instance Parameter-Sets
+message Def {
+    oneof defines {
+        Module module = 1;
+        DiodeModel diodemodel = 2;
+        DiodeInstParams diodeinst = 3;
+        Bsim4Model bsim4model = 4;
+        Bsim4InstParams bsim4inst = 5;
+        Mos1Model mos1model = 6;
+        Mos1InstParams mos1inst = 7;
+    }
+}
+// Array of Definitions 
+message Defs {
+    repeated Def defs = 1;
+}
+// Circuit 
+// A "top-level" combination of definitions and component instances
+message Circuit {
+    string name = 1; // Circuit Name 
+    repeated string signals = 2; // Signal Names
+    repeated Def defs = 3; // Definitions 
+    repeated Instance comps = 4; // Component Instances 
+}
+
+// Simulator Options 
+message SimOptions {
+    google.protobuf.DoubleValue temp = 1;
+    google.protobuf.DoubleValue tnom = 2;
+    google.protobuf.DoubleValue gmin = 3;
+    google.protobuf.DoubleValue iabstol = 4;
+    google.protobuf.DoubleValue reltol = 5;
+}
+
+// Operating Point Sim Inputs
+message Op {
+    Circuit ckt = 1;
+    SimOptions opts = 2;
+}
+// Operating Point Results 
+message OpResult {
+    map<string, double> vals = 1; // Signals, {name: value}
+}
+
+
+// Transient Analysis Options 
+message TranOptions {
+    double tstop = 1; // Stop Time 
+    double tstep = 2; // Time-Step 
+    map <string, double> ic = 3; // Initial Conditions. Mapping in the form of {node: value}
+}
+// Transient Sim Inputs 
+message Tran {
+    Circuit ckt = 1;
+    SimOptions opts = 2;
+    TranOptions args = 3;
+}
+
+// Array of Doubles
+// Primarily used as `map` values, which must be Messages. 
+message DoubleArray {
+    repeated double vals = 1;
+}
+
+// Operating Point Results 
+message TranResult {
+    DoubleArray time = 1; // Time 
+    map<string, DoubleArray> vals = 2; // Signals, {name: value}
+}
+
+// Complex Number Infrastructure 
+message ComplexNum {
+    double re = 1;
+    double im = 2;
+}
+// Array of Complex Numbers 
+// Primarily used as `map` values, which must be Messages. 
+message ComplexArray {
+    repeated ComplexNum vals = 1;
+}
+/// AC Analysis Options
+message AcOptions {
+    uint64 fstart = 1; // Start (min) frequency in Hz 
+    uint64 fstop = 2; // Stop (max) frequency in Hz 
+    uint64 npts = 3; // Number of points. Total, not "per decade". 
+}
+// AC Sim Inputs 
+message Ac {
+    Circuit ckt = 1;
+    SimOptions opts = 2;
+    AcOptions args = 3;
+}
+// AC Analysis Results 
+message AcResult {
+    DoubleArray freq = 1; // Frequency 
+    map<string, ComplexArray> vals = 2; // Signals, {name: value}
+}
+
+// Analysis Union 
+message Analysis {
+    oneof an {
+        TranOptions tran = 2;
+        AcOptions ac = 3;
+    }
+}
+
+// Multi-Analysis Simulation Input 
+message Sim {
+    Circuit ckt = 1;
+    SimOptions opts = 2;
+    repeated Analysis an = 3;
+}
+// Results Union 
+message AnalysisResult {
+    oneof an {
+        OpResult op = 1;
+        TranOptions tran = 2;
+        AcOptions ac = 3;
+    }
+}
+// Multi-Analysis Sim Result 
+message SimResult {
+    repeated AnalysisResult an = 1;
+}
+

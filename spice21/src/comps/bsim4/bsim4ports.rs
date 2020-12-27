@@ -22,8 +22,14 @@ pub(crate) struct Bsim4Ports<T> {
 }
 
 impl Bsim4Ports<Option<VarIndex>> {
+    /// Create Bsim4Ports from all the required device info
+    /// * Terminal connections `terms` include the primary/ external G,D,S,B nodes
+    /// * Model dictates whether several internal nodes are created
+    /// * Internal params `intp` dictates several more
+    /// * If internal variables are to be created, they are added to mutable Variables `vars`. 
+    /// Instance path is required for generation of internal node-names. 
     pub(crate) fn from<T: SpNum>(
-        iname: String,
+        path: String,
         terms: &MosPorts<Option<VarIndex>>,
         model: &Bsim4ModelVals,
         intp: &Bsim4InternalParams,
@@ -39,32 +45,27 @@ impl Bsim4Ports<Option<VarIndex>> {
         // Terminal resistances
         // FIXME: can potentially filter our the noise-mode dependence only when doing noise analysis
         let dNodePrime = if model.rdsmod != 0 || (model.tnoimod == 1) {
-            let mut name = iname.clone();
-            name.push_str("_drain");
+            let name = format!("{}.{}", path, "drain");
             Some(vars.add(name, VarKind::V))
         } else {
             dNode
         };
         let sNodePrime = if model.rdsmod != 0 || (model.tnoimod == 1) {
-            let mut name = iname.clone();
-            name.push_str("_source");
+            let name = format!("{}.{}", path, "source");
             Some(vars.add(name, VarKind::V))
         } else {
             sNode
         };
-
         // Gate Resistance
         let gNodePrime = if intp.rgatemod > 0 {
-            let mut name = iname.clone();
-            name.push_str("_gate");
+            let name = format!("{}.{}", path, "gate");
             Some(vars.add(name, VarKind::V))
         } else {
             gNodeExt
         };
 
         let gNodeMid = if intp.rgatemod == 3 {
-            let mut name = iname.clone();
-            name.push_str("_midgate");
+            let name = format!("{}.{}", path, "midgate");
             Some(vars.add(name, VarKind::V))
         } else {
             gNodeExt
@@ -72,16 +73,13 @@ impl Bsim4Ports<Option<VarIndex>> {
 
         /* internal body nodes for body resistance model */
         let (dbNode, bNodePrime, sbNode) = if intp.rbodymod == 1 || intp.rbodymod == 2 {
-            let mut name = iname.clone();
-            name.push_str("_dbody");
+            let name = format!("{}.{}", path, "dbody");
             let dbNode = Some(vars.add(name, VarKind::V));
 
-            let mut name = iname.clone();
-            name.push_str("_body");
+            let name = format!("{}.{}", path, "body");
             let bNodePrime = Some(vars.add(name, VarKind::V));
 
-            let mut name = iname.clone();
-            name.push_str("_sbody");
+            let name = format!("{}.{}", path, "sbody");
             let sbNode = Some(vars.add(name, VarKind::V));
 
             (dbNode, bNodePrime, sbNode)
@@ -91,8 +89,7 @@ impl Bsim4Ports<Option<VarIndex>> {
 
         // NQS charge node
         let qNode = if intp.trnqsmod != 0 {
-            let mut name = iname.clone();
-            name.push_str("_charge");
+            let name = format!("{}.{}", path, "charge");
             Some(vars.add(name, VarKind::Q))
         } else {
             None

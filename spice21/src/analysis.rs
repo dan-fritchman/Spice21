@@ -1,14 +1,20 @@
+//!
 //! # Spice21 Analyses
 //!
+use num::{Complex, Float, Zero};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::ops::Index;
 
-use crate::circuit;
 use crate::circuit::{Ckt, NodeRef};
 use crate::comps::{Component, ComponentSolver};
+use crate::defs;
 use crate::sparse21::{Eindex, Matrix};
 use crate::{sperror, SpNum, SpResult};
-use num::{Complex, Float, Zero};
 
+///
+/// # Matrix Stamps
+///
 /// `Stamps` are the interface between Components and Solvers.
 /// Each Component returns `Stamps` from each call to `load`,
 /// conveying its Matrix-contributions in `Stamps.g`
@@ -136,7 +142,7 @@ pub(crate) struct Solver<'a, NumT: SpNum> {
     pub(crate) mat: Matrix<NumT>,
     pub(crate) rhs: Vec<NumT>,
     pub(crate) history: Vec<Vec<NumT>>,
-    pub(crate) defs: circuit::Defs,
+    pub(crate) defs: defs::Defs,
     pub(crate) opts: Options,
 }
 
@@ -146,7 +152,7 @@ impl Solver<'_, f64> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
-            let updates = comp.load(&self.vars, an);
+            let updates = comp.load(&self.vars, an, &self.opts);
             // Make updates for G and b
             for upd in updates.g.iter() {
                 if let (Some(ei), val) = *upd {
@@ -230,7 +236,7 @@ impl<'a> Solver<'a, Complex<f64>> {
     /// Collect and incorporate updates from all components
     fn update(&mut self, an: &AnalysisInfo) {
         for comp in self.comps.iter_mut() {
-            let updates = comp.load_ac(&self.vars, an);
+            let updates = comp.load_ac(&self.vars, an, &self.opts);
             // Make updates for G and b
             for upd in updates.g.iter() {
                 if let (Some(ei), val) = *upd {
@@ -302,9 +308,11 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
     pub(crate) fn new(ckt: Ckt, opts: Options) -> Solver<'a, NumT> {
         // Elaborate the circuit
         use crate::elab::{elaborate, Elaborator};
-        let e = elaborate(ckt);
-        let Elaborator { defs, mut comps, vars, .. } = e;
-        // Create our matrix and its elements 
+        let e = elaborate(ckt, opts);
+        let Elaborator {
+            defs, mut comps, vars, opts, ..
+        } = e;
+        // Create our matrix and its elements
         let mut mat = Matrix::new();
         for comp in comps.iter_mut() {
             comp.create_matrix_elems(&mut mat);
@@ -313,7 +321,7 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
         Solver {
             comps,
             vars,
-            mat, 
+            mat,
             rhs: Vec::new(),
             history: Vec::new(),
             defs,
@@ -323,21 +331,19 @@ impl<'a, NumT: SpNum> Solver<'a, NumT> {
     fn converged(&self, dx: &Vec<NumT>, res: &Vec<NumT>) -> bool {
         // Inter-step Newton convergence
         for e in dx.iter() {
-            if e.absv() > 1e-3 {
+            if e.absv() > self.opts.reltol {
                 return false;
             }
         }
         // KCL convergence
         for e in res.iter() {
-            if e.absv() > 1e-12 {
+            if e.absv() > self.opts.iabstol {
                 return false;
             }
         }
         return true;
     }
 }
-use std::collections::HashMap;
-use std::ops::Index;
 
 /// Operating Point Result
 #[derive(Debug)]
@@ -374,12 +380,12 @@ impl Index<usize> for OpResult {
 }
 
 /// Dc Operating Point Analysis
-pub fn dcop(ckt: Ckt) -> SpResult<OpResult> {
-    let mut s = Solver::<f64>::new(ckt, Options::default());
+pub fn dcop(ckt: Ckt, opts: Option<Options>) -> SpResult<OpResult> {
+    let o = if let Some(o) = opts { o } else { Options::default() };
+    let mut s = Solver::<f64>::new(ckt, o);
     let _r = s.solve(&AnalysisInfo::OP)?;
     return Ok(OpResult::from(s.vars));
 }
-
 pub(crate) enum AnalysisInfo<'a> {
     OP,
     TRAN(&'a TranOptions, &'a TranState),
@@ -429,8 +435,18 @@ impl TranState {
             }
         }
     }
+    pub fn integq(&self, dq: f64, dq_dv: f64, vguess: f64, _ip: f64) -> ChargeInteg {
+        let (g, i, rhs) = self.integrate(dq, dq_dv, vguess, _ip);
+        ChargeInteg { g, i, rhs }
+    }
 }
-
+/// Result of numerical integration for a charge-element
+#[derive(Default, Clone)]
+pub(crate) struct ChargeInteg {
+    pub(crate) g: f64,
+    pub(crate) i: f64,
+    pub(crate) rhs: f64,
+}
 /// Transient Analysis Options
 #[derive(Debug)]
 pub struct TranOptions {
@@ -438,37 +454,35 @@ pub struct TranOptions {
     pub tstop: f64,
     pub ic: Vec<(NodeRef, f64)>,
 }
-use super::proto::TranOptions as OptsProto;
 impl TranOptions {
     pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
+        // FIXME: remove
         use prost::Message;
         use std::io::Cursor;
 
         // Decode the protobuf version
-        let proto = OptsProto::decode(&mut Cursor::new(bytes_))?;
+        let proto = proto::TranOptions::decode(&mut Cursor::new(bytes_))?;
         // And convert into the real thing
         Ok(Self::from(proto))
     }
-    pub fn from(proto: OptsProto) -> Self {
+}
+impl From<proto::TranOptions> for TranOptions {
+    fn from(i: proto::TranOptions) -> Self {
         use super::circuit::n;
         let mut ic: Vec<(NodeRef, f64)> = vec![];
-        for (name, val) in &proto.ic {
+        for (name, val) in &i.ic {
             ic.push((n(name), val.clone()));
         }
         Self {
-            tstep: proto.tstep,
-            tstop: proto.tstop,
+            tstep: i.tstep,
+            tstop: i.tstop,
             ic,
         }
     }
 }
 impl Default for TranOptions {
     fn default() -> TranOptions {
-        TranOptions {
-            tstep: 1e-6,
-            tstop: 1e-3,
-            ic: vec![],
-        }
+        Self::from(proto::TranOptions::default())
     }
 }
 
@@ -479,11 +493,12 @@ pub(crate) struct Tran<'a> {
 }
 
 impl<'a> Tran<'a> {
-    pub fn new(ckt: Ckt, opts: TranOptions) -> Tran<'a> {
-        let ics = opts.ic.clone();
+    pub fn new(ckt: Ckt, opts: Options, args: TranOptions) -> Tran<'a> {
+        let solver = Solver::new(ckt, opts);
+        let ics = args.ic.clone();
         let mut t = Tran {
-            solver: Solver::new(ckt, Options::default()),
-            opts,
+            solver,
+            opts: args,
             state: TranState::default(),
         };
         for (node, val) in &ics {
@@ -495,10 +510,11 @@ impl<'a> Tran<'a> {
     pub fn ic(&mut self, n: NodeRef, val: f64) {
         use crate::comps::{Resistor, Vsrc};
 
-        let fnode = self.solver.vars.add("vfnode".to_string(), VarKind::V); // FIXME: names
-        let ivar = self.solver.vars.add("ifsrc".to_string(), VarKind::I); // FIXME: names
+        // Create two new variables: the forcing voltage, and current in its source
+        let fnode = self.solver.vars.add(format!(".{}.vic", n.to_string()), VarKind::V);
+        let ivar = self.solver.vars.add(format!(".{}.iic", n.to_string()), VarKind::I);
 
-        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n));
+        let mut r = Resistor::new(1.0, Some(fnode), self.solver.vars.find_or_create(n)); // FIXME: rforce value
         r.create_matrix_elems(&mut self.solver.mat);
         self.solver.comps.push(r.into());
         self.state.ric.push(self.solver.comps.len() - 1);
@@ -556,87 +572,7 @@ impl<'a> Tran<'a> {
         Ok(results)
     }
 }
-
-pub trait Result {
-    type Entry;
-    fn new() -> Self;
-    //  fn signals(&mut self, vars: &Variables<Entry>);
-    fn push(&mut self, x: f64, vals: &Self::Entry);
-    fn end(&mut self);
-    //  fn len(&self) -> usize;
-    //  fn get(&self, name: &str) -> SpResult<&Self::Entry>;
-}
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread;
-use std::thread::JoinHandle;
-
-enum IoWriterMessage {
-    STOP,
-    DATA(Vec<f64>),
-}
-enum IoWriterResponse {
-    OK,
-    RESULT(Vec<Vec<f64>>),
-}
-/// Threaded File Writer
-/// Temporarily somewhat abandoned
-struct ThreadStreamWriter {
-    tx: Sender<IoWriterMessage>,
-    rx2: Receiver<IoWriterResponse>,
-    thread: JoinHandle<()>,
-}
-impl ThreadStreamWriter {
-    fn join(mut self) -> std::thread::Result<()> {
-        self.thread.join()
-    }
-}
-impl Result for ThreadStreamWriter {
-    type Entry = Vec<f64>;
-    fn new() -> Self {
-        let (tx, rx) = channel::<IoWriterMessage>();
-        let (tx2, rx2) = channel::<IoWriterResponse>();
-
-        let thread = thread::spawn(move || {
-            use serde::ser::{SerializeSeq, Serializer};
-            use std::fs::File;
-
-            let mut res: Vec<Vec<f64>> = vec![];
-
-            let f = File::create("data.json").unwrap(); // FIXME: name
-            let mut ser = serde_json::Serializer::new(f);
-            let mut seq = ser.serialize_seq(None).unwrap();
-
-            for msg in rx {
-                match msg {
-                    IoWriterMessage::DATA(d) => {
-                        seq.serialize_element(&d).unwrap();
-                        res.push(d);
-                    }
-                    IoWriterMessage::STOP => {
-                        seq.end().unwrap();
-                        tx2.send(IoWriterResponse::RESULT(res)).unwrap();
-                        return;
-                    }
-                };
-            }
-        });
-        Self { tx, rx2, thread }
-    }
-    fn push(&mut self, _x: f64, vals: &Vec<f64>) {
-        self.tx.send(IoWriterMessage::DATA(vals.clone())).unwrap(); // FIXME: no copy
-    }
-    fn end(&mut self) {
-        self.tx.send(IoWriterMessage::STOP).unwrap();
-        for msg in self.rx2.iter() {
-            match msg {
-                IoWriterResponse::RESULT(_) => break,
-                _ => continue,
-            }
-        }
-    }
-}
-
-/// TranResult
+/// # TranResult
 /// In-Memory Store for transient data
 #[derive(Default, Serialize, Deserialize)]
 pub struct TranResult {
@@ -696,16 +632,18 @@ impl Index<usize> for TranResult {
 }
 
 /// Transient Analysis
-pub fn tran(ckt: Ckt, opts: TranOptions) -> SpResult<TranResult> {
-    return Tran::new(ckt, opts).solve();
+pub fn tran(ckt: Ckt, opts: Option<Options>, args: Option<TranOptions>) -> SpResult<TranResult> {
+    let o = if let Some(val) = opts { val } else { Options::default() };
+    let a = if let Some(val) = args { val } else { TranOptions::default() };
+    return Tran::new(ckt, o, a).solve();
 }
 
 /// Simulation Options
 pub struct Options {
     pub temp: f64,
-    pub nom_temp: f64,
+    pub tnom: f64,
     pub gmin: f64,
-    pub abstol: f64,
+    pub iabstol: f64,
     pub reltol: f64,
     pub chgtol: f64,
     pub volt_tol: f64,
@@ -722,14 +660,16 @@ pub struct Options {
     pub diag_gmin: f64,
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            temp: 300.15,
-            nom_temp: 300.15,
-            gmin: 1e-12,
-            abstol: 1e-12,
-            reltol: 1e-3,
+use crate::proto;
+
+impl From<proto::SimOptions> for Options {
+    fn from(i: proto::SimOptions) -> Self {
+        Self {
+            temp: if let Some(val) = i.temp { val } else { 300.15 },
+            tnom: if let Some(val) = i.tnom { val } else { 300.15 },
+            gmin: if let Some(val) = i.gmin { val } else { 1e-12 },
+            iabstol: if let Some(val) = i.iabstol { val } else { 1e-12 },
+            reltol: if let Some(val) = i.reltol { val } else { 1e-3 },
             chgtol: 1e-14,
             volt_tol: 1e-6,
             trtol: 7,
@@ -746,6 +686,11 @@ impl Default for Options {
         }
     }
 }
+impl Default for Options {
+    fn default() -> Self {
+        Self::from(proto::SimOptions::default())
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct AcState {
@@ -758,14 +703,18 @@ pub struct AcOptions {
     pub fstop: usize,
     pub npts: usize, // Total, not "per decade"
 }
-
+impl From<proto::AcOptions> for AcOptions {
+    fn from(i: proto::AcOptions) -> Self {
+        Self {
+            fstart: i.fstart as usize,
+            fstop: i.fstop as usize,
+            npts: i.npts as usize,
+        }
+    }
+}
 impl Default for AcOptions {
     fn default() -> Self {
-        Self {
-            fstart: 1,
-            fstop: 1e15 as usize,
-            npts: 1000,
-        }
+        Self::from(proto::AcOptions::default())
     }
 }
 
@@ -809,7 +758,7 @@ impl AcResult {
 }
 
 /// AC Analysis
-pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
+pub fn ac(ckt: Ckt, opts: Option<Options>, args: Option<AcOptions>) -> SpResult<AcResult> {
     /// FIXME: result saving is in flux, and essentially on three tracks:
     /// * The in-memory format used by unit-tests returns vectors of complex numbers
     /// * The first on-disk format, streaming JSON, falls down for nested data. It has complex numbers flattened, along with frequency.
@@ -818,8 +767,11 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     use serde::ser::{SerializeSeq, Serializer};
     use std::fs::File;
 
+    let opts = if let Some(val) = opts { val } else { Options::default() };
+    let args = if let Some(val) = args { val } else { AcOptions::default() };
+
     // Initial DCOP solver and solution
-    let mut solver = Solver::<f64>::new(ckt, Options::default());
+    let mut solver = Solver::<f64>::new(ckt, opts);
     let _dc_soln = solver.solve(&AnalysisInfo::OP)?;
 
     // Convert to an AC solver
@@ -837,15 +789,15 @@ pub fn ac(ckt: Ckt, opts: AcOptions) -> SpResult<AcResult> {
     results.signals(&solver.vars);
 
     // Set up frequency sweep
-    let mut f = opts.fstart as f64;
-    let fstop = opts.fstop as f64;
-    let fstep = (10.0).powf(f64::log10(fstop / f) / opts.npts as f64);
+    let mut f = args.fstart as f64;
+    let fstop = args.fstop as f64;
+    let fstep = (10.0).powf(f64::log10(fstop / f) / args.npts as f64);
 
     // Main Frequency Loop
     while f <= fstop {
         use std::f64::consts::PI;
         state.omega = 2.0 * PI * f;
-        let an = AnalysisInfo::AC(&opts, &state);
+        let an = AnalysisInfo::AC(&args, &state);
         let fsoln = solver.solve(&an)?;
 
         // Push to our in-mem data

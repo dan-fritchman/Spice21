@@ -992,6 +992,9 @@ specgen! {
     ], [ 
         // Additional values, derived at resolution-time
         (bodymode, usize),
+        // Parameters which stay Option<f64>, no practical defaults 
+        (k1Opt, Option<f64>),
+        (k2Opt, Option<f64>),
         // Given-flags 
         (vtlGiven, bool),
         (vfbGiven, bool),
@@ -1000,8 +1003,6 @@ specgen! {
         (nsubGiven, bool),
         (gamma1Given, bool),
         (gamma2Given, bool),
-        (k1Given, bool),
-        (k2Given, bool),
         (xtGiven, bool),
         (vbxGiven, bool),
         (phigGiven, bool),

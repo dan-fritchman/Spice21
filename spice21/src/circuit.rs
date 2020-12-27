@@ -9,18 +9,17 @@
 //!
 
 use enum_dispatch::enum_dispatch;
-use std::collections::HashMap;
 
+use super::comps::mos::MosPorts;
+use super::defs::Defs;
 use crate::{SpError, SpResult};
 
-use super::comps::bsim4::Bsim4Cache;
-use super::comps::mos::{MosPorts, MosType};
-use super::comps::{DiodeInstParams, DiodeModel};
-use super::proto::def::Defines as DefProto;
+use super::proto;
 use super::proto::instance::Comp as CompProto;
 use super::proto::Circuit as CircuitProto;
 
 // Re-exports
+pub use super::proto::Diode as DiodeI;
 pub use super::proto::Module as ModuleDef;
 pub use super::proto::ModuleInstance as ModuleI;
 
@@ -32,7 +31,15 @@ pub enum NodeRef {
     Name(String),
 }
 use NodeRef::Gnd;
-
+impl NodeRef {
+    pub(crate) fn to_string(&self) -> String {
+        match self {
+            NodeRef::Name(s) => s.clone(),
+            NodeRef::Num(s) => s.to_string(),
+            NodeRef::Gnd => "".into(),
+        }
+    }
+}
 /// Conversion to create Nodes from string-refs
 impl From<&str> for NodeRef {
     fn from(f: &str) -> Self {
@@ -84,26 +91,6 @@ pub struct Ci {
     pub p: NodeRef,
     pub n: NodeRef,
 }
-/// Diode Instance
-pub struct Di {
-    pub name: String,
-    pub model: DiodeModel,
-    pub inst: DiodeInstParams,
-    pub p: NodeRef,
-    pub n: NodeRef,
-}
-
-impl Di {
-    pub fn new<S: Into<String>>(name: S, p: NodeRef, n: NodeRef) -> Self {
-        Self {
-            p,
-            n,
-            name: name.into(),
-            inst: DiodeInstParams::default(),
-            model: DiodeModel::default(),
-        }
-    }
-}
 
 /// Mos Instance
 pub struct Mosi {
@@ -124,7 +111,7 @@ pub enum Comp {
     I(Ii),
     R(Ri),
     C(Ci),
-    D(Di),
+    D(DiodeI),
     Mos(Mosi),
     Module(ModuleI),
 }
@@ -190,10 +177,6 @@ impl Comp {
                 };
                 Comp::C(x)
             }
-            CompProto::D(d) => {
-                let d1 = Di::new(d.name, n(d.p), n(d.n));
-                Comp::D(d1)
-            }
             CompProto::V(v) => {
                 let vs = Vi {
                     name: v.name,
@@ -226,36 +209,16 @@ impl Comp {
                     ports,
                 })
             }
+            CompProto::D(x) => Comp::D(x),
             CompProto::X(x) => Comp::Module(x),
         }
     }
 }
 
-use crate::proto::Mos1InstParams as Mos1InstSpecs;
-use crate::proto::Mos1Model as Mos1ModelSpecs;
+///
+/// # Primary Circuit Structure
+///
 #[derive(Default)]
-pub struct Mos1Defs {
-    pub(crate) models: HashMap<String, Mos1ModelSpecs>,
-    pub(crate) insts: HashMap<String, Mos1InstSpecs>,
-}
-pub struct Defs {
-    pub(crate) modules: HashMap<String, ModuleDef>,
-    pub(crate) mos0: HashMap<String, MosType>,
-    pub(crate) mos1: Mos1Defs,
-    pub(crate) bsim4: Bsim4Cache,
-}
-impl Defs {
-    pub(crate) fn new() -> Self {
-        Self {
-            modules: HashMap::new(),
-            mos0: HashMap::new(),
-            mos1: Mos1Defs::default(),
-            bsim4: Bsim4Cache::new(),
-        }
-    }
-}
-
-/// Primary Circuit Structure
 pub struct Ckt {
     pub name: String,
     pub signals: Vec<String>,
@@ -269,7 +232,7 @@ impl Ckt {
             name: String::from(""),
             signals: Vec::new(),
             comps: Vec::new(),
-            defs: Defs::new(),
+            defs: Defs::default(),
         }
     }
     /// Create a Circuit from a vector of Components
@@ -278,19 +241,53 @@ impl Ckt {
             name: String::from(""),
             signals: Vec::new(),
             comps: comps,
-            defs: Defs::new(),
+            defs: Defs::default(),
         }
     }
+    /// Decode from bytes, via proto definitions
+    pub fn decode(bytes_: &[u8]) -> SpResult<Self> { 
+        use prost::Message;
+        use std::io::Cursor;
+
+        // Decode the protobuf version
+        let proto = CircuitProto::decode(&mut Cursor::new(bytes_))?;
+        // And convert into a Circuit
+        Self::from_proto(proto)
+    }
+    /// Add anything convertible into `Comp`,
+    /// typically the enum-associated structs `Vi` et al.
+    pub fn add<C: Into<Comp>>(&mut self, comp: C) {
+        self.comps.push(comp.into());
+    }
+    /// Convert from YAML string  
+    pub fn from_yaml(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = serde_yaml::from_str(&dedent(y)).unwrap();
+        Self::from_proto(proto)
+    }
+    /// Convert from TOML string  
+    pub fn from_toml(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = toml::from_str(&dedent(y)).unwrap();
+        Self::from_proto(proto)
+    }
+    /// Convert from JSON string  
+    pub fn from_json(y: &str) -> SpResult<Self> {
+        use textwrap::dedent;
+        let proto: CircuitProto = serde_json::from_str(&dedent(y)).unwrap();
+        Self::from_proto(proto)
+    }
     /// Create from a protobuf-generated circuit
-    pub fn from(c: CircuitProto) -> SpResult<Self> {
+    pub fn from_proto(c: proto::Circuit) -> SpResult<Ckt> {
         let CircuitProto {
             name,
             comps: cs_,
             defs: ds_,
             signals,
         } = c;
-        let mut defs = Defs::new();
+        let mut defs = Defs::default();
 
+        use super::proto::def::Defines as DefProto;
         // Step through all definitions
         for def in ds_.into_iter() {
             match def.defines.unwrap() {
@@ -303,15 +300,21 @@ impl Ckt {
                     defs.bsim4.add_model(&x.name, specs);
                 }
                 DefProto::Mos1model(x) => {
-                    defs.mos1.models.insert(x.name.clone(), x);
+                    use crate::comps::mos::Mos1Model;
+                    defs.mos1.add_model(&x.name.clone(), Mos1Model::resolve(&x));
                 }
                 DefProto::Mos1inst(x) => {
-                    defs.mos1.insts.insert(x.name.clone(), x);
+                    use crate::comps::mos::Mos1InstanceParams;
+                    defs.mos1.add_inst(&x.name.clone(), Mos1InstanceParams::resolve(&x));
                 }
+                DefProto::Diodemodel(x) => {
+                    use crate::comps::diode::DiodeModel;
+                    defs.diodes.add_model(&x.name.clone(), DiodeModel::from(x))
+                }
+                DefProto::Diodeinst(x) => defs.diodes.add_inst(&x.name.clone(), x),
                 DefProto::Module(x) => {
-                    defs.modules.insert(x.name.clone(), x);
+                    defs.modules.add(x);
                 }
-                _ => return Err(SpError::new("Unsupported Definition")),
             }
         }
         // And step through all instances
@@ -323,40 +326,7 @@ impl Ckt {
                 return Err(SpError::new("Invalid Component"));
             }
         }
-        Ok(Self { comps, defs, name, signals })
-    }
-    /// Decode from bytes, via proto definitions
-    pub fn decode(bytes_: &[u8]) -> SpResult<Self> {
-        use prost::Message;
-        use std::io::Cursor;
-
-        // Decode the protobuf version
-        let ckt_proto = CircuitProto::decode(&mut Cursor::new(bytes_))?;
-        // And convert into a Circuit
-        Self::from(ckt_proto)
-    }
-    /// Add anything convertible into `Comp`,
-    /// typically the enum-associated structs `Vi` et al.
-    pub fn add<C: Into<Comp>>(&mut self, comp: C) {
-        self.comps.push(comp.into());
-    }
-    /// Convert from YAML string  
-    pub fn from_yaml(y: &str) -> SpResult<Self> {
-        use textwrap::dedent;
-        let proto: CircuitProto = serde_yaml::from_str(&dedent(y)).unwrap();
-        Self::from(proto)
-    }
-    /// Convert from TOML string  
-    pub fn from_toml(y: &str) -> SpResult<Self> {
-        use textwrap::dedent;
-        let proto: CircuitProto = toml::from_str(&dedent(y)).unwrap();
-        Self::from(proto)
-    }
-    /// Convert from JSON string  
-    pub fn from_json(y: &str) -> SpResult<Self> {
-        use textwrap::dedent;
-        let proto: CircuitProto = serde_json::from_str(&dedent(y)).unwrap();
-        Self::from(proto)
+        Ok(Ckt { comps, defs, name, signals })
     }
 }
 
@@ -445,8 +415,8 @@ mod tests {
                         "name": "dtbd",
                         "p": "a",
                         "n": "b",
-                        "area": 1.0,
-                        "temp": 300.0
+                        "model": "default",
+                        "params": "default"
                     },
                     {
                         "type": "M",

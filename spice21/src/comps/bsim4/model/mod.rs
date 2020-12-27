@@ -1,7 +1,10 @@
-pub(crate) mod vals;
-pub(crate) use super::bsim4defs::Bsim4ModelSpecs;
-pub(crate) use super::bsim4defs::Bsim4ModelVals;
+//!
+//! # Bsim4 Model Module
+//!
+pub use super::bsim4defs::Bsim4ModelSpecs;
+pub use super::bsim4defs::Bsim4ModelVals;
 pub(crate) use crate::proto::Bsim4Model as Bsim4ModelProto;
+pub(crate) mod vals;
 pub(crate) use vals::*;
 
 use crate::comps::mos::MosType;
@@ -9,9 +12,9 @@ use crate::comps::mos::MosType;
 impl Bsim4ModelSpecs {
     /// Create a new Bsim4Model of MosType `t`.
     /// All other parameters take on their default values
-    pub(crate) fn new (t: MosType) -> Self {
+    pub(crate) fn new(t: MosType) -> Self {
         Self {
-            mos_type: Some(t), 
+            mos_type: Some(t),
             ..Default::default()
         }
     }
@@ -21,7 +24,7 @@ impl Bsim4ModelSpecs {
             _ => MosType::NMOS,
         };
         Self {
-            mos_type:Some(mos_type),
+            mos_type: Some(mos_type),
             ..Default::default()
         }
     }

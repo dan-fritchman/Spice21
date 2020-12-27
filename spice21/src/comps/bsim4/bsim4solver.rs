@@ -3,7 +3,7 @@ use super::bsim4ports::Bsim4Ports;
 use super::model::Bsim4ModelVals;
 use super::*;
 
-use crate::analysis::{AnalysisInfo, Stamps, TranState, VarIndex, Variables};
+use crate::analysis::{AnalysisInfo, Stamps, TranState, VarIndex, Variables, Options};
 use crate::comps::consts::*;
 use crate::comps::mos::MosType;
 use crate::comps::Component;
@@ -131,21 +131,21 @@ impl Bsim4 {
             qNode: guess.get(self.ports.qNode),
         }
     }
-    pub(crate) fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
+    pub(crate) fn load_dc_tr(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
         // Grab our port voltages/ values
         let portvs = self.vs(guess);
         // Calculate an operating point from them
-        let newop = self.op(portvs, an);
+        let newop = self.op(portvs, an, opts);
         // Save it for later
         self.guess = newop;
         // And return the corresponding matrix stamps
         let stamps = self.stamp();
         stamps
     }
-    pub(crate) fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo) -> Bsim4OpPoint {
-        //-> Bsim4OpPoint {
-        // Start by declaring about 700 local float variables!
+    pub(crate) fn op(&self, portvs: Bsim4Ports<f64>, an: &AnalysisInfo, opts: &Options) -> Bsim4OpPoint {
+        let gmin = opts.gmin;
 
+        // Start by declaring about 700 local float variables!
         // Used a lot
         let mut vgs_eff: f64;
         let mut vgd_eff: f64;
@@ -3758,8 +3758,8 @@ impl Component for Bsim4 {
     fn create_matrix_elems<T: SpNum>(&mut self, mat: &mut Matrix<T>) {
         self.create_matps(mat)
     }
-    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo) -> Stamps<f64> {
-        self.load_dc_tr(guess, an)
+    fn load(&mut self, guess: &Variables<f64>, an: &AnalysisInfo, opts: &Options) -> Stamps<f64> {
+        self.load_dc_tr(guess, an, opts)
     }
     /// Commit operating-point guesses to internal state
     fn commit(&mut self) {

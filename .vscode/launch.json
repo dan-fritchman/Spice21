@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'spice21'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=spice21",
+                ],
+                "filter": {
+                    "name": "spice21",
+                    "kind": "lib"
+                }
+            },
+            // "args": ["${selectedText}"],
+            // "cwd": "${workspaceFolder}",
+            // "stopOnEntry": true
+        }
+    ]
+}

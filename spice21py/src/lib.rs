@@ -1,43 +1,42 @@
 //!
 //! # Spice21 Python Bindings
 //!
-use std::collections::HashMap;
 
 use pyo3::exceptions::RuntimeError;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 use pyo3::{PyErr, PyResult};
 
-use spice21rs::circuit::Ckt;
-use spice21rs::SpError;
+use spice21rs::proto::{Ac, CallableProto, Op, Tran};
+use spice21rs::SpResult;
 
 // Note "spice21py" must be the name of the `.so` or `.pyd` file,
 // i.e. it must be the `package` and/or `lib` name in Cargo.toml
 
-// Error-Type Conversions
-// Unfortunately requires this temporary middle-man defined internally,
-// And a few calls to map_err(TempError::from)
-struct TempError(SpError);
-impl From<SpError> for TempError {
-    fn from(err: SpError) -> TempError {
-        TempError(err)
+/// Convert results and errors
+///
+/// This might look nicer as a method. But defining one is a pain,
+/// as neither `SpResult` nor `PyResult` are defined in this crate.
+fn res(py: Python, sp: SpResult<Vec<u8>>) -> PyResult<PyObject> {
+    match sp {
+        Ok(bytes) => Ok(PyBytes::new(py, &bytes).into()),
+        Err(e) => Err(PyErr::new::<RuntimeError, String>(e.desc)),
     }
 }
-impl From<TempError> for PyErr {
-    fn from(err: TempError) -> PyErr {
-        PyErr::new::<RuntimeError, String>(err.0.desc)
-    }
-}
-
 ///
 /// # Spice21 Python Binding Module
 ///
 /// Most methods perform some version of:
+///
 /// * Accept Python `bytes`/ Rust `&[u8]` as input
-///   * (Serialization/ encoding is done on the Python side)
+///   * Serialization/ encoding is done on the Python side
+///   * PyO3 performs the `bytes` -> `&[u8]` conversion
 /// * Convert to Spice21 type via protobuf decoding
 /// * Call a Spice21 core method
-/// * Return core-generated values, either as Python primitive types
-///   or as protobuf-encoded byte-string.
+/// * Convert the Rust-bytes (`Vec<u8>`) into `PyBites`
+///   (PyO3 doesn't auto-generate this for the return-value)
+/// * Return Python `bytes` encoding of a Spice21 result-type
+/// * Decoding can then be performed in Python
 ///
 #[pymodule]
 fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -49,48 +48,20 @@ fn spice21py(_py: Python, m: &PyModule) -> PyResult<()> {
 
     /// DC Operating Point
     #[pyfn(m, "_dcop")]
-    fn dcop_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, f64>> {
-        use spice21rs::analysis::dcop;
-        // Decode the proto-encoded circuit
-        let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
-        // Run DCOP
-        let res = dcop(ckt).map_err(TempError::from)?;
-        // And return the mapping signal <-> value
-        Ok(res.map)
+    fn dcop_py(py: Python, bytes: &[u8]) -> PyResult<PyObject> {
+        res(py, Op::call_bytes(bytes))
     }
 
     /// Transient
     #[pyfn(m, "_tran")]
-    fn tran_py(_py: Python, ckt_: &[u8], opts_: &[u8]) -> PyResult<HashMap<String, Vec<f64>>> {
-        use spice21rs::analysis::{tran, TranOptions};
-        // Decode the proto-encoded circuit
-        let ckt = Ckt::decode(ckt_).map_err(TempError::from)?;
-        let opts = if opts_.len() > 0 {
-            TranOptions::decode(opts_).map_err(TempError::from)?
-        } else {
-            TranOptions::default()
-        };
-        let res = tran(ckt, opts).map_err(TempError::from)?;
-        Ok(res.map)
+    fn tran_py(py: Python, bytes: &[u8]) -> PyResult<PyObject> {
+        res(py, Tran::call_bytes(bytes))
     }
 
     /// AC Analysis
     #[pyfn(m, "_ac")]
-    fn ac_py(_py: Python, bytes_: &[u8]) -> PyResult<HashMap<String, Vec<(f64, f64)>>> {
-        use spice21rs::analysis::{ac, AcOptions};
-        // Decode the proto-encoded circuit
-        let ckt = Ckt::decode(bytes_).map_err(TempError::from)?;
-        let res = ac(ckt, AcOptions::default()).map_err(TempError::from)?;
-        // PyO3 doesn't quite understand Rust's complex numbers, so we decode a bit
-        let mut map: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
-        for (name, vals) in &res.map {
-            let mut v: Vec<(f64, f64)> = Vec::new();
-            for k in 0..vals.len() {
-                v.push((vals[k].re, vals[k].im));
-            }
-            map.insert(name.to_string(), v);
-        }
-        Ok(map)
+    fn ac_py(py: Python, bytes: &[u8]) -> PyResult<PyObject> {
+        res(py, Ac::call_bytes(bytes))
     }
 
     Ok(())

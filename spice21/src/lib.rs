@@ -10,8 +10,7 @@
 /// # Spice21 Macros
 ///
 /// Note: this module's unusual location, inline in lib.rs,
-/// is the best way we've found to import it
-/// to the rest of Spice21.
+/// is the best way we've found to import it to the rest of Spice21.
 /// Note: this must be defined *before* any uses of it.
 ///
 
@@ -27,7 +26,7 @@ pub(crate) mod macros {
     ]) => {
         #[allow(dead_code)]
         #[doc=$struct_desc]
-        #[derive(Clone, Copy)]
+        #[derive(Clone)]
         pub struct $src_name {
             $( #[doc=$desc]
                 pub $attr_name : $attr_type ),*
@@ -42,7 +41,31 @@ pub(crate) mod macros {
                 }
             }
         }
-        impl Default for $src_name {
+    }
+    }
+
+    /// The `from_opt_type` derives a type of the form `struct { x: X }` from `struct { x: Option<X> }`,
+    /// given an existing type `from_type`, and default values for each field.
+    #[macro_export]
+    macro_rules! from_opt_type {
+    ( $dest_type:ident, $from_type:ident, $struct_desc:literal, [
+        $( ($attr_name:ident, $attr_type:ty, $default:literal, $desc:literal) ),* $(,)?
+    ]) => {
+        #[allow(dead_code)]
+        #[doc=$struct_desc]
+        #[derive(Clone)]
+        pub struct $dest_type {
+            $( #[doc=$desc]
+                pub $attr_name : $attr_type ),*
+        }
+        impl From<$from_type> for $dest_type {
+            pub fn from(specs: $from_type) -> Self {
+                Self {
+                    $($attr_name : if let Some(val) = specs.$attr_name { val } else { $default }; ),*,
+                }
+            }
+        }
+        impl Default for $dest_type {
             fn default() -> Self {
                 Self {
                     $($attr_name : $default),*,
@@ -74,16 +97,17 @@ pub(crate) mod macros {
         $( ($val_name:ident, $val_type:ty) ),* $(,)?
     ]$(,)? ) => {
         #[doc=$struct_desc]
-        #[derive(Clone, Copy, Default)]
-        pub(crate) struct $specs_name {
-            $( #[doc=$desc]
-                pub(crate) $attr_name : Option<$attr_type> ),*
+        #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
+        pub struct $specs_name {
+            $(  #[doc=$desc]
+                #[serde(default)]
+                pub $attr_name : Option<$attr_type> ),*
         }
         #[doc=$struct_desc]
         #[derive(Clone, Copy, Default, Serialize, Deserialize, Debug)]
-        pub(crate) struct $vals_name {
-            $( pub(crate) $attr_name : $attr_type, )*
-            $( pub(crate) $val_name : $val_type, )*
+        pub struct $vals_name {
+            $( pub $attr_name : $attr_type, )*
+            $( pub $val_name : $val_type, )*
         }
     }
     }
@@ -130,12 +154,13 @@ pub(crate) mod macros {
 
 // Modules
 pub mod analysis;
-pub mod elab;
 pub mod circuit;
 pub mod comps;
+pub mod defs;
+pub mod elab;
 pub mod proto;
-pub mod spresult;
 pub mod sparse21;
+pub mod spresult;
 
 // Re-exports
 pub use analysis::*;
@@ -151,3 +176,8 @@ mod spnum;
 
 #[cfg(test)]
 mod tests;
+
+// Use our internal friend-crate(s)
+// Note macro-import *must* be here at crate-root, *not* down-hierarchy 
+#[macro_use]
+extern crate spice21procs;
