@@ -1,6 +1,6 @@
 [package]
 name = "spice21"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
     "Dan Fritchman <dan@fritch.mn>",
     "HW21 <hw21@hw21.io>"
@@ -10,8 +10,8 @@ license = "BSD-3-Clause"
 description = "Coming Soon"
 
 [dependencies]
-spice21int = { package="spice21int", version="0.1.4", path = "../spice21int" }
-spice21procs = { package="spice21procs", version="0.1.4", path = "../spice21procs" }
+spice21int = { package="spice21int", version="0.1.5", path = "../spice21int" }
+spice21procs = { package="spice21procs", version="0.1.5", path = "../spice21procs" }
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0.88"
 serde_json = "1.0"

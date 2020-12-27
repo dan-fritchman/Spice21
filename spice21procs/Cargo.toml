@@ -1,6 +1,6 @@
 [package]
 name = "spice21procs"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
     "Dan Fritchman <dan@fritch.mn>",
     "HW21 <hw21@hw21.io>"
@@ -10,7 +10,7 @@ license = "BSD-3-Clause"
 description = "Spice21 Procedural Macros"
 
 [dependencies]
-spice21int = { package="spice21int", version="0.1.4", path = "../spice21int" }
+spice21int = { package="spice21int", version="0.1.5", path = "../spice21int" }
 syn = "1.0"
 quote = "1.0"
 prost = "0.6.1"

@@ -72,7 +72,7 @@ Add [spice21](https://crates.io/crates/spice21) to the Cargo.toml of any Rust pr
 
 ```toml
 [dependencies]
-spice21 = "0.1.4"
+spice21 = "0.1.5"
 ```
 
 ### [Python](https://pypi.org/project/spice21py/)

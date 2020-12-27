@@ -1,6 +1,6 @@
 [package]
 name = "spice21py"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
     "Dan Fritchman <dan@fritch.mn>",
     "HW21 <hw21@hw21.io>"
@@ -14,7 +14,7 @@ name = "spice21py"
 crate-type = ["cdylib"]
 
 [dependencies]
-spice21rs = { package="spice21", version="0.1.4", path = "../spice21" }
+spice21rs = { package="spice21", version="0.1.5", path = "../spice21" }
 pyo3 = {version = "0.11.1", features = ["extension-module"]}
 
 # Note this is really what sets Python install-dependencies

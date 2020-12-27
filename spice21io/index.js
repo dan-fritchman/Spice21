@@ -27,16 +27,13 @@ app.post('/echo', (req, res) => {
   res.send(req.body);
 });
 
-app.post('/sim', (req, res) => {
-  let rv = spice21js._sim(req.body);
-  res.setHeader('content-type', CONTENT_TYPE);
-  res.send(rv);
-});
+// app.post('/sim', (req, res) => {
+//   let rv = spice21js._sim(req.body);
+//   res.setHeader('content-type', CONTENT_TYPE);
+//   res.send(rv);
+// });
 
 app.post('/op', (req, res) => {
-  console.log(req);
-  let ckt = spice21js.protos.Circuit.decode(req.body);
-  console.log(ckt);
   let rv = spice21js._dcop(req.body);
   res.setHeader('content-type', CONTENT_TYPE);
   res.send(rv);

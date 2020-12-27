@@ -1,6 +1,6 @@
 [package]
 name = "spice21js"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Dan Fritchman <dan@fritch.mn>"]
 license = "BSD-3-Clause"
 build = "build.rs"
@@ -16,4 +16,4 @@ neon-build = "0.5.2"
 
 [dependencies]
 neon = "0.5.2"
-spice21 = {version = "0.1.4", path = "../../spice21"}
+spice21 = {version = "0.1.5", path = "../../spice21"}

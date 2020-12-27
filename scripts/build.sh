@@ -1,21 +1,14 @@
 
-# Rust core build
-cd spice21 
+# Spice21 Build Script
+# Including language bindings 
+set -e 
+
+# Rust core build, in root workspace-directory
 cargo build 
-cd .. 
 
-cd spice21py
-./build.sh
-cd ..
+# Python Bindings 
+cd spice21py && ./build.sh && cd ..
 
-# JavaScript Protobuf Compilation 
-cd spice21js 
-yarn 
-yarn protoc 
-cd ..
-
-# Publishing
-# cd spice21 && cargo publish
-# cd spice21py && maturin publish 
-# cd spice21js && ???
+# JavaScript Bindings 
+cd spice21js && yarn install && yarn protoc && cd ..
 

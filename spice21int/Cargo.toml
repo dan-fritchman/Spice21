@@ -1,6 +1,6 @@
 [package]
 name = "spice21int"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
     "Dan Fritchman <dan@fritch.mn>",
     "HW21 <hw21@hw21.io>"
