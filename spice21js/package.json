@@ -8,7 +8,7 @@
   "dependencies": {
     "mocha": "^8.2.1",
     "neon-cli": "^0.5.2",
-    "protobufjs": "^6.10.2"
+    "protobufjs": "^6.11.3"
   },
   "scripts": {
     "protoc": "mkdir -p lib/protos && pbjs -t static-module -w commonjs ../spice21/protos/*.proto -o lib/protos/index.js",
